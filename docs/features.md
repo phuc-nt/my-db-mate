@@ -13,6 +13,9 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Encrypted credentials** (AES-256-GCM), audit trail on every execution.
 
 ### Context Studio — the moat
+
+![Context Studio: glossary and annotations curated per connection](images/context-studio.png)
+
 - **Business glossary, schema annotations, manual relationships, verified queries** — curated per connection, injected into the agent. Multilingual embeddings (works in Vietnamese) with keyword + vector retrieval.
 - **Knowledge Inbox** — distill a chat session into suggestions the DBA approves; accepted items grow the context store.
 - **YAML export/import** for Git backup (atomic import).
@@ -27,11 +30,17 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **API keys** (hashed, scoped to a connection + max risk tier), **scheduled queries** (cron, SSRF-guarded webhooks, unattended-risk policy).
 
 ### Analyst, Dashboards & Reports
+
+![Dashboard: pinned chat results as refreshable widgets](images/dashboard.png)
+
 - **Investigate mode** — for "why / compare / trend" questions the agent writes an analysis plan, runs a series of drill-down queries, and concludes with evidence (not a one-shot answer). It **asks a clarifying question** when a request is ambiguous instead of guessing, self-repairs failed SQL, and applies big-table guardrails. An **"Analyze deeper"** button turns any result into an investigation.
 - **Pin & Dashboards** — pin a chat result as a widget; group widgets on a dashboard; **share read-only** via a signed link. Sharing serves the owner-refreshed cached result — an anonymous viewer never runs a query or sees the SQL.
 - **Reports** — gather widgets / verified queries as sources and have the model compose one structured markdown report (executive summary → sections → SQL appendix), versioned and regenerable, with read-only share links and print-to-PDF.
 
 ### DB client & analysis
+
+![ERD: interactive diagram of foreign keys and manual relationships](images/erd.png)
+
 - **Schema browser + ERD** — browse tables → columns (type/PK/FK/row count) and sample rows without asking the chat, and view an interactive entity-relationship diagram of the foreign keys.
 - **Execution-plan viewer** — EXPLAIN a query (plan-only, never run) to see its plan and a full-scan warning.
 - **Bookmarks + rich export** — save a query for 1-click re-run; export any result as CSV (formula-injection-guarded), JSON, or dialect-aware SQL-INSERT.

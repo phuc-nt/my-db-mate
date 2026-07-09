@@ -5,8 +5,6 @@
  */
 import Database from 'better-sqlite3';
 import { fork } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import type {
   ConnectionProvider,
   Dialect,
@@ -24,12 +22,10 @@ export interface SqliteConfig {
 /** Hard kill-timeout for a SQLite query (red-team C3). Matches PG/MySQL's 30s. */
 const DEFAULT_EXEC_TIMEOUT_MS = Number(process.env.SQLITE_EXEC_TIMEOUT_MS ?? 30_000);
 
-// Resolve the exec child script next to this module. Plain .cjs → loads with no
-// transpile under both tsx scripts and the Next dev/prod server.
-const CHILD_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  'sqlite-exec-child.cjs',
-);
+// `new URL(relative, import.meta.url)` is the bundler-visible way to reference
+// the fork target: Turbopack emits sqlite-exec-child.cjs as a server asset and
+// rewrites the URL, while tsx/Node resolve it next to this module unchanged.
+const CHILD_URL = new URL('./sqlite-exec-child.cjs', import.meta.url);
 
 export class SqliteFileProvider implements ConnectionProvider {
   readonly dialect: Dialect = 'sqlite';
@@ -134,7 +130,7 @@ export class SqliteFileProvider implements ConnectionProvider {
   async executeReadOnly(sql: string, opts?: { timeoutMs?: number }): Promise<QueryResult> {
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
     return new Promise<QueryResult>((resolve, reject) => {
-      const child = fork(CHILD_PATH, { stdio: 'ignore' });
+      const child = fork(CHILD_URL, { stdio: 'ignore' });
       let settled = false;
       const finish = (fn: () => void) => {
         if (settled) return;

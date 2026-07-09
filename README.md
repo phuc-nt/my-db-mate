@@ -1,6 +1,10 @@
 # My DB Mate
 
+[English](README.en.md) | Tiếng Việt
+
 **Chat với database của bạn.** Hỏi bằng ngôn ngữ tự nhiên, nhận câu trả lời dựa trên SQL thật, không cần viết truy vấn tay.
+
+![Chat với database: câu hỏi → SQL → chart](docs/images/chat.png)
 
 ---
 
