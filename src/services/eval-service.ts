@@ -6,7 +6,7 @@
  * Run against a STABLE fixture/snapshot DB, not live production, so gold results
  * are reproducible. Rows are hashed (not held) to bound memory.
  */
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { db } from '../db/client';
 import { evalQueries, evalRuns, evalResults } from '../db/intelligence-schema';

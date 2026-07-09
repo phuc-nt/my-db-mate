@@ -11,7 +11,7 @@
  *   an anonymous viewer cannot trigger a query or read the SQL (H1/H2).
  */
 import { generateShareSlug } from '../lib/share';
-import { and, asc, eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
 import { getConnection } from './connection-service';

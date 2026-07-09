@@ -14,7 +14,7 @@
  *   reports scanned/failed so the UI can show "partial (N/M)" instead of pretending
  *   the scan is complete.
  */
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { columnProfiles } from '../db/intelligence-schema';

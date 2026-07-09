@@ -76,7 +76,8 @@ export async function mineSession(sessionId: string): Promise<number> {
   const pending = await db.select({ kind: knowledgeSuggestions.kind, payload: knowledgeSuggestions.payload })
     .from(knowledgeSuggestions).where(and(eq(knowledgeSuggestions.connectionId, session.connectionId), eq(knowledgeSuggestions.status, 'pending')));
   for (const p of pending) {
-    if (p.kind === 'verified_query' && (p.payload as any)?.sql) existingVerifiedSql.add(String((p.payload as any).sql).replace(/\s+/g, ' ').trim().toLowerCase());
+    const payloadSql = (p.payload as { sql?: unknown } | null)?.sql;
+    if (p.kind === 'verified_query' && payloadSql) existingVerifiedSql.add(String(payloadSql).replace(/\s+/g, ' ').trim().toLowerCase());
   }
   const existingGlossary = new Set(
     (await db.select({ term: glossaryTerms.term }).from(glossaryTerms).where(eq(glossaryTerms.connectionId, session.connectionId))).map((g) => g.term.toLowerCase()),
