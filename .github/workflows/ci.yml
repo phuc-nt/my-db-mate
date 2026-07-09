@@ -23,6 +23,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Test (safety adversarial gate)
+        run: npm test
+
       - name: Build
         # A syntactically-valid DATABASE_URL is enough: nothing connects at build time.
         env:
