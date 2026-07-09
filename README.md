@@ -1,30 +1,18 @@
 # My DB Mate
 
-**Chat với database của bạn** — hỏi bằng ngôn ngữ tự nhiên, nhận câu trả lời dựa trên SQL thật, không cần viết truy vấn tay.
+**Chat với database của bạn.** Hỏi bằng ngôn ngữ tự nhiên, nhận câu trả lời dựa trên SQL thật, không cần viết truy vấn tay.
 
 ---
 
 ## Tại sao tôi làm sản phẩm này
 
-Tôi làm cho chính những người như tôi: **DevOps/DBA quản lý database lớn trong production**. Công việc thường ngày là nhận đủ loại yêu cầu lấy data ad-hoc từ business, product, finance… Dashboard có sẵn thì cứng nhắc — luôn thiếu đúng cái lát cắt data mà người ta cần lúc đó. Còn viết SQL tay mỗi lần thì tốn thời gian, nhất là với hệ thống nhiều bảng, business logic chồng chéo.
+Tôi là DevOps/DBA quản lý database lớn trong production. Việc hàng ngày là nhận yêu cầu lấy data ad-hoc từ business, product, finance. Dashboard có sẵn thì cứng, thiếu đúng lát cắt data người ta cần. Viết SQL tay mỗi lần thì tốn thời gian, nhất là hệ thống nhiều bảng, business logic chồng chéo.
 
-"Chat với DB để ra SQL" nghe như lời giải hiển nhiên. Nhưng khi bắt tay làm, tôi nhận ra điều quan trọng nhất:
+Vấn đề không phải là convert câu hỏi thành SQL. LLM giờ làm việc đó khá tốt rồi. Vấn đề là context để AI generate đúng: `usr_stat_cd` nghĩa là gì, "khách hàng active" map vào cấu trúc DB nào, những quy ước chỉ có trong đầu DBA chứ không nằm trong schema. LLM đoán được tên viết tắt thông thường, nhưng không đoán được enum code mờ nghĩa hay tri thức riêng của từng hệ thống. Chỗ đó phải do người dùng bồi đắp dần, không có LLM nào tự lấp được.
 
-### Linh hồn sản phẩm không phải là generate SQL
+Nên My DB Mate không đặt cược vào text-to-SQL. Nó đặt cược vào một lớp context (glossary, chú thích schema, verified queries) mà bạn xây theo thời gian, để AI hiểu đúng hệ thống của bạn hơn.
 
-Convert câu hỏi thành SQL **không còn là bài toán khó** — LLM bây giờ làm khá tốt. Cái khó thật nằm ở **context** để AI generate ĐÚNG:
-
-- Tên cột thực tế hiếm khi tự giải thích — `usr_stat_cd` nghĩa là gì? `status` là `'A'/'I'` hay `'active'/'inactive'`?
-- "Khách hàng active" theo nghiệp vụ map vào cấu trúc DB nào?
-- Những query tay, report cũ — tri thức bộ lạc (tribal knowledge) quý giá mà không nằm trong schema.
-
-Một LLM 2026 đủ giỏi để đoán tên viết tắt thông thường. Nhưng nó **không thể đoán** những enum code mờ nghĩa, những quy ước riêng của từng hệ thống, những định nghĩa nghiệp vụ chỉ tồn tại trong đầu người DBA. Đó là khoảng trống mà không model nào lấp được — chỉ có **con người enrich dần** mới lấp được.
-
-Nên **moat** của My DB Mate không phải là text-to-SQL. Nó là **lớp context** — business glossary, chú thích schema, verified queries — mà một team bồi đắp theo thời gian, để AI ngày càng hiểu đúng hệ thống của họ. Giống RAG, nhưng cho structured data + business knowledge.
-
-### Và an toàn là điều kiện tiên quyết, không phải tính năng phụ
-
-Vì thao tác trên **big DB production**, một AI "sáng tạo quá đà" là rủi ro có thật. Nên My DB Mate được xây quanh một **lớp an toàn vật lý**: chỉ đọc (read-only) được ép ở nhiều tầng, mọi truy vấn đi qua một choke point kiểm duyệt, credential được mã hoá, mọi lần chạy đều ghi audit. AI **không bao giờ** được phép làm hỏng DB của bạn — đó là ràng buộc thiết kế, không phải tuỳ chọn.
+Và vì đây là DB production, an toàn là điều kiện bắt buộc chứ không phải tính năng thêm: chỉ đọc ép ở nhiều tầng, mọi truy vấn qua một điểm kiểm duyệt, credential mã hoá, mọi lần chạy có audit log.
 
 ---
 
