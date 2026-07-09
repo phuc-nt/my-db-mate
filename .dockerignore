@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules
+.next
+.git
+dist
+build
+*.db
+*.sqlite
+*.sqlite3
+coverage

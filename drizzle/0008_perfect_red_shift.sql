@@ -1,0 +1,1 @@
+ALTER TABLE "verified_queries" ADD COLUMN "is_bookmark" boolean DEFAULT false NOT NULL;

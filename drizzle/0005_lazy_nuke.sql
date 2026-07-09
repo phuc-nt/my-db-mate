@@ -1,0 +1,1 @@
+ALTER TABLE "schema_tables" ADD COLUMN "row_count" integer;

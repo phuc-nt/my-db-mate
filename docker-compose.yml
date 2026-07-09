@@ -1,0 +1,35 @@
+services:
+  app-db:
+    image: pgvector/pgvector:pg17
+    container_name: mydbmate-app-db
+    environment:
+      POSTGRES_USER: mydbmate
+      POSTGRES_PASSWORD: mydbmate
+      POSTGRES_DB: mydbmate
+    ports:
+      - "5433:5432"
+    volumes:
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mydbmate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: mydbmate-app
+    depends_on:
+      app-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://mydbmate:mydbmate@app-db:5432/mydbmate
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-qwen/qwen3.7-max}
+      CREDENTIAL_ENC_KEY: ${CREDENTIAL_ENC_KEY}
+    ports:
+      - "3000:3000"
+    profiles: ["full"]  # `docker compose --profile full up` runs app+db; default runs db only
+
+volumes:
+  app-db-data:

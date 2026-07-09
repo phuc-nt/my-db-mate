@@ -1,0 +1,53 @@
+{
+  "name": "my-db-mate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:migrate": "drizzle-kit migrate",
+    "smoke:llm": "tsx scripts/smoke-test-llm-tool-calling.ts",
+    "mcp": "tsx scripts/mcp-server-entry.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^4.0.18",
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@xyflow/react": "^12.11.2",
+    "ai": "^7.0.0",
+    "better-sqlite3": "^12.11.1",
+    "dotenv": "^17.0.0",
+    "drizzle-orm": "^0.45.2",
+    "mysql2": "^3.22.6",
+    "next": "^16.2.10",
+    "node-cron": "^4.6.0",
+    "node-sql-parser": "^5.4.0",
+    "pg": "^8.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "recharts": "^3.9.2",
+    "remark-gfm": "^4.0.1",
+    "sql.js": "^1.12.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.1.1",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "drizzle-kit": "^0.31.10",
+    "playwright": "^1.61.1",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^4.3.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

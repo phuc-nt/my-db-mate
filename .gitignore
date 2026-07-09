@@ -1,0 +1,37 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.next/
+dist/
+build/
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store
+coverage/
+*.log
+.tmp/
+tsconfig.tsbuildinfo
+
+# Internal planning / dev docs (not for the open-source repo)
+plans/
+
+# Internal UAT test scripts (Vietnamese test walkthroughs, kept local)
+docs/uat-ebook-store.md
+docs/uat-full-manual.md
+docs/product-idea.md
+
+# Dev/test tooling (real E2E + UAT harness, kept local)
+scripts/verify-*.ts
+scripts/uat-*.ts
+scripts/generate-big-sqlite.ts
+scripts/probe-embedding.ts
+
+# Cloud-DB simulation for UAT (SSL Postgres + MySQL in Docker) — local only
+cloud-test/
+
+# Agent tooling
+.claude/
+AGENTS.md
+CLAUDE.md
