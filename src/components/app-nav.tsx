@@ -17,7 +17,7 @@ export function AppNav() {
 
   return (
     <nav className="border-b border-neutral-200 dark:border-neutral-800">
-      <div className="mx-auto flex max-w-5xl items-center gap-5 px-6 py-2.5 text-sm">
+      <div className="mx-auto flex h-12 max-w-5xl items-center gap-5 px-6 text-sm">
         <Link href="/connections" className="font-semibold">My DB Mate</Link>
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + '/');
