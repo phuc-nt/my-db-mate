@@ -29,6 +29,7 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
         ssl: row.config.ssl === 'require' || row.config.ssl === 'verify-full'
           ? (row.config.ssl as 'require' | 'verify-full') : 'disable',
         sslCa: typeof row.config.sslCa === 'string' ? row.config.sslCa : undefined,
+        options: typeof row.config.options === 'string' ? row.config.options : undefined,
       });
     }
 

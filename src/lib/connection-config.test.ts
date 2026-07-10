@@ -22,4 +22,14 @@ describe('parseConnectionString sslmode mapping', () => {
   it('rejects unknown schemes', () => {
     expect(() => parseConnectionString('redis://h:6379/0')).toThrow(/Unsupported scheme/);
   });
+
+  it('preserves the postgres options param (CockroachDB --cluster)', () => {
+    const p = parseConnectionString('postgres://u:p@h.cockroachlabs.cloud:26257/db?sslmode=verify-full&options=--cluster%3Dfoo-123');
+    expect(p.options).toBe('--cluster=foo-123');
+    expect(p.ssl).toBe('verify-full');
+  });
+
+  it('omits options when absent', () => {
+    expect(parseConnectionString('postgres://u:p@h:5432/db').options).toBeUndefined();
+  });
 });

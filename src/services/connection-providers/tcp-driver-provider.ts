@@ -36,6 +36,9 @@ export interface TcpConfig {
    *  private-CA cloud (Supabase, Aiven, self-managed) pass strict verification.
    *  Public material, so it lives in config rather than the encrypted secret. */
   sslCa?: string;
+  /** Postgres `options` startup param (e.g. CockroachDB Serverless `--cluster=<id>`).
+   *  Postgres-only; ignored for MySQL. */
+  options?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -93,6 +96,7 @@ export class TcpDriverProvider implements ConnectionProvider {
         user: this.config.user,
         password: this.config.password,
         ssl: pgSslOption(this.config),
+        ...(this.config.options ? { options: this.config.options } : {}),
         max: 4,
       });
     }

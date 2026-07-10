@@ -33,13 +33,17 @@ export interface ParsedConnection {
   user: string;
   password: string;
   ssl: SslMode;
+  /** Postgres `options` connection param (e.g. CockroachDB `--cluster=<id>`).
+   *  Carried through so a pasted URL doesn't silently drop it. */
+  options?: string;
 }
 
 /**
  * Parse a Postgres/MySQL connection URL. Accepts the common schemes and the
  * `sslmode=…`/`ssl=true` query hint (managed clouds set this). `verify-full` and
  * `verify-ca` map to certificate verification; `require`/`prefer`/`true` map to
- * encrypt-only. Throws on an unrecognized scheme so the caller can show an error.
+ * encrypt-only. The Postgres `options` param is preserved (CockroachDB Serverless
+ * needs `--cluster=`). Throws on an unrecognized scheme so the caller can show an error.
  */
 export function parseConnectionString(raw: string): ParsedConnection {
   const url = new URL(raw.trim());
@@ -55,6 +59,8 @@ export function parseConnectionString(raw: string): ParsedConnection {
     sslmode === 'require' || sslmode === 'true' || sslmode === 'prefer' ? 'require' :
     'disable';
 
+  const options = url.searchParams.get('options') ?? undefined;
+
   return {
     engine,
     host: url.hostname,
@@ -63,5 +69,6 @@ export function parseConnectionString(raw: string): ParsedConnection {
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
     ssl,
+    ...(options ? { options } : {}),
   };
 }

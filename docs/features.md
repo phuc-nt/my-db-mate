@@ -10,7 +10,7 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view.
 - **Workspace layout** — on wide screens the conversation and the query results split into columns: results collapse to one-line chips in the chat and open full-width in a side panel (edited SQL and chart state survive switching); very wide screens add a session-queries rail. Narrow screens keep everything inline.
 - **One-click demo** — "Try with a sample database" on the empty connections page generates a local sample shop DB (deliberately opaque enum codes) with a pre-seeded glossary, then opens a chat against it. No database required to evaluate the product.
-- **Three engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction.
+- **Three engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction. A **provider preset** picker pre-fills the port / SSL mode / quirks for common managed databases (see the compatibility table below).
 - **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → `LIMIT` injection → audit log. Adversarial suite: **29/29 attacks blocked, 0% false-positive** — and it runs as a test gate in CI on every push.
 - **Encrypted credentials** (AES-256-GCM), audit trail on every execution.
 
@@ -49,6 +49,27 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Anomaly detection** — in investigate mode, the agent can check a column for NULL-rate and numeric outliers (aggregates only) as evidence for its conclusion.
 - **Data Health** — a manual scan flags high-NULL, single-value, and id-like columns, with a partial-scan badge.
 - **Notebooks** — save a chat session as a read-only, shareable notebook (question → SQL → result → narrative); queries over columns marked sensitive are omitted from the share.
+
+## Provider compatibility
+
+PostgreSQL and MySQL are wire protocols, so any managed database that speaks them works through the same driver. The preset picker fills in the port / SSL / quirks; you can always edit every field or paste a connection string. **✓ = tested against a live instance · ○ = wire-compatible, expected to work (not yet tested).**
+
+| Provider | Wire | SSL default | Status | Notes |
+|---|---|---|---|---|
+| PostgreSQL (self-hosted) | postgres | your choice | ✓ | Reference engine. |
+| MySQL / MariaDB (self-hosted) | mysql | your choice | ✓ | Reference engine. |
+| SQLite (file) | — | n/a | ✓ | Local file, opened read-only. |
+| Cloudflare D1 | REST | n/a | ✓ | Remote HTTP provider. |
+| Neon | postgres | require | ○ | Pooled host works; needs SNI (set the real host if tunneling). |
+| Supabase | postgres | require | ○ | Default preset uses the pooler (6543); direct 5432 is often IPv6-only. |
+| AWS RDS / Aurora (PG & MySQL) | postgres/mysql | require | ○ | verify-full + the RDS CA bundle for strict verification. |
+| PlanetScale | mysql | require | ○ | TLS mandatory. |
+| TiDB Cloud | mysql | require | ○ | Serverless on port 4000. |
+| Timescale Cloud | postgres | require | ○ | — |
+| CockroachDB | postgres | verify-full | ○ | Serverless needs `options=--cluster=<id>` — preserved from the pasted URL or set in the Postgres options field. |
+| Aiven (PG & MySQL) | postgres/mysql | verify-full | ○ | Private CA — paste the console CA into the CA field. |
+
+Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the fields — it will very likely work.
 
 ## Stack
 

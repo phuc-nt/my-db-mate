@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
+import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
 
 interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown> }
 
-const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '', ssl: 'disable' as SslMode, sslCa: '' };
+const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '', ssl: 'disable' as SslMode, sslCa: '', options: '' };
 
 export default function ConnectionsPage() {
   const [conns, setConns] = useState<Conn[]>([]);
@@ -15,6 +16,7 @@ export default function ConnectionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [presetNote, setPresetNote] = useState('');
 
   const load = () => fetch('/api/connections').then((r) => r.json()).then(setConns).then(() => setLoaded(true));
   useEffect(() => { load(); }, []);
@@ -24,12 +26,21 @@ export default function ConnectionsPage() {
     setForm((f) => ({ ...f, engine, port: engine === 'sqlite' ? '' : String(DEFAULT_PORT[engine]) }));
   }
 
+  /** Picking a provider preset pre-fills engine/port/SSL and shows its note.
+   *  Pure convenience — every field stays editable, config stored is unchanged. */
+  function applyPreset(id: string) {
+    const p = getPreset(id);
+    if (!p || id === 'generic') { setPresetNote(''); return; }
+    setForm((f) => ({ ...f, engine: p.engine, port: String(p.port), ssl: p.ssl }));
+    setPresetNote(p.note ?? '');
+  }
+
   /** Paste a connection URL → fill the fields (postgres://… / mysql://…). */
   function pasteUrl(raw: string) {
     if (!raw.trim()) return;
     try {
       const p = parseConnectionString(raw);
-      setForm((f) => ({ ...f, engine: p.engine, host: p.host, port: String(p.port), database: p.database, user: p.user, secret: p.password, ssl: p.ssl }));
+      setForm((f) => ({ ...f, engine: p.engine, host: p.host, port: String(p.port), database: p.database, user: p.user, secret: p.password, ssl: p.ssl, options: p.options ?? '' }));
       setMsg('Filled from connection string.');
     } catch (e) {
       setMsg(`Could not parse URL: ${e instanceof Error ? e.message : String(e)}`);
@@ -44,6 +55,7 @@ export default function ConnectionsPage() {
           host: form.host, port: Number(form.port), database: form.database, user: form.user,
           ssl: form.ssl,
           ...(form.ssl === 'verify-full' && form.sslCa.trim() ? { sslCa: form.sslCa } : {}),
+          ...(form.engine === 'postgres' && form.options.trim() ? { options: form.options.trim() } : {}),
         };
     return { name: form.name, kind, dialect: form.engine, config, secret: form.engine === 'sqlite' ? undefined : form.secret };
   }
@@ -88,12 +100,14 @@ export default function ConnectionsPage() {
       secret: '', // never pre-filled; blank keeps the existing password
       ssl: (cfg.ssl === 'require' || cfg.ssl === 'verify-full' ? cfg.ssl : 'disable') as SslMode,
       sslCa: String(cfg.sslCa ?? ''),
+      options: String(cfg.options ?? ''),
     });
+    setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function resetForm() { setEditingId(null); setForm({ ...BLANK }); }
+  function resetForm() { setEditingId(null); setForm({ ...BLANK }); setPresetNote(''); }
 
   /** One-click demo: sample shop DB + seeded context, then straight into chat. */
   async function tryDemo() {
@@ -132,6 +146,18 @@ export default function ConnectionsPage() {
           ))}
         </div>
 
+        {/* Provider preset (TCP only) — fills engine/port/SSL, then everything stays editable. */}
+        {!isSqlite && !editingId && (
+          <select defaultValue="generic" onChange={(e) => applyPreset(e.target.value)}
+            className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900">
+            <option value="generic">Provider preset (optional)…</option>
+            {PROVIDER_PRESETS.filter((p) => p.id !== 'generic').map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        )}
+        {presetNote && <p className="mb-2 text-xs text-neutral-500">{presetNote}</p>}
+
         {/* Connection-string paste (TCP only) */}
         {!isSqlite && !editingId && (
           <input className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900"
@@ -163,6 +189,11 @@ export default function ConnectionsPage() {
                 <textarea className="col-span-2 rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={4}
                   placeholder={'CA certificate (PEM) — optional. Paste your provider\'s CA here if it uses a private CA (Supabase, Aiven…). Leave blank to verify against the system CA store.'}
                   value={form.sslCa} onChange={(e) => setForm({ ...form, sslCa: e.target.value })} />
+              )}
+              {form.engine === 'postgres' && (
+                <input className="col-span-2 rounded border p-2 text-sm dark:bg-neutral-900"
+                  placeholder="Postgres options (optional) — e.g. --cluster=my-cluster-1234 for CockroachDB"
+                  value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} />
               )}
             </>
           )}
