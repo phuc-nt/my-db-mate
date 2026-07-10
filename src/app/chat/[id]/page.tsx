@@ -164,7 +164,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setFollowupsOn((on) => {
       const next = !on;
       localStorage.setItem('mdm.followups', next ? 'on' : 'off');
+      // Off clears the chips; re-enabling resets the dedupe ref so the fetch
+      // effect can regenerate suggestions for the already-completed turn.
       if (!next) setFollowups([]);
+      else followupMsgIdRef.current = null;
       return next;
     });
   }
