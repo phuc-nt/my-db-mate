@@ -57,7 +57,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     fetch(`/api/connections/${connectionId}/schema`).then((r) => r.json()).then((d) => setDialect(d.dialect)).catch(() => {});
   }, [connectionId]);
 
-  const { messages, sendMessage, addToolResult, status } = useChat({
+  const { messages, sendMessage, addToolResult, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
       body: { connectionId, sessionId },
@@ -172,6 +172,23 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     });
   }
 
+  /** A "Confirm & run anyway" happened in the SQL panel — the agent never sees
+   *  manual executions, so append a compact user message with the result to the
+   *  transcript. Local-only (setMessages): no request fires until the next turn,
+   *  which then carries this context to the model. Rows are capped to keep the
+   *  transcript small; exposure equals a normal run_sql output. */
+  function recordConfirmedRun(label: string, info: { sql: string; columns: string[]; rows: unknown[][] }) {
+    const head = info.rows.slice(0, 10)
+      .map((r) => r.map((c) => String(c ?? 'null').slice(0, 60)).join(' | ')).join('\n');
+    const more = info.rows.length > 10 ? `\n… (${info.rows.length - 10} more rows)` : '';
+    const text = `[I pressed "Confirm & run anyway" on ${label} — it has now executed]\nSQL: ${info.sql}\n${info.rows.length} rows. Columns: ${info.columns.join(', ')}\n${head}${more}`;
+    setMessages((msgs) => [...msgs, {
+      id: `manual-run-${label}-${Date.now()}`,
+      role: 'user' as const,
+      parts: [{ type: 'text' as const, text }],
+    }]);
+  }
+
   const analyzeDeeper = (sql: string) =>
     send(`Analyze this result more deeply — trends, comparisons, and anomalies. The query was: ${sql}`, 'investigate');
 
@@ -272,6 +289,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             initialResult={ok ? { columns: out!.columns!, rows: out!.rows ?? [], executedSql: out!.executedSql } : undefined}
                             initialBlockedReason={out?.blocked ? out.reason : undefined}
                             initialError={out?.error}
+                            onConfirmedRun={(info) => recordConfirmedRun(`Q${artifact?.index ?? '?'}`, info)}
                           />
                           {ok && !busy && (
                             <button onClick={() => analyzeDeeper(out!.executedSql ?? p.input?.sql ?? '')}
@@ -375,7 +393,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       {/* Workspace column (lg+). One instance — the tab strip hides itself at 2xl
           when the session rail takes over, so block state survives breakpoint changes. */}
       <div className="hidden h-full min-h-0 lg:block">
-        <ChatWorkspacePanel artifacts={artifacts} selected={selected} onSelect={selectArtifact} unseen={unseen}
+        <ChatWorkspacePanel artifacts={artifacts} selected={selected} onSelect={selectArtifact} unseen={unseen} onConfirmedRun={recordConfirmedRun}
           connectionId={connectionId} dialect={dialect} sessionId={sessionId} busy={busy} onAnalyzeDeeper={analyzeDeeper} />
       </div>
 

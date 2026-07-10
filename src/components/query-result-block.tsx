@@ -24,6 +24,7 @@ export function QueryResultBlock({
   initialBlockedReason,
   initialError,
   dialect,
+  onConfirmedRun,
 }: {
   connectionId: string;
   sessionId?: string;
@@ -32,6 +33,9 @@ export function QueryResultBlock({
   initialBlockedReason?: string;
   initialError?: string;
   dialect?: ExportDialect;
+  /** Fired after a "Confirm & run anyway" succeeds — the chat page records the
+   *  result into the transcript (the agent never sees manual executions). */
+  onConfirmedRun?: (info: { sql: string; columns: string[]; rows: unknown[][] }) => void;
 }) {
   const [sql, setSql] = useState(initialSql);
   const [result, setResult] = useState<RunResult | undefined>(initialResult);
@@ -60,7 +64,11 @@ export function QueryResultBlock({
       if (data.status === 'blocked') { setBlocked(data.reason); setResult(undefined); }
       else if (data.status === 'needs_confirmation') { setConfirmRisk(data.risk); setResult(undefined); }
       else if (data.status === 'error') { setError(data.error); setResult(undefined); }
-      else { setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql }); setLastExecutedSql(data.executedSql); }
+      else {
+        setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql });
+        setLastExecutedSql(data.executedSql);
+        if (confirmed) onConfirmedRun?.({ sql: data.executedSql ?? sql, columns: data.columns, rows: data.rows });
+      }
     } catch (e) {
       setError(String(e));
     }

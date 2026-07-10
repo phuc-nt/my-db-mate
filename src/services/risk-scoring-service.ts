@@ -35,10 +35,15 @@ export async function assessRisk(
   let estimate: { estimatedRows: number | null; estimatedCost: number | null; hasFullScan: boolean; tableCount: number };
   try {
     estimate = await provider.explainQuery(sql);
-  } catch {
+  } catch (e) {
     // Could not estimate → escalate rather than default-low (RT-F10 for MariaDB
-    // and any dialect whose EXPLAIN shape we can't parse).
-    return { tier: 'medium', score: 50, reason: 'Could not estimate cost (EXPLAIN failed) — escalated', estimate: { estimatedRows: null, hasFullScan: false, tableCount: 0 } };
+    // and any dialect whose EXPLAIN shape we can't parse). SQL Server has a fixable
+    // cause worth surfacing: SHOWPLAN is a separate grant that db_datareader lacks.
+    const msg = e instanceof Error ? e.message : String(e);
+    const hint = /SHOWPLAN permission/i.test(msg)
+      ? '. The DB login lacks SHOWPLAN permission — run: GRANT SHOWPLAN TO <login> (metadata-only, safe for read-only users) to enable cost estimation'
+      : '';
+    return { tier: 'medium', score: 50, reason: `Could not estimate cost (EXPLAIN failed)${hint} — escalated`, estimate: { estimatedRows: null, hasFullScan: false, tableCount: 0 } };
   }
 
   const rows = estimate.estimatedRows;

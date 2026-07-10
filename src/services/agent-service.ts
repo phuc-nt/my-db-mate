@@ -145,7 +145,7 @@ export function buildAgentTools(
         // it does not consume the query budget (review M-5). Report and stop.
         if (res.status === 'needs_confirmation') {
           state.consecutiveFailures = 0;
-          return { needsConfirmation: true, risk: res.risk, note: 'This query is estimated as medium-risk (heavy). Report the estimate to the user and ask them to confirm re-running it from the SQL block; do not retry automatically.' };
+          return { needsConfirmation: true, risk: res.risk, note: 'This query is estimated as medium-risk (heavy) and did NOT run. Tell the user (in their language) the exact UI path to run it themselves: press "view \u2192" on the query chip, then "Re-run", then the amber "Confirm & run anyway" button in the SQL panel. Confirming in chat has no effect; do not retry automatically. After they confirm, the result is recorded into the conversation for you.' };
         }
         // The query actually ran (ok/error/blocked) → it counts against the budget.
         state.sqlRunCount++;

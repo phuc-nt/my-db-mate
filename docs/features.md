@@ -64,7 +64,7 @@ PostgreSQL and MySQL are wire protocols, so any managed database that speaks the
 | PostgreSQL (self-hosted) | postgres | your choice | ✓ | Reference engine. |
 | MySQL / MariaDB (self-hosted) | mysql | your choice | ✓ | Reference engine. |
 | SQLite (file) | — | n/a | ✓ | Local file, opened read-only. |
-| SQL Server / Azure SQL | mssql | your choice | ✓ | T-SQL safety layer (own denylist + adversarial suite); read-only = a `db_datareader`-only login. |
+| SQL Server / Azure SQL | mssql | your choice | ✓ | T-SQL safety layer (own denylist + adversarial suite); read-only = a `db_datareader`-only login. Also `GRANT SHOWPLAN` to that login (metadata-only) so the risk gate can estimate cost — without it every query asks for confirmation. |
 | Cloudflare D1 | REST | n/a | ✓ | Remote HTTP provider. |
 | Neon | postgres | require | ○ | Pooled host works; needs SNI (set the real host if tunneling). |
 | Supabase | postgres | require | ○ | Default preset uses the pooler (6543); direct 5432 is often IPv6-only. |
@@ -74,7 +74,7 @@ PostgreSQL and MySQL are wire protocols, so any managed database that speaks the
 | Timescale Cloud | postgres | require | ○ | — |
 | CockroachDB | postgres | verify-full | ○ | Serverless needs `options=--cluster=<id>` — preserved from the pasted URL or set in the Postgres options field. |
 | Aiven (PG & MySQL) | postgres/mysql | verify-full | ○ | Private CA — paste the console CA into the CA field. |
-| Azure SQL | mssql | require | ○ | TLS on 1433; use a db_datareader-only login. |
+| Azure SQL | mssql | require | ○ | TLS on 1433; use a db_datareader-only login + `GRANT SHOWPLAN`. |
 
 Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the fields — it will very likely work.
 

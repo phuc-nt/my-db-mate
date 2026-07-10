@@ -11,7 +11,7 @@ import type { ChatArtifact } from './chat-artifact-chip';
  * shows on lg; the vertical session rail replaces it on 2xl (rendered by the
  * page as a sibling column).
  */
-export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, connectionId, dialect, sessionId, busy, onAnalyzeDeeper }: {
+export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, connectionId, dialect, sessionId, busy, onAnalyzeDeeper, onConfirmedRun }: {
   artifacts: ChatArtifact[];
   selected: string | null;
   onSelect: (toolCallId: string) => void;
@@ -22,6 +22,7 @@ export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, conn
   sessionId?: string;
   busy: boolean;
   onAnalyzeDeeper: (sql: string) => void;
+  onConfirmedRun?: (label: string, info: { sql: string; columns: string[]; rows: unknown[][] }) => void;
 }) {
   if (artifacts.length === 0) {
     return (
@@ -55,6 +56,7 @@ export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, conn
                 initialResult={ok ? { columns: a.columns!, rows: a.rows ?? [], executedSql: a.executedSql } : undefined}
                 initialBlockedReason={a.blocked ? a.blockedReason : undefined}
                 initialError={a.error}
+                onConfirmedRun={(info) => onConfirmedRun?.(`Q${a.index}`, info)}
               />
               {ok && !busy && (
                 <button onClick={() => onAnalyzeDeeper(a.executedSql ?? a.sql)}
