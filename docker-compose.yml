@@ -17,6 +17,10 @@ services:
       retries: 10
 
   app:
+    # Prebuilt image from CI; skip the local build with:
+    #   docker compose --profile full pull && docker compose --profile full up
+    # Plain `up` still builds from source when the image is absent locally.
+    image: ghcr.io/phuc-nt/my-db-mate:latest
     build: .
     container_name: mydbmate-app
     depends_on:

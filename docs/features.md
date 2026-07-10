@@ -2,14 +2,15 @@
 
 Everything My DB Mate does today, the stack it runs on, and the safety model. For a hands-on walkthrough see the [user guide (Vietnamese)](user-guide.md); for the "why", see the [README](../README.md).
 
-> **Status:** Feature-complete for self-hosted single-user use. Every feature was verified end-to-end against real databases and passed an adversarial code review. Multi-user RBAC is the deferred item (single-user dogfood scope).
+> **Status:** Feature-complete for self-hosted single-user use. Every feature was verified end-to-end against real databases and passed an adversarial code review. CI runs the typecheck, lint, build, and the full adversarial safety suite on every push. Multi-user RBAC is the deferred item (single-user dogfood scope).
 
 ## What works today
 
 ### Chat
 - **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view.
+- **One-click demo** — "Try with a sample database" on the empty connections page generates a local sample shop DB (deliberately opaque enum codes) with a pre-seeded glossary, then opens a chat against it. No database required to evaluate the product.
 - **Three engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction.
-- **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → `LIMIT` injection → audit log. Adversarial suite: **29/29 attacks blocked, 0% false-positive**.
+- **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → `LIMIT` injection → audit log. Adversarial suite: **29/29 attacks blocked, 0% false-positive** — and it runs as a test gate in CI on every push.
 - **Encrypted credentials** (AES-256-GCM), audit trail on every execution.
 
 ### Context Studio — the moat

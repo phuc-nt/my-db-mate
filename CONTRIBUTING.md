@@ -35,6 +35,7 @@ npm run smoke:llm      # sanity-check the model connection
 Before opening a PR:
 
 - `npx tsc --noEmit` type-checks clean
+- `npm run lint` and `npm test` pass (CI enforces both — the test suite includes the adversarial safety gate)
 - keep changes scoped; match existing patterns and file conventions
 - the safety model (read-only enforcement, credential encryption, audit log) is non-negotiable — do not weaken it
 

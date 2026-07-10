@@ -62,11 +62,16 @@ sed -i.bak "s|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=sk-or-THE_KEY|" .env && 
 
 ## 3. Start the app
 
+Prefer the prebuilt image (skips a multi-minute local build):
+
 ```bash
+docker compose --profile full pull    # ghcr.io/phuc-nt/my-db-mate:latest
 docker compose --profile full up -d
 ```
 
-This starts the app + Postgres/pgvector, auto-runs DB migrations on boot, and bakes the embedding model in offline. Wait for health, then confirm it serves:
+(If the pull fails — e.g. no registry access — plain `docker compose --profile full up -d` builds from source instead.)
+
+This starts the app + Postgres/pgvector, auto-runs DB migrations on boot, and ships the embedding model offline. Wait for health, then confirm it serves:
 
 ```bash
 # wait until the app container is healthy / listening

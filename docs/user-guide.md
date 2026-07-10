@@ -19,6 +19,13 @@ docker compose --profile full up    # app + Postgres/pgvector + tự migrate →
 
 Container tự chạy migration khi khởi động và nhúng sẵn model embedding (chạy offline), nên không cần cài thêm gì.
 
+> **Bỏ qua bước build (nhanh hơn nhiều):** kéo image dựng sẵn từ GitHub Container Registry thay vì build local:
+>
+> ```bash
+> docker compose --profile full pull   # lấy ghcr.io/phuc-nt/my-db-mate:latest
+> docker compose --profile full up
+> ```
+
 ### Cần chuẩn bị
 
 - **OpenRouter API key** — app dùng LLM qua [OpenRouter](https://openrouter.ai) (BYOK — bạn tự mang key). Mặc định model `qwen/qwen3.7-max`, đổi được trong `.env` (`OPENROUTER_MODEL`).
