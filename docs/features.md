@@ -21,6 +21,7 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 
 - **Business glossary, schema annotations, manual relationships, verified queries** — curated per connection, injected into the agent. Multilingual embeddings (works in Vietnamese) with keyword + vector retrieval.
 - **Knowledge Inbox** — distill a chat session into suggestions the DBA approves; accepted items grow the context store.
+- **Mine query history** — turn a database's existing query log into context: reads `pg_stat_statements` / MySQL `performance_schema` digests (or a pasted log), and proposes verified queries (with an LLM-written question) and foreign-key-less relationships (from repeated JOINs) as inbox suggestions. Literals are parametrized before anything is stored or shown to the model, so pasted logs don't carry PII into the context store. Inbox-gated — nothing is auto-applied.
 - **YAML export/import** for Git backup (atomic import).
 
 ### Intelligence

@@ -47,6 +47,22 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
     setMsg(d.error ? `error: ${d.error}` : `Scanned ${d.scanned} columns → ${d.created} enum suggestion(s) in the Inbox`);
     setSuggesting(false); load(); setTab('inbox');
   }
+  const [mining, setMining] = useState(false);
+  const [pasteLog, setPasteLog] = useState<string | null>(null); // non-null → show paste box
+  async function mineHistory(pastedLog?: string) {
+    setMining(true); setMsg('Mining query history…');
+    const r = await fetch(`/api/connections/${id}/mine-history`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(pastedLog ? { pastedLog } : {}),
+    });
+    const d = await r.json();
+    setMining(false);
+    if (d.error) { setMsg(`error: ${d.error}`); return; }
+    if (!d.available) { setMsg(d.hint ?? 'Query history not available — paste a log below.'); setPasteLog(''); return; }
+    const extra = d.hint ? ` — ${d.hint}` : d.skipped ? ` (${d.skipped} skipped)` : '';
+    setMsg(`Mined ${d.source}: ${d.created} suggestion(s) in the Inbox${extra}`);
+    setPasteLog(null); load(); setTab('inbox');
+  }
   const [discovering, setDiscovering] = useState(false);
   async function runDiscovery() {
     setDiscovering(true); setMsg('Discovering table descriptions + relationships…');
@@ -78,6 +94,7 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Context Studio</h1>
         <div className="flex gap-3 text-sm">
+          <button onClick={() => mineHistory()} disabled={mining} className="text-blue-600 disabled:opacity-50">{mining ? 'Mining…' : 'Mine query history'}</button>
           <button onClick={runDiscovery} disabled={discovering} className="text-blue-600 disabled:opacity-50">{discovering ? 'Discovering…' : 'Run discovery'}</button>
           <button onClick={suggestEnums} disabled={suggesting} className="text-blue-600 disabled:opacity-50">{suggesting ? 'Scanning…' : 'Suggest enum annotations'}</button>
           <label className="cursor-pointer text-blue-600">
@@ -99,6 +116,18 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
         ))}
       </div>
       {msg && <p className="mb-2 text-xs text-neutral-500">{msg}</p>}
+
+      {pasteLog !== null && (
+        <div className="mb-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+          <div className="mb-1 text-xs font-medium">Paste a query log or .sql file</div>
+          <textarea className="w-full rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={6}
+            placeholder="SELECT ... ;&#10;SELECT ... ;" value={pasteLog} onChange={(e) => setPasteLog(e.target.value)} />
+          <div className="mt-1 flex gap-2">
+            <button onClick={() => mineHistory(pasteLog)} disabled={mining || !pasteLog.trim()} className="rounded bg-blue-600 px-3 py-1 text-xs text-white disabled:opacity-50">Mine pasted log</button>
+            <button onClick={() => setPasteLog(null)} className="rounded border px-3 py-1 text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {tab === 'glossary' && <GlossaryTab data={data} onAdd={(b) => post({ type: 'glossary', ...b })} />}
       {tab === 'annotations' && <AnnotationsTab data={data} onAdd={(b) => post(b)} />}
@@ -188,7 +217,7 @@ function InboxTab({ suggestions, onAction }: { suggestions: Suggestion[]; onActi
       {suggestions.map((s) => (
         <li key={s.id} className="rounded border border-neutral-200 p-2 dark:border-neutral-800">
           <div className="text-xs text-neutral-500">{s.kind}</div>
-          <pre className="overflow-x-auto text-xs">{JSON.stringify(s.payload, null, 1)}</pre>
+          <SuggestionBody kind={s.kind} payload={s.payload} />
           {s.reason && <div className="text-xs italic text-neutral-500">{s.reason}</div>}
           <div className="mt-1 flex gap-2">
             <button onClick={() => onAction(s.id, 'accept')} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white">Accept</button>
@@ -196,9 +225,31 @@ function InboxTab({ suggestions, onAction }: { suggestions: Suggestion[]; onActi
           </div>
         </li>
       ))}
-      {suggestions.length === 0 && <li className="text-neutral-500">Inbox empty. Distill a chat session to generate suggestions.</li>}
+      {suggestions.length === 0 && <li className="text-neutral-500">Inbox empty. Distill a chat session or mine query history to generate suggestions.</li>}
     </ul>
   );
+}
+
+/** Render a suggestion payload legibly. A verified_query shows the generated
+ *  question and the (parametrized) SQL side by side so the reviewer can catch an
+ *  NL↔SQL mismatch before it enters the moat; a relationship shows the edge. */
+function SuggestionBody({ kind, payload }: { kind: string; payload: Record<string, unknown> }) {
+  if (kind === 'verified_query') {
+    return (
+      <div className="my-1 space-y-1">
+        <div className="text-sm font-medium">{String(payload.question ?? '')}</div>
+        <pre className="overflow-x-auto rounded bg-neutral-100 p-1 text-xs dark:bg-neutral-800">{String(payload.sql ?? '')}</pre>
+      </div>
+    );
+  }
+  if (kind === 'relationship') {
+    return (
+      <div className="my-1 font-mono text-xs">
+        {String(payload.fromTable)}.{String(payload.fromColumn)} → {String(payload.toTable)}.{String(payload.toColumn)}
+      </div>
+    );
+  }
+  return <pre className="overflow-x-auto text-xs">{JSON.stringify(payload, null, 1)}</pre>;
 }
 
 function CoverageTab({ data }: { data: ContextData | null }) {

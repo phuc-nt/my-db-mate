@@ -13,6 +13,7 @@ import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '../db/cont
 import { getMessages } from './session-service';
 import { chatSessions, queryRuns } from '../db/schema';
 import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
+import { normalizeSqlForDedup } from './safety/safety-service';
 
 function model() {
   const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
@@ -71,13 +72,13 @@ export async function mineSession(sessionId: string): Promise<number> {
   // unbounded). Skip a verified_query whose SQL already exists (as a stored verified
   // query or an already-pending suggestion), and skip a glossary term already stored.
   const existingVerifiedSql = new Set(
-    (await db.select({ sql: verifiedQueries.sql }).from(verifiedQueries).where(eq(verifiedQueries.connectionId, session.connectionId))).map((v) => v.sql.replace(/\s+/g, ' ').trim().toLowerCase()),
+    (await db.select({ sql: verifiedQueries.sql }).from(verifiedQueries).where(eq(verifiedQueries.connectionId, session.connectionId))).map((v) => normalizeSqlForDedup(v.sql)),
   );
   const pending = await db.select({ kind: knowledgeSuggestions.kind, payload: knowledgeSuggestions.payload })
     .from(knowledgeSuggestions).where(and(eq(knowledgeSuggestions.connectionId, session.connectionId), eq(knowledgeSuggestions.status, 'pending')));
   for (const p of pending) {
     const payloadSql = (p.payload as { sql?: unknown } | null)?.sql;
-    if (p.kind === 'verified_query' && payloadSql) existingVerifiedSql.add(String(payloadSql).replace(/\s+/g, ' ').trim().toLowerCase());
+    if (p.kind === 'verified_query' && payloadSql) existingVerifiedSql.add(normalizeSqlForDedup(String(payloadSql)));
   }
   const existingGlossary = new Set(
     (await db.select({ term: glossaryTerms.term }).from(glossaryTerms).where(eq(glossaryTerms.connectionId, session.connectionId))).map((g) => g.term.toLowerCase()),
@@ -87,7 +88,7 @@ export async function mineSession(sessionId: string): Promise<number> {
   for (const s of parsed.suggestions) {
     const p = s.payload as Record<string, unknown>;
     if (s.kind === 'verified_query' && p.sql) {
-      const norm = String(p.sql).replace(/\s+/g, ' ').trim().toLowerCase();
+      const norm = normalizeSqlForDedup(String(p.sql));
       if (existingVerifiedSql.has(norm)) continue; // dedup
       existingVerifiedSql.add(norm);
     }

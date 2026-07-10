@@ -91,6 +91,7 @@ Từ mỗi connection có các mục: **Chat · Browse · Context**, cùng **Das
 - **Business glossary, chú thích schema, quan hệ thủ công, verified queries** — bạn bồi đắp theo thời gian; app đưa vào ngữ cảnh của agent.
 - **Multilingual embedding** (chạy tốt tiếng Việt), tìm kiếm kết hợp keyword + vector.
 - **Knowledge Inbox** — chưng cất một phiên chat thành các gợi ý để bạn duyệt; cái được duyệt sẽ làm giàu kho ngữ cảnh.
+- **Mine query history** — biến query log có sẵn thành ngữ cảnh: đọc `pg_stat_statements` (PostgreSQL) / `performance_schema` digest (MySQL), hoặc dán log; đề xuất verified queries + quan hệ (từ JOIN lặp lại chưa khai báo FK) vào Inbox để bạn duyệt. Literal được parametrize (`= ?`) trước khi lưu nên không mang PII vào kho ngữ cảnh. Không tự áp dụng — luôn qua Inbox.
 - **Export/import YAML** để backup bằng Git.
 
 ### An toàn (physical safety layer)

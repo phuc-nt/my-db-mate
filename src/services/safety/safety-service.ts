@@ -29,12 +29,19 @@ export type SafetyVerdict =
 
 const DEFAULT_LIMIT = 500;
 
-const PARSER_DIALECT: Record<Dialect, string> = {
+export const PARSER_DIALECT: Record<Dialect, string> = {
   postgres: 'postgresql',
   mysql: 'mysql',
   sqlite: 'sqlite',
   mssql: 'transactsql',
 };
+
+/** Canonical SQL form for dedup comparison — collapse whitespace, trim, lowercase,
+ *  drop a trailing semicolon. Shared so every mining path keys duplicates the same
+ *  way (a per-path copy would let the same query enter the moat twice). */
+export function normalizeSqlForDedup(sql: string): string {
+  return sql.replace(/\s+/g, ' ').replace(/;\s*$/, '').trim().toLowerCase();
+}
 
 /** Append a row cap to a SELECT that has none, in the target dialect's syntax.
  *  Postgres/MySQL/SQLite use LIMIT. SQL Server has no LIMIT, and OFFSET/FETCH
