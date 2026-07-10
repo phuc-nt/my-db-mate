@@ -2,6 +2,7 @@
 import type { ConnectionProvider } from './provider-interface';
 import { SqliteFileProvider } from './sqlite-file-provider';
 import { TcpDriverProvider } from './tcp-driver-provider';
+import { MssqlDriverProvider } from './mssql-driver-provider';
 import { RemoteHttpProvider } from './remote-http-provider';
 import { decryptSecret } from '../crypto/credential-cipher';
 
@@ -34,6 +35,20 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
   switch (row.kind) {
     case 'sqlite-file':
       return new SqliteFileProvider({ path: String(row.config.path) });
+
+    case 'mssql-driver': {
+      const password = row.secretEncrypted ? decryptSecret(row.secretEncrypted) : '';
+      return new MssqlDriverProvider({
+        host: String(row.config.host),
+        port: Number(row.config.port),
+        database: String(row.config.database),
+        user: String(row.config.user),
+        password,
+        ssl: row.config.ssl === 'require' || row.config.ssl === 'verify-full'
+          ? (row.config.ssl as 'require' | 'verify-full') : 'disable',
+        sslCa: typeof row.config.sslCa === 'string' ? row.config.sslCa : undefined,
+      });
+    }
 
     case 'tcp-driver': {
       const password = row.secretEncrypted ? decryptSecret(row.secretEncrypted) : '';

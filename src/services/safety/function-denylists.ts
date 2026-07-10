@@ -41,6 +41,34 @@ export const FUNCTION_DENYLIST: Record<Dialect, string[]> = {
     'edit',
     'fts3_tokenizer',
   ],
+  mssql: [
+    // Command execution / OLE automation.
+    'xp_cmdshell',
+    'sp_oacreate',
+    'sp_oamethod',
+    'sp_oagetproperty',
+    'sp_execute_external_script',
+    // Dynamic SQL — string execution bypasses the AST check entirely.
+    'exec',
+    'execute',
+    'sp_executesql',
+    // Cross-source / file access.
+    'openrowset',
+    'openquery',
+    'opendatasource',
+    'openxml',
+    // Registry / filesystem extended procs.
+    'xp_regread',
+    'xp_regwrite',
+    'xp_regdeletevalue',
+    'xp_dirtree',
+    'xp_fileexist',
+    'xp_subdirs',
+    // Config / DoS.
+    'sp_configure',
+    'reconfigure',
+    'waitfor', // WAITFOR DELAY/TIME — the T-SQL analogue of pg_sleep
+  ],
 };
 
 /**
@@ -63,5 +91,20 @@ export const PHRASE_DENYLIST: Record<Dialect, RegExp[]> = {
     /\battach\s+database\b/i,
     /\bdetach\s+database\b/i,
     /\bpragma\b/i, // block PRAGMA outright in user queries (writes/config)
+  ],
+  mssql: [
+    // SELECT ... INTO <table> creates+populates a table (a write) yet parses as a
+    // SELECT — backstop to the AST `into.expr` check in safety-service.
+    /\bselect\b[\s\S]*?\binto\s+[[\w#@]/i,
+    // BULK INSERT reads a server-side file into a table.
+    /\bbulk\s+insert\b/i,
+    // 4-part linked-server reference (server.db.schema.table) queries another
+    // server and bypasses OPENQUERY/OPENROWSET screening. Each part may be a bare
+    // word, a [bracketed] or "quoted" identifier, with optional surrounding spaces.
+    /\bfrom\s+(\[[^\]]+\]|"[^"]+"|\w+)\s*\.\s*(\[[^\]]+\]|"[^"]+"|\w*)\s*\.\s*(\[[^\]]+\]|"[^"]+"|\w*)\s*\.\s*(\[[^\]]+\]|"[^"]+"|\w)/i,
+    // FOR XML can shape data for exfiltration; block defensively (FOR JSON is fine).
+    /\bfor\s+xml\b/i,
+    // GO batch separator — not valid inside a single statement, block defensively.
+    /(^|\n)\s*go\s*($|\n)/i,
   ],
 };

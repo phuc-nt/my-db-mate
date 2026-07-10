@@ -33,7 +33,47 @@ const PARSER_DIALECT: Record<Dialect, string> = {
   postgres: 'postgresql',
   mysql: 'mysql',
   sqlite: 'sqlite',
+  mssql: 'transactsql',
 };
+
+/** Append a row cap to a SELECT that has none, in the target dialect's syntax.
+ *  Postgres/MySQL/SQLite use LIMIT. SQL Server has no LIMIT, and OFFSET/FETCH
+ *  needs a top-level ORDER BY (fragile with subqueries/UNION), so we wrap the
+ *  whole query as a derived table with an outer `TOP (n)`: UNION-, CTE-, and
+ *  ORDER-BY-safe. A WITH (CTE) query can't be wrapped directly, so for those we
+ *  append OFFSET/FETCH only when the outer statement already has an ORDER BY;
+ *  otherwise it's left uncapped (rare in our generated read paths). */
+export function capRows(sql: string, n: number, dialect: Dialect): string {
+  if (dialect !== 'mssql') return `${sql}\nLIMIT ${n}`;
+  const trimmed = sql.trim().replace(/;\s*$/, '');
+  const noLit = trimmed.replace(/'[^']*'/g, "''");
+  const hasUnion = /\bunion\b|\bexcept\b|\bintersect\b/i.test(noLit);
+  const isCte = /^with\b/i.test(noLit);
+
+  // Plain SELECT (no set-operator, no CTE): insert TOP right after the leading
+  // SELECT. Needs no ORDER BY and no named columns (unlike a derived-table wrap,
+  // which rejects unnamed aggregate columns like COUNT(*)).
+  if (!hasUnion && !isCte) {
+    const m = trimmed.match(/^select(\s+distinct)?\s/i);
+    if (m) {
+      const idx = m[0].length;
+      if (/^\s*top\s*[(\d]/i.test(trimmed.slice(idx))) return trimmed; // already capped
+      return `${trimmed.slice(0, idx)}TOP (${n}) ${trimmed.slice(idx)}`;
+    }
+  }
+
+  // UNION / set operators: wrap as a derived table with an outer TOP — UNION-safe,
+  // no ORDER BY needed. The inner query's columns are already named (a UNION
+  // requires matching, named-or-positional columns), so the wrap is valid.
+  if (hasUnion) return `SELECT TOP (${n}) * FROM (\n${trimmed}\n) AS _capped`;
+
+  // CTE: append OFFSET/FETCH only when the outer query already has an ORDER BY
+  // (can't wrap a WITH as a subquery, and OFFSET/FETCH needs an ORDER BY).
+  if (isCte) {
+    return /\border\s+by\b/i.test(noLit) ? `${trimmed}\nOFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY` : trimmed;
+  }
+  return trimmed;
+}
 
 /** Strip string/line/block comments so denylist screening can't be evaded by them. */
 function stripComments(sql: string): string {
@@ -126,8 +166,13 @@ export function validateSql(rawSql: string, dialect: Dialect): SafetyVerdict {
   const dmlReason = screenDmlKeywords(noComments);
   if (dmlReason) return { status: 'blocked', reason: dmlReason };
 
-  // Denylist screen — catches side-effecting SELECT-legal calls (RT-F1).
-  const denyReason = screenDenylist(noComments, dialect);
+  // Denylist screen — catches side-effecting SELECT-legal calls (RT-F1). Strip
+  // single-quoted string literals first so common English words inside them
+  // (`WHERE note LIKE '%execute%'`) don't false-positive on tokens like exec/sleep.
+  // Double-quotes are left intact — they are identifiers in PG/SQL Server, and the
+  // 4-part-name / SELECT-INTO phrase checks must still see quoted identifiers.
+  const noLiterals = noComments.replace(/'[^']*'/g, "''");
+  const denyReason = screenDenylist(noLiterals, dialect);
   if (denyReason) return { status: 'blocked', reason: denyReason };
 
   // AST parse + statement-type check.
@@ -160,13 +205,26 @@ export function validateSql(rawSql: string, dialect: Dialect): SafetyVerdict {
   const withReason = screenCteWrites(stmt);
   if (withReason) return { status: 'blocked', reason: withReason };
 
-  // Inject LIMIT if absent (bounds accidental huge scans).
-  const hasLimit = 'limit' in stmt && stmt.limit != null;
+  // T-SQL `SELECT ... INTO newtable` parses as type 'select' but creates+populates
+  // a table (a write). The transactsql AST surfaces it as `into.expr` (a target
+  // name); a plain SELECT has `into.expr` null. Block when a target is present.
+  const into = stmt.into as { expr?: unknown } | undefined;
+  if (into && into.expr != null) {
+    return { status: 'blocked', reason: 'SELECT ... INTO creates a table (write) — not allowed' };
+  }
+
+  // Cap the row count if the SELECT has none (bounds accidental huge scans).
+  // node-sql-parser represents "no LIMIT" as a non-null object with an empty
+  // `value` array (not null), so a plain `!= null` check misfires — inspect the
+  // value array. SQL Server uses TOP / OFFSET-FETCH instead of LIMIT.
+  const limitNode = stmt.limit as { value?: unknown[] } | null | undefined;
+  const hasLimit = Array.isArray(limitNode?.value) ? limitNode.value.length > 0 : limitNode != null;
+  const hasMssqlCap = dialect === 'mssql' && (/\btop\s*\(/i.test(sql) || /\btop\s+\d/i.test(sql) || /\bfetch\s+next\b/i.test(sql));
   let finalSql = sql;
   let note: string | undefined;
-  if (!hasLimit) {
-    finalSql = `${sql}\nLIMIT ${DEFAULT_LIMIT}`;
-    note = `LIMIT ${DEFAULT_LIMIT} injected (no explicit limit)`;
+  if (!hasLimit && !hasMssqlCap) {
+    finalSql = capRows(sql, DEFAULT_LIMIT, dialect);
+    note = `Row cap ${DEFAULT_LIMIT} injected (no explicit limit)`;
   }
 
   return { status: 'ok', sql: finalSql, note };

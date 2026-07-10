@@ -157,10 +157,10 @@ export default function ConnectionsPage() {
 
         {/* Engine picker */}
         <div className="mb-3 flex gap-2">
-          {(['postgres', 'mysql', 'sqlite'] as Engine[]).map((e) => (
+          {(['postgres', 'mysql', 'sqlite', 'mssql'] as Engine[]).map((e) => (
             <button key={e} onClick={() => setEngine(e)} disabled={!!editingId}
               className={`rounded border px-3 py-1.5 text-sm capitalize disabled:opacity-50 ${form.engine === e ? 'border-blue-600 bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300' : ''}`}>
-              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : '📄 SQLite'}
+              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : e === 'sqlite' ? '📄 SQLite' : '🟦 SQL Server'}
             </button>
           ))}
         </div>

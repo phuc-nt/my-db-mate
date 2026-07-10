@@ -11,7 +11,7 @@ export default function BookmarksPage({ params }: { params: Promise<{ id: string
   const [list, setList] = useState<Bookmark[]>([]);
   const [result, setResult] = useState<{ columns: string[]; rows: unknown[][] } | undefined>();
   const [msg, setMsg] = useState('');
-  const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite'>();
+  const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite' | 'mssql'>();
 
   const load = useCallback(async () => {
     setList(await (await fetch(`/api/connections/${id}/bookmarks`)).json());

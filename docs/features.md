@@ -10,8 +10,8 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view.
 - **Workspace layout** — on wide screens the conversation and the query results split into columns: results collapse to one-line chips in the chat and open full-width in a side panel (edited SQL and chart state survive switching); very wide screens add a session-queries rail. Narrow screens keep everything inline.
 - **One-click demo** — "Try with a sample database" on the empty connections page generates a local sample shop DB (deliberately opaque enum codes) with a pre-seeded glossary, then opens a chat against it. No database required to evaluate the product.
-- **Three engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction. A **provider preset** picker pre-fills the port / SSL mode / quirks for common managed databases (see the compatibility table below).
-- **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → `LIMIT` injection → audit log. Adversarial suite: **29/29 attacks blocked, 0% false-positive** — and it runs as a test gate in CI on every push.
+- **Four engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, SQL Server / Azure SQL, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction. A **provider preset** picker pre-fills the port / SSL mode / quirks for common managed databases (see the compatibility table below).
+- **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes and T-SQL `SELECT … INTO`) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `INTO OUTFILE`, `load_extension`, `ATTACH`, and the T-SQL set `xp_cmdshell`, `OPENROWSET`, `EXEC`/`sp_executesql`, `WAITFOR`, linked-server 4-part names, …) → dialect-aware row cap (`LIMIT` / `TOP`) → audit log. The adversarial suite (writes, DDL, stacked statements, exfil/RCE/DoS across all four dialects) runs as a test gate in CI on every push, with 0% false-positive on legitimate SELECTs.
 - **SSH tunnel** — reach a database behind a bastion host: give the SSH host/user and a private key or password, and every connection + query is forwarded through the tunnel. TLS to the database still verifies against the real hostname through the tunnel (verify-full is not silently weakened). The SSH key is encrypted at rest like the DB password.
 - **Encrypted credentials** (AES-256-GCM), audit trail on every execution.
 
@@ -60,6 +60,7 @@ PostgreSQL and MySQL are wire protocols, so any managed database that speaks the
 | PostgreSQL (self-hosted) | postgres | your choice | ✓ | Reference engine. |
 | MySQL / MariaDB (self-hosted) | mysql | your choice | ✓ | Reference engine. |
 | SQLite (file) | — | n/a | ✓ | Local file, opened read-only. |
+| SQL Server / Azure SQL | mssql | your choice | ✓ | T-SQL safety layer (own denylist + adversarial suite); read-only = a `db_datareader`-only login. |
 | Cloudflare D1 | REST | n/a | ✓ | Remote HTTP provider. |
 | Neon | postgres | require | ○ | Pooled host works; needs SNI (set the real host if tunneling). |
 | Supabase | postgres | require | ○ | Default preset uses the pooler (6543); direct 5432 is often IPv6-only. |
@@ -69,6 +70,7 @@ PostgreSQL and MySQL are wire protocols, so any managed database that speaks the
 | Timescale Cloud | postgres | require | ○ | — |
 | CockroachDB | postgres | verify-full | ○ | Serverless needs `options=--cluster=<id>` — preserved from the pasted URL or set in the Postgres options field. |
 | Aiven (PG & MySQL) | postgres/mysql | verify-full | ○ | Private CA — paste the console CA into the CA field. |
+| Azure SQL | mssql | require | ○ | TLS on 1433; use a db_datareader-only login. |
 
 Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the fields — it will very likely work.
 

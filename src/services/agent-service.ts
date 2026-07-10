@@ -15,6 +15,8 @@ import { db } from '../db/client';
 import { schemaTables } from '../db/schema';
 import { getSchemaSummary } from './schema-sync-service';
 import { executeQuery } from './query-executor-service';
+import { capRows } from './safety/safety-service';
+import type { Dialect } from './connection-providers/provider-interface';
 import { getProvider } from './connection-service';
 import { getRelevantContext, renderContextForPrompt, listGlossary } from './context-service';
 import { getPrunedSchemaSummary } from './schema-pruning-service';
@@ -99,6 +101,7 @@ export function buildAgentTools(
   actor: string,
   sessionId?: string,
   mode: AgentMode = 'chat',
+  dialect: Dialect = 'postgres',
 ) {
   const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0 };
 
@@ -119,8 +122,9 @@ export function buildAgentTools(
       execute: async ({ table }) => {
         // Route through the safety layer like any other query.
         const safe = table.replace(/[^A-Za-z0-9_]/g, '');
-        // App-generated, bounded (LIMIT 5) → skip the risk EXPLAIN (M2 hot-path).
-        const res = await executeQuery({ connectionId, sql: `SELECT * FROM "${safe}" LIMIT 5`, actor, sessionId, skipRiskGate: true });
+        const quoted = dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
+        // App-generated, bounded (5 rows) → skip the risk EXPLAIN (M2 hot-path).
+        const res = await executeQuery({ connectionId, sql: capRows(`SELECT * FROM ${quoted}`, 5, dialect), actor, sessionId, skipRiskGate: true });
         if (res.status !== 'ok') return { error: res.blockedReason ?? res.errorMessage };
         return { columns: res.result!.columns, rows: wrapData(res.result!.rows) };
       },
@@ -280,7 +284,7 @@ export async function streamAgentAnswer(params: {
     model: model(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode),
+    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect),
     stopWhen: stepCountIs(mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
   });
 }

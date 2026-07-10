@@ -12,8 +12,8 @@ import type { ConnectionProvider } from './connection-providers/provider-interfa
 
 export interface CreateConnectionInput {
   name: string;
-  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http';
-  dialect: 'postgres' | 'mysql' | 'sqlite';
+  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http' | 'mssql-driver';
+  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
   config: Record<string, unknown>;
   /** Plaintext secret (password/token); encrypted before storage. */
   secret?: string;

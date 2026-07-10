@@ -7,7 +7,7 @@ import { ResultTable } from '../../../components/result-table';
 interface Column { columnName: string; dataType: string; isNullable: boolean; isPrimaryKey: boolean }
 interface Table { id: string; tableName: string; rowCount: number | null; columns: Column[] }
 interface FK { fromTable: string; fromColumn: string; toTable: string; toColumn: string }
-interface SchemaData { dialect: 'postgres' | 'mysql' | 'sqlite'; tables: Table[]; foreignKeys: FK[] }
+interface SchemaData { dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'; tables: Table[]; foreignKeys: FK[] }
 
 export default function BrowsePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

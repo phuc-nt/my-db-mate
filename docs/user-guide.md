@@ -60,7 +60,7 @@ npm run smoke:llm      # test model gọi tool + độ chính xác với OPENROU
 Mở `/connections`, bấm thêm connection:
 
 0. (Tuỳ chọn) Chọn **Provider preset** (Neon/Supabase/RDS/PlanetScale/TiDB/CockroachDB/Aiven…) — tự điền engine/port/SSL + hiện ghi chú riêng của provider. Mọi ô vẫn sửa được sau đó. Xem bảng tương thích đầy đủ trong [features.md](features.md).
-1. Chọn engine: **PostgreSQL / MySQL(MariaDB) / SQLite** (hoặc **Cloudflare D1** remote).
+1. Chọn engine: **PostgreSQL / MySQL(MariaDB) / SQLite / SQL Server** (hoặc **Cloudflare D1** remote). Với SQL Server, dùng login chỉ có `db_datareader` để read-only thật.
 2. Dán connection string (`postgres://user:pass@host:5432/db`) — form tự điền host/port/db/user; **hoặc** tự điền từng ô.
 3. Với DB cloud (Neon/Supabase/RDS/PlanetScale): chọn chế độ **SSL/TLS**:
    - **Encrypt only** — mã hoá, không verify cert (cloud nào cũng kết nối được ngay).

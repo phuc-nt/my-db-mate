@@ -11,6 +11,7 @@ import { db } from '../db/client';
 import { schemaTables } from '../db/schema';
 import { getProvider } from './connection-service';
 import { executeQuery } from './query-executor-service';
+import { capRows } from './safety/safety-service';
 
 const SAMPLE_LIMIT = 50;
 
@@ -26,13 +27,15 @@ export async function sampleRows(connectionId: string, table: string): Promise<S
   if (!t) return { status: 'error', message: `Unknown table: ${table}` };
 
   const provider = await getProvider(connectionId);
+  const dialect = provider.dialect;
   const safe = t.tableName.replace(/[^A-Za-z0-9_]/g, '');
-  const quoted = provider.dialect === 'mysql' ? `\`${safe}\`` : `"${safe}"`;
+  const quoted = dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
   await provider.close(); // executeQuery opens its own provider
 
   const res = await executeQuery({
     connectionId,
-    sql: `SELECT * FROM ${quoted} LIMIT ${SAMPLE_LIMIT}`,
+    // Dialect-aware row cap: SQL Server has no LIMIT (capRows uses TOP/OFFSET).
+    sql: capRows(`SELECT * FROM ${quoted}`, SAMPLE_LIMIT, dialect),
     actor: 'browse',
     skipRiskGate: true,
   });

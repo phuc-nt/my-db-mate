@@ -9,6 +9,7 @@ import { db } from '../db/client';
 import { columnProfiles } from '../db/intelligence-schema';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { getProvider } from './connection-service';
+import { capRows } from './safety/safety-service';
 import type { ConnectionProvider } from './connection-providers/provider-interface';
 
 const DISTINCT_CAP = 50;
@@ -17,7 +18,9 @@ function ident(provider: ConnectionProvider, name: string): string {
   // name is already validated against the synced schema (allow-list), so this is
   // just dialect quoting. The strip is belt-and-suspenders.
   const safe = name.replace(/[^A-Za-z0-9_]/g, '');
-  return provider.dialect === 'mysql' ? `\`${safe}\`` : `"${safe}"`;
+  if (provider.dialect === 'mysql') return `\`${safe}\``;
+  if (provider.dialect === 'mssql') return `[${safe}]`;
+  return `"${safe}"`;
 }
 
 /** Verify table.column exists in the synced schema — an allow-list so an
@@ -52,12 +55,12 @@ export async function profileColumn(connectionId: string, tableName: string, col
 
     let distinctValues: unknown[] | null = null;
     if (distinctCount > 0 && distinctCount <= DISTINCT_CAP) {
-      const dv = await provider.executeReadOnly(`SELECT DISTINCT ${c} FROM ${t} WHERE ${c} IS NOT NULL LIMIT ${DISTINCT_CAP}`);
+      const dv = await provider.executeReadOnly(capRows(`SELECT DISTINCT ${c} FROM ${t} WHERE ${c} IS NOT NULL`, DISTINCT_CAP, provider.dialect));
       distinctValues = dv.rows.map((r) => r[0]);
     }
 
     const mm = await provider.executeReadOnly(`SELECT MIN(${c}) AS mn, MAX(${c}) AS mx FROM ${t}`);
-    const sample = await provider.executeReadOnly(`SELECT ${c} FROM ${t} WHERE ${c} IS NOT NULL LIMIT 5`);
+    const sample = await provider.executeReadOnly(capRows(`SELECT ${c} FROM ${t} WHERE ${c} IS NOT NULL`, 5, provider.dialect));
 
     const existing = await db.select().from(columnProfiles).where(and(
       eq(columnProfiles.connectionId, connectionId), eq(columnProfiles.tableName, tableName), eq(columnProfiles.columnName, columnName)));

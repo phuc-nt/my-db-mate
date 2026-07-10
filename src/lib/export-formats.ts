@@ -4,7 +4,7 @@
  * own client, so literals are escaped per the TARGET dialect (red-team M2 — a
  * SQLite round-trip does not prove PG/MySQL safety).
  */
-export type ExportDialect = 'postgres' | 'mysql' | 'sqlite';
+export type ExportDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql';
 
 /** Guard against CSV formula injection: a cell starting with = + - @ is prefixed
  *  with a single quote so spreadsheet apps don't execute it as a formula. */
@@ -28,14 +28,16 @@ export function toJson(columns: string[], rows: unknown[][]): string {
 /** Quote a table/column identifier for the target dialect. */
 function quoteIdent(name: string, dialect: ExportDialect): string {
   const safe = name.replace(/[^A-Za-z0-9_]/g, '');
-  return dialect === 'mysql' ? `\`${safe}\`` : `"${safe}"`;
+  if (dialect === 'mysql') return `\`${safe}\``;
+  if (dialect === 'mssql') return `[${safe}]`;
+  return `"${safe}"`;
 }
 
 /** Escape a value as a SQL literal for the target dialect. */
 function sqlLiteral(v: unknown, dialect: ExportDialect): string {
   if (v == null) return 'NULL';
   if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-  if (typeof v === 'boolean') return dialect === 'postgres' ? (v ? 'TRUE' : 'FALSE') : (v ? '1' : '0');
+  if (typeof v === 'boolean') return dialect === 'postgres' ? (v ? 'TRUE' : 'FALSE') : (v ? '1' : '0'); // mssql/mysql/sqlite use 1/0
   const s = String(v);
   // Double single-quotes for all three. MySQL also treats backslash as an escape
   // char by default, so escape it too for the MySQL target.

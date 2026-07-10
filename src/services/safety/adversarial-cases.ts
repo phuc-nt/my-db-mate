@@ -48,6 +48,23 @@ export const MUST_BLOCK: AdversarialCase[] = [
   { sql: "SELECT readfile('/etc/passwd')", dialect: 'sqlite', expect: 'blocked', label: 'readfile exfil' },
   { sql: "ATTACH DATABASE '/etc/passwd' AS x", dialect: 'sqlite', expect: 'blocked', label: 'ATTACH DATABASE' },
   { sql: 'PRAGMA writable_schema = ON', dialect: 'sqlite', expect: 'blocked', label: 'PRAGMA write' },
+  // SQL Server / T-SQL
+  { sql: "EXEC xp_cmdshell 'dir'", dialect: 'mssql', expect: 'blocked', label: 'xp_cmdshell RCE' },
+  { sql: "EXEC('SELECT 1')", dialect: 'mssql', expect: 'blocked', label: 'EXEC string dynamic SQL' },
+  { sql: "EXEC sp_executesql N'SELECT 1'", dialect: 'mssql', expect: 'blocked', label: 'sp_executesql' },
+  { sql: "SELECT * FROM OPENROWSET('SQLNCLI','...','SELECT * FROM t')", dialect: 'mssql', expect: 'blocked', label: 'OPENROWSET' },
+  { sql: "SELECT * FROM OPENQUERY(srv, 'SELECT 1')", dialect: 'mssql', expect: 'blocked', label: 'OPENQUERY' },
+  { sql: 'SELECT * INTO evil FROM users', dialect: 'mssql', expect: 'blocked', label: 'SELECT INTO (write)' },
+  { sql: "WAITFOR DELAY '00:00:30'", dialect: 'mssql', expect: 'blocked', label: 'WAITFOR DELAY DoS' },
+  { sql: "BULK INSERT t FROM 'c:\\x.txt'", dialect: 'mssql', expect: 'blocked', label: 'BULK INSERT file read' },
+  { sql: "EXEC xp_regread 'HKEY_LOCAL_MACHINE','x','y'", dialect: 'mssql', expect: 'blocked', label: 'xp_regread' },
+  { sql: "EXEC sp_configure 'show advanced options', 1", dialect: 'mssql', expect: 'blocked', label: 'sp_configure' },
+  { sql: 'SELECT * FROM linkedsrv.corp.dbo.secrets', dialect: 'mssql', expect: 'blocked', label: 'linked-server 4-part name' },
+  { sql: 'SELECT * FROM [lnk].corp.dbo.secrets', dialect: 'mssql', expect: 'blocked', label: 'linked-server 4-part (bracketed)' },
+  { sql: 'SELECT * FROM srv . corp . dbo . secrets', dialect: 'mssql', expect: 'blocked', label: 'linked-server 4-part (spaced)' },
+  { sql: 'MERGE t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=1', dialect: 'mssql', expect: 'blocked', label: 'MERGE (write)' },
+  { sql: 'SELECT 1; DROP TABLE users', dialect: 'mssql', expect: 'blocked', label: 'stacked ;DROP (mssql)' },
+  { sql: 'UPDATE users SET admin=1', dialect: 'mssql', expect: 'blocked', label: 'UPDATE (mssql)' },
 ];
 
 export const MUST_PASS: AdversarialCase[] = [
@@ -59,4 +76,14 @@ export const MUST_PASS: AdversarialCase[] = [
   { sql: 'WITH a AS (SELECT id FROM books), b AS (SELECT id FROM categories) SELECT COUNT(*) FROM a JOIN b USING(id)', dialect: 'postgres', expect: 'ok', label: 'multi-CTE select' },
   { sql: 'SELECT DISTINCT author FROM books', dialect: 'mysql', expect: 'ok', label: 'distinct' },
   { sql: "SELECT name FROM categories WHERE name LIKE '%Khoa%'", dialect: 'sqlite', expect: 'ok', label: 'vietnamese LIKE' },
+  // SQL Server / T-SQL legitimate SELECTs (false-positive check)
+  { sql: 'SELECT TOP 10 id, name FROM users', dialect: 'mssql', expect: 'ok', label: 'TOP n' },
+  { sql: 'SELECT [id], [full name] FROM [my table]', dialect: 'mssql', expect: 'ok', label: 'bracket idents' },
+  { sql: 'SELECT id FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY', dialect: 'mssql', expect: 'ok', label: 'OFFSET/FETCH' },
+  { sql: 'WITH c AS (SELECT id FROM t) SELECT * FROM c', dialect: 'mssql', expect: 'ok', label: 'CTE select (mssql)' },
+  { sql: 'SELECT category, COUNT(*) FROM orders GROUP BY category', dialect: 'mssql', expect: 'ok', label: 'group by (mssql)' },
+  { sql: 'SELECT a.x FROM a JOIN b ON a.id = b.id', dialect: 'mssql', expect: 'ok', label: 'join (mssql)' },
+  // English words inside string literals must NOT trip the denylist (false-positive guard).
+  { sql: "SELECT id FROM notes WHERE body LIKE '%execute the report%'", dialect: 'mssql', expect: 'ok', label: 'exec inside literal (mssql)' },
+  { sql: "SELECT id FROM logs WHERE msg = 'sleep study results'", dialect: 'mysql', expect: 'ok', label: 'sleep inside literal (mysql)' },
 ];

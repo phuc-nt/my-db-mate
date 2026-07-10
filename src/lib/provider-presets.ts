@@ -117,6 +117,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     hostPlaceholder: 'mysql-xxx.aivencloud.com',
     note: 'Aiven uses a private CA — paste the CA certificate from the console into the CA field.',
   },
+  {
+    id: 'azure-sql',
+    label: 'Azure SQL / SQL Server',
+    engine: 'mssql',
+    port: 1433,
+    ssl: 'require',
+    hostPlaceholder: 'myserver.database.windows.net',
+    note: 'Azure SQL requires TLS on 1433. Use a login with only db_datareader for read-only safety.',
+  },
 ];
 
 export function getPreset(id: string): ProviderPreset | undefined {

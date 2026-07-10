@@ -4,7 +4,7 @@
  * connection string (postgres://… / mysql://…) into the same shape — the
  * paste-a-URL flow every DB client (DBeaver, TablePlus) offers.
  */
-export type Engine = 'sqlite' | 'postgres' | 'mysql';
+export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql';
 
 /** TLS posture for a TCP connection.
  *  - 'disable'      — plaintext (local/LAN).
@@ -18,11 +18,15 @@ export type SslMode = 'disable' | 'require' | 'verify-full';
 export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite'>, number> = {
   postgres: 5432,
   mysql: 3306,
+  mssql: 1433,
 };
 
-/** The stored kind for an engine (SQLite is a file; PG/MySQL share the TCP driver). */
-export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' {
-  return engine === 'sqlite' ? 'sqlite-file' : 'tcp-driver';
+/** The stored kind for an engine. SQLite is a file; SQL Server has its own driver;
+ *  PG/MySQL share the TCP driver. */
+export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' | 'mssql-driver' {
+  if (engine === 'sqlite') return 'sqlite-file';
+  if (engine === 'mssql') return 'mssql-driver';
+  return 'tcp-driver';
 }
 
 export interface ParsedConnection {
@@ -51,7 +55,8 @@ export function parseConnectionString(raw: string): ParsedConnection {
   const engine: Exclude<Engine, 'sqlite'> =
     scheme.startsWith('postgres') ? 'postgres' :
     scheme === 'mysql' || scheme === 'mysql2' ? 'mysql' :
-    (() => { throw new Error(`Unsupported scheme: ${scheme} (use postgres:// or mysql://)`); })();
+    scheme === 'mssql' || scheme === 'sqlserver' ? 'mssql' :
+    (() => { throw new Error(`Unsupported scheme: ${scheme} (use postgres://, mysql://, or sqlserver://)`); })();
 
   const sslmode = (url.searchParams.get('sslmode') ?? url.searchParams.get('ssl') ?? '').toLowerCase();
   const ssl: SslMode =
