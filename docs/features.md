@@ -12,6 +12,7 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **One-click demo** — "Try with a sample database" on the empty connections page generates a local sample shop DB (deliberately opaque enum codes) with a pre-seeded glossary, then opens a chat against it. No database required to evaluate the product.
 - **Three engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction. A **provider preset** picker pre-fills the port / SSL mode / quirks for common managed databases (see the compatibility table below).
 - **Physical safety layer** — every query passes through: read-only connection → AST validation (SELECT-only, blocks CTE-writes) → per-dialect function denylist (`pg_terminate_backend`, `COPY … TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → `LIMIT` injection → audit log. Adversarial suite: **29/29 attacks blocked, 0% false-positive** — and it runs as a test gate in CI on every push.
+- **SSH tunnel** — reach a database behind a bastion host: give the SSH host/user and a private key or password, and every connection + query is forwarded through the tunnel. TLS to the database still verifies against the real hostname through the tunnel (verify-full is not silently weakened). The SSH key is encrypted at rest like the DB password.
 - **Encrypted credentials** (AES-256-GCM), audit trail on every execution.
 
 ### Context Studio — the moat

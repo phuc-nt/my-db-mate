@@ -28,6 +28,9 @@ export const connections = pgTable('connections', {
   config: jsonb('config').notNull().$type<Record<string, unknown>>(),
   // Encrypted secret blob (password / token). AES-256-GCM, base64. Null for sqlite-file.
   secretEncrypted: text('secret_encrypted'),
+  // Encrypted SSH private key / password when connecting via a bastion tunnel.
+  // Separate column (not in `config`) so key material is never stored in plaintext.
+  sshSecretEncrypted: text('ssh_secret_encrypted'),
   // Result of the write-privilege probe at test-connection time (RT-F2).
   isReadOnlyVerified: boolean('is_read_only_verified').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

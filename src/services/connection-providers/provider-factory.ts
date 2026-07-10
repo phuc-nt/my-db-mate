@@ -6,10 +6,28 @@ import { RemoteHttpProvider } from './remote-http-provider';
 import { decryptSecret } from '../crypto/credential-cipher';
 
 export interface ConnectionRow {
+  id?: string;
   kind: string;
   dialect: string;
   config: Record<string, unknown>;
   secretEncrypted: string | null;
+  sshSecretEncrypted?: string | null;
+}
+
+/** Build the SSH tunnel config from the row, when the connection uses one.
+ *  ssh* fields (host/port/user/authMethod) live in the plain config; the key or
+ *  password is the separately-encrypted sshSecret. */
+function buildSshConfig(row: ConnectionRow) {
+  const c = row.config;
+  if (!c.sshHost) return undefined;
+  const secret = row.sshSecretEncrypted ? decryptSecret(row.sshSecretEncrypted) : '';
+  const useKey = c.sshAuthMethod === 'key';
+  return {
+    host: String(c.sshHost),
+    port: Number(c.sshPort ?? 22),
+    user: String(c.sshUser ?? ''),
+    ...(useKey ? { privateKey: secret } : { password: secret }),
+  };
 }
 
 export function buildProvider(row: ConnectionRow): ConnectionProvider {
@@ -19,6 +37,7 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
 
     case 'tcp-driver': {
       const password = row.secretEncrypted ? decryptSecret(row.secretEncrypted) : '';
+      const ssh = buildSshConfig(row);
       return new TcpDriverProvider({
         host: String(row.config.host),
         port: Number(row.config.port),
@@ -30,6 +49,7 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
           ? (row.config.ssl as 'require' | 'verify-full') : 'disable',
         sslCa: typeof row.config.sslCa === 'string' ? row.config.sslCa : undefined,
         options: typeof row.config.options === 'string' ? row.config.options : undefined,
+        ...(ssh ? { ssh, connectionId: row.id ?? `test-${String(row.config.sshHost)}-${String(row.config.host)}` } : {}),
       });
     }
 

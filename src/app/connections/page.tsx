@@ -7,7 +7,12 @@ import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
 
 interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown> }
 
-const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '', ssl: 'disable' as SslMode, sslCa: '', options: '' };
+const BLANK = {
+  name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '',
+  ssl: 'disable' as SslMode, sslCa: '', options: '',
+  // SSH tunnel (optional). authMethod 'key' → sshSecret is a PEM private key; 'password' → a password.
+  sshOn: false, sshHost: '', sshPort: '22', sshUser: '', sshAuthMethod: 'key' as 'key' | 'password', sshSecret: '',
+};
 
 export default function ConnectionsPage() {
   const [conns, setConns] = useState<Conn[]>([]);
@@ -49,6 +54,9 @@ export default function ConnectionsPage() {
 
   function buildBody() {
     const kind = kindForEngine(form.engine);
+    const ssh = form.sshOn && form.sshHost.trim()
+      ? { sshHost: form.sshHost.trim(), sshPort: Number(form.sshPort) || 22, sshUser: form.sshUser.trim(), sshAuthMethod: form.sshAuthMethod }
+      : {};
     const config = form.engine === 'sqlite'
       ? { path: form.path }
       : {
@@ -56,8 +64,13 @@ export default function ConnectionsPage() {
           ssl: form.ssl,
           ...(form.ssl === 'verify-full' && form.sslCa.trim() ? { sslCa: form.sslCa } : {}),
           ...(form.engine === 'postgres' && form.options.trim() ? { options: form.options.trim() } : {}),
+          ...ssh,
         };
-    return { name: form.name, kind, dialect: form.engine, config, secret: form.engine === 'sqlite' ? undefined : form.secret };
+    return {
+      name: form.name, kind, dialect: form.engine, config,
+      secret: form.engine === 'sqlite' ? undefined : form.secret,
+      ...(form.sshOn && form.sshSecret ? { sshSecret: form.sshSecret } : {}),
+    };
   }
 
   async function test() {
@@ -101,6 +114,12 @@ export default function ConnectionsPage() {
       ssl: (cfg.ssl === 'require' || cfg.ssl === 'verify-full' ? cfg.ssl : 'disable') as SslMode,
       sslCa: String(cfg.sslCa ?? ''),
       options: String(cfg.options ?? ''),
+      sshOn: Boolean(cfg.sshHost),
+      sshHost: String(cfg.sshHost ?? ''),
+      sshPort: String(cfg.sshPort ?? '22'),
+      sshUser: String(cfg.sshUser ?? ''),
+      sshAuthMethod: (cfg.sshAuthMethod === 'password' ? 'password' : 'key') as 'key' | 'password',
+      sshSecret: '', // never pre-filled; blank keeps the existing key
     });
     setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
@@ -194,6 +213,31 @@ export default function ConnectionsPage() {
                 <input className="col-span-2 rounded border p-2 text-sm dark:bg-neutral-900"
                   placeholder="Postgres options (optional) — e.g. --cluster=my-cluster-1234 for CockroachDB"
                   value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} />
+              )}
+              <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <input type="checkbox" checked={form.sshOn} onChange={(e) => setForm({ ...form, sshOn: e.target.checked })} />
+                Connect via SSH tunnel (database behind a bastion host)
+              </label>
+              {form.sshOn && (
+                <>
+                  <input className="rounded border p-2 dark:bg-neutral-900" placeholder="SSH host (bastion)" value={form.sshHost} onChange={(e) => setForm({ ...form, sshHost: e.target.value })} />
+                  <input className="rounded border p-2 dark:bg-neutral-900" placeholder="SSH port (22)" value={form.sshPort} onChange={(e) => setForm({ ...form, sshPort: e.target.value })} />
+                  <input className="rounded border p-2 dark:bg-neutral-900" placeholder="SSH user" value={form.sshUser} onChange={(e) => setForm({ ...form, sshUser: e.target.value })} />
+                  <select value={form.sshAuthMethod} onChange={(e) => setForm({ ...form, sshAuthMethod: e.target.value as 'key' | 'password' })}
+                    className="rounded border p-2 text-sm dark:bg-neutral-900">
+                    <option value="key">Private key (PEM)</option>
+                    <option value="password">Password</option>
+                  </select>
+                  {form.sshAuthMethod === 'key' ? (
+                    <textarea className="col-span-2 rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={4}
+                      placeholder={editingId ? 'SSH private key (PEM) — blank keeps the current one' : 'SSH private key (PEM), e.g. -----BEGIN OPENSSH PRIVATE KEY-----'}
+                      value={form.sshSecret} onChange={(e) => setForm({ ...form, sshSecret: e.target.value })} />
+                  ) : (
+                    <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" type="password"
+                      placeholder={editingId ? 'SSH password — blank keeps current' : 'SSH password'}
+                      value={form.sshSecret} onChange={(e) => setForm({ ...form, sshSecret: e.target.value })} />
+                  )}
+                </>
               )}
             </>
           )}

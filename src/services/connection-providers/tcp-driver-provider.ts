@@ -7,6 +7,7 @@
  */
 import { Pool as PgPool } from 'pg';
 import mysql from 'mysql2/promise';
+import { ensureTunnel, type SshConfig } from './ssh-tunnel-manager';
 import type {
   ConnectionProvider,
   Dialect,
@@ -39,6 +40,11 @@ export interface TcpConfig {
   /** Postgres `options` startup param (e.g. CockroachDB Serverless `--cluster=<id>`).
    *  Postgres-only; ignored for MySQL. */
   options?: string;
+  /** When set, connect through an SSH tunnel: the driver dials 127.0.0.1:<localPort>
+   *  while TLS still verifies against the real `host` (see servername handling). */
+  ssh?: SshConfig;
+  /** Stable id for tunnel reuse/teardown (the connection row id). */
+  connectionId?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -59,22 +65,28 @@ function lowerKeys(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v])));
 }
 
+type TlsOpts = { rejectUnauthorized: boolean; ca?: string; servername?: string };
+
 /** TLS options shared by both drivers: 'require' = encrypt without verification
  *  (managed-cloud private chains connect as-is); 'verify-full' = verify chain +
- *  hostname, against the pasted CA when present, else the system store. */
-function tlsOption(cfg: TcpConfig): undefined | { rejectUnauthorized: boolean; ca?: string } {
+ *  hostname, against the pasted CA when present, else the system store.
+ *  When tunneling, the socket dials 127.0.0.1, so `servername` must be pinned to
+ *  the real host — otherwise verify-full checks the cert against 127.0.0.1 and
+ *  fails (or, if someone loosens it, silently stops verifying). */
+function tlsOption(cfg: TcpConfig): undefined | TlsOpts {
+  const servername = cfg.ssh ? cfg.host : undefined;
   if (cfg.ssl === 'verify-full') {
-    return { rejectUnauthorized: true, ...(cfg.sslCa?.trim() ? { ca: cfg.sslCa } : {}) };
+    return { rejectUnauthorized: true, ...(cfg.sslCa?.trim() ? { ca: cfg.sslCa } : {}), ...(servername ? { servername } : {}) };
   }
-  return cfg.ssl === 'require' ? { rejectUnauthorized: false } : undefined;
+  return cfg.ssl === 'require' ? { rejectUnauthorized: false, ...(servername ? { servername } : {}) } : undefined;
 }
 
 /** pg wants `false` for plaintext where mysql2 wants the key omitted. */
-function pgSslOption(cfg: TcpConfig): false | { rejectUnauthorized: boolean; ca?: string } {
+function pgSslOption(cfg: TcpConfig): false | TlsOpts {
   return tlsOption(cfg) ?? false;
 }
 
-function mySslOption(cfg: TcpConfig): undefined | { rejectUnauthorized: boolean; ca?: string } {
+function mySslOption(cfg: TcpConfig): undefined | TlsOpts {
   return tlsOption(cfg);
 }
 
@@ -83,15 +95,31 @@ export class TcpDriverProvider implements ConnectionProvider {
   private pgPool: PgPool | null = null;
   private myPool: mysql.Pool | null = null;
 
+  private targetPromise: Promise<{ host: string; port: number }> | null = null;
+
   constructor(private readonly config: TcpConfig) {
     this.dialect = config.dialect;
   }
 
-  private pg(): PgPool {
+  /** Where the driver should actually dial. Without SSH it's the configured
+   *  host/port; with SSH it's 127.0.0.1:<tunnel local port>. Memoized so every
+   *  pool + probe in this provider shares one tunnel. */
+  private resolveTarget(): Promise<{ host: string; port: number }> {
+    if (!this.targetPromise) {
+      const { ssh, connectionId, host, port } = this.config;
+      this.targetPromise = ssh && connectionId
+        ? ensureTunnel(connectionId, ssh, host, port).then((localPort) => ({ host: '127.0.0.1', port: localPort }))
+        : Promise.resolve({ host, port });
+    }
+    return this.targetPromise;
+  }
+
+  private async pg(): Promise<PgPool> {
     if (!this.pgPool) {
+      const target = await this.resolveTarget();
       this.pgPool = new PgPool({
-        host: this.config.host,
-        port: this.config.port,
+        host: target.host,
+        port: target.port,
         database: this.config.database,
         user: this.config.user,
         password: this.config.password,
@@ -110,17 +138,18 @@ export class TcpDriverProvider implements ConnectionProvider {
    * applying per-checkout here is the guaranteed path. Caller must release().
    */
   private async pgClient() {
-    const client = await this.pg().connect();
+    const client = await (await this.pg()).connect();
     await client.query('SET default_transaction_read_only = on');
     await client.query(`SET statement_timeout = ${DEFAULT_TIMEOUT_MS}`);
     return client;
   }
 
-  private my(): mysql.Pool {
+  private async my(): Promise<mysql.Pool> {
     if (!this.myPool) {
+      const target = await this.resolveTarget();
       this.myPool = mysql.createPool({
-        host: this.config.host,
-        port: this.config.port,
+        host: target.host,
+        port: target.port,
         database: this.config.database,
         user: this.config.user,
         password: this.config.password,
@@ -134,7 +163,7 @@ export class TcpDriverProvider implements ConnectionProvider {
 
   /** Acquire a MySQL connection with read-only + timeout re-applied (RT-F2). */
   private async myConn(): Promise<mysql.PoolConnection> {
-    const conn = await this.my().getConnection();
+    const conn = await (await this.my()).getConnection();
     await conn.query('SET SESSION TRANSACTION READ ONLY');
     await conn.query(`SET SESSION max_execution_time = ${DEFAULT_TIMEOUT_MS}`);
     return conn;
@@ -165,10 +194,12 @@ export class TcpDriverProvider implements ConnectionProvider {
     // privilege, granted to PUBLIC by default), so a SELECT-only user would look
     // writable. A permanent CREATE requires real DDL privilege.
     const NAME = '__mydbmate_probe__';
+    const target = await this.resolveTarget();
     if (this.dialect === 'postgres') {
       const probePool = new PgPool({
-        host: this.config.host, port: this.config.port, database: this.config.database,
-        user: this.config.user, password: this.config.password, ssl: pgSslOption(this.config), max: 1,
+        host: target.host, port: target.port, database: this.config.database,
+        user: this.config.user, password: this.config.password, ssl: pgSslOption(this.config),
+        ...(this.config.options ? { options: this.config.options } : {}), max: 1,
       });
       const client = await probePool.connect();
       try {
@@ -189,7 +220,7 @@ export class TcpDriverProvider implements ConnectionProvider {
       // lingering `SET SESSION TRANSACTION READ ONLY` from a prior read query, which
       // would make even a writable user's CREATE fail and mis-report read-only.
       const probeConn = await mysql.createConnection({
-        host: this.config.host, port: this.config.port, database: this.config.database,
+        host: target.host, port: target.port, database: this.config.database,
         user: this.config.user, password: this.config.password, ssl: mySslOption(this.config),
       });
       try {
@@ -427,5 +458,8 @@ export class TcpDriverProvider implements ConnectionProvider {
       await this.myPool.end();
       this.myPool = null;
     }
+    // The SSH tunnel is intentionally NOT closed here: it is keyed by
+    // connectionId and shared across provider instances (one per request).
+    // Teardown happens on connection delete/update via closeTunnel().
   }
 }

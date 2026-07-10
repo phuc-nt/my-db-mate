@@ -1,0 +1,1 @@
+ALTER TABLE "connections" ADD COLUMN "ssh_secret_encrypted" text;

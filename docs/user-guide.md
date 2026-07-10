@@ -70,7 +70,8 @@ Mở `/connections`, bấm thêm connection:
    - **"Connected — read-only ✓"** → user DB chỉ có quyền đọc (lý tưởng).
    - **"⚠ Connected but the DB user can WRITE"** → user DB có quyền ghi. Vẫn dùng được (app chặn ghi ở tầng ứng dụng), nhưng nên cấp user chỉ-đọc.
    - **"Failed: …"** → sai thông tin, báo lỗi sạch (không lộ stack).
-5. Bấm **Add & sync** — app quét schema (bảng/cột/khoá/row count) và lưu lại.
+5. (Tuỳ chọn) **Connect via SSH tunnel** — DB nằm sau bastion host: tick ô này, điền SSH host/port/user + private key (PEM) hoặc password. Mọi kết nối + query đi qua tunnel; TLS tới DB vẫn verify theo hostname thật. Key được mã hoá khi lưu như password DB.
+6. Bấm **Add & sync** — app quét schema (bảng/cột/khoá/row count) và lưu lại.
 
 Từ mỗi connection có các mục: **Chat · Browse · Context**, cùng **Dashboards · Reports** trên thanh nav trên cùng.
 

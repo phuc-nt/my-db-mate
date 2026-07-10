@@ -7,7 +7,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const row = await getConnection(id);
   if (!row) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  const { secretEncrypted, ...safe } = row;
+  const { secretEncrypted, sshSecretEncrypted, ...safe } = row;
   return NextResponse.json(safe);
 }
 
@@ -17,7 +17,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = await req.json();
   try {
     const row = await updateConnection(id, body);
-    const { secretEncrypted, ...safe } = row;
+    const { secretEncrypted, sshSecretEncrypted, ...safe } = row;
     return NextResponse.json(safe);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
