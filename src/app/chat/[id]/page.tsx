@@ -32,6 +32,23 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [followLatest, setFollowLatest] = useState(true);
   const [unseen, setUnseen] = useState<Set<string>>(new Set());
 
+  // Starter questions for the empty state (verified-first, no LLM).
+  const [starters, setStarters] = useState<string[]>([]);
+  useEffect(() => {
+    fetch(`/api/connections/${connectionId}/starter-questions`)
+      .then((r) => r.json()).then((d) => setStarters(Array.isArray(d.questions) ? d.questions : []))
+      .catch(() => {});
+  }, [connectionId]);
+
+  // Follow-up question suggestions after a completed turn.
+  const [followups, setFollowups] = useState<string[]>([]);
+  const [followupsOn, setFollowupsOn] = useState(true);
+  const followupMsgIdRef = useRef<string | null>(null); // dedupe: one fetch per assistant turn
+  const followupAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setFollowupsOn(localStorage.getItem('mdm.followups') !== 'off');
+  }, []);
+
   // Create a session for this chat so queries + transcript can be distilled later.
   useEffect(() => {
     fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }) })
@@ -103,10 +120,53 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setUnseen((u) => (u.has(toolCallId) ? new Set([...u].filter((x) => x !== toolCallId)) : u));
   }
 
+  // Fetch follow-up suggestions once a turn is TRULY complete. `status==='ready'`
+  // recurs at every tool-step boundary mid-turn, so we also require the last
+  // message to be an assistant message whose final part is text (no pending
+  // tool-call awaiting auto-send), and dedupe by that message id.
+  useEffect(() => {
+    if (!followupsOn || status !== 'ready') return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    const lastPart = last.parts[last.parts.length - 1];
+    if (lastPart?.type !== 'text') return;           // still mid-turn (tool-call pending)
+    if (followupMsgIdRef.current === last.id) return; // already fetched for this turn
+    followupMsgIdRef.current = last.id;
+
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const question = lastUser?.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ') ?? '';
+    if (!question) return;
+    const columns = artifacts.length ? artifacts[artifacts.length - 1].columns : undefined;
+
+    followupAbortRef.current?.abort();
+    const ac = new AbortController();
+    followupAbortRef.current = ac;
+    fetch(`/api/connections/${connectionId}/followups`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question, columns }), signal: ac.signal,
+    })
+      .then((r) => r.json())
+      .then((d) => setFollowups(Array.isArray(d.followups) ? d.followups : []))
+      .catch(() => { /* aborted or failed — leave chips empty */ });
+  }, [status, messages, followupsOn, connectionId, artifacts]);
+
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' = 'chat') {
+    // Clear + abort any pending follow-up fetch so stale chips don't repopulate
+    // the turn the user just moved past (covers typed sends AND chip clicks).
+    setFollowups([]);
+    followupAbortRef.current?.abort();
     setFollowLatest(true);
     sendMessage({ text }, { body: { connectionId, sessionId, mode } });
+  }
+
+  function toggleFollowups() {
+    setFollowupsOn((on) => {
+      const next = !on;
+      localStorage.setItem('mdm.followups', next ? 'on' : 'off');
+      if (!next) setFollowups([]);
+      return next;
+    });
   }
 
   const analyzeDeeper = (sql: string) =>
@@ -144,6 +204,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           <h1 className="text-lg font-semibold">Chat</h1>
           <div className="flex items-center gap-3 text-sm">
             {distillMsg && <span className="text-xs text-neutral-500">{distillMsg}</span>}
+            <button onClick={toggleFollowups} className={followupsOn ? 'text-blue-600' : 'text-neutral-400'} title="Suggest follow-up questions after each answer">Follow-ups {followupsOn ? 'on' : 'off'}</button>
             <button onClick={saveNotebook} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Save as notebook</button>
             <button onClick={distill} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Distill to context</button>
             <Link href={`/browse/${connectionId}`} className="text-blue-600">Browse</Link>
@@ -153,7 +214,19 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
           {messages.length === 0 && (
-            <p className="text-sm text-neutral-500">Ask a question about your database. The assistant explores the schema and runs read-only SQL.</p>
+            <div className="text-sm text-neutral-500">
+              <p className="mb-2">Ask a question about your database. The assistant explores the schema and runs read-only SQL.</p>
+              {starters.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {starters.map((q, i) => (
+                    <button key={i} onClick={() => send(q)}
+                      className="rounded-full border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:border-blue-500 hover:text-blue-600 dark:border-neutral-700 dark:text-neutral-300">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {messages.map((m) => (
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
@@ -230,11 +303,25 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                       <AskUserBox key={i} question={p.input?.question ?? ''} options={p.input?.options} onAnswer={answer} disabled={busy} />
                     );
                   }
+                  // Reasoning stream (models that emit it) — collapsible, non-load-bearing.
+                  if (part.type === 'reasoning') {
+                    const text = (part as unknown as { text?: string }).text ?? '';
+                    if (!text.trim()) return null;
+                    return (
+                      <details key={i} className="mt-1 rounded bg-black/5 p-1 text-xs text-neutral-500 dark:bg-white/10">
+                        <summary className="cursor-pointer">💭 Thinking</summary>
+                        <div className="mt-1 whitespace-pre-wrap">{text}</div>
+                      </details>
+                    );
+                  }
+                  // Generic tool step (the tools without an explicit branch above):
+                  // friendly label + running/done/error status.
                   if (part.type.startsWith('tool-')) {
-                    const p = part as unknown as { type: string; input?: unknown; output?: unknown };
+                    const p = part as unknown as { type: string; state?: string; input?: unknown; errorText?: string };
+                    const { icon, done } = toolStatus(p.state);
                     return (
                       <details key={i} className="mt-1 rounded bg-black/5 p-1 text-xs dark:bg-white/10">
-                        <summary className="cursor-pointer">🔧 {p.type.replace('tool-', '')}</summary>
+                        <summary className="cursor-pointer">{icon} {toolLabel(p.type, p.input)}{done === 'error' && p.errorText ? ` — ${p.errorText}` : ''}</summary>
                         <pre className="mt-1 overflow-x-auto">{JSON.stringify(p.input ?? {}, null, 1)}</pre>
                       </details>
                     );
@@ -246,6 +333,18 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           ))}
           {busy && <p className="text-sm text-neutral-400">…thinking</p>}
         </div>
+
+        {/* Follow-up suggestion chips — click to ask next. */}
+        {followupsOn && followups.length > 0 && !busy && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {followups.map((q, i) => (
+              <button key={i} onClick={() => { send(q); }}
+                className="rounded-full border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:border-blue-500 hover:text-blue-600 dark:border-neutral-700 dark:text-neutral-300">
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form
           className="mt-3 flex gap-2"
@@ -283,6 +382,30 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       </div>
     </main>
   );
+}
+
+/** Human-readable label for a generic tool step. run_sql / plan_analysis /
+ *  ask_user are handled by their own branches and never reach here. */
+function toolLabel(type: string, input: unknown): string {
+  const name = type.replace('tool-', '');
+  const inp = (input ?? {}) as Record<string, unknown>;
+  switch (name) {
+    case 'schema_details': return 'Reading the schema';
+    case 'sample_rows': return `Sampling rows${inp.table ? ` from ${inp.table}` : ''}`;
+    case 'glossary_lookup': return `Looking up${inp.term ? ` "${inp.term}"` : ' a term'}`;
+    case 'query_history_search': return 'Searching verified queries';
+    case 'profile_column': return `Profiling${inp.table && inp.column ? ` ${inp.table}.${inp.column}` : ' a column'}`;
+    case 'detect_anomalies': return `Checking${inp.table && inp.column ? ` ${inp.table}.${inp.column}` : ''} for anomalies`;
+    default: return name.replace(/_/g, ' ');
+  }
+}
+
+/** Map an AI SDK v7 tool-part state to an icon + terminal kind. output-error must
+ *  NOT stay at ⏳ forever. */
+function toolStatus(state?: string): { icon: string; done: 'ok' | 'error' | 'running' } {
+  if (state === 'output-available') return { icon: '✓', done: 'ok' };
+  if (state === 'output-error') return { icon: '✗', done: 'error' };
+  return { icon: '⏳', done: 'running' };
 }
 
 /** Inline clarifying-question box for the ask_user tool (red-team C1). */

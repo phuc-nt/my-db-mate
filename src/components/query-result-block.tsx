@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CopyButton } from './copy-button';
 import { ResultTable } from './result-table';
 import type { ExportDialect } from '../lib/export-formats';
 
@@ -119,6 +120,7 @@ export function QueryResultBlock({
         <button onClick={() => rerun(false)} disabled={busy} className="rounded bg-neutral-800 px-3 py-1 text-white disabled:opacity-50 dark:bg-neutral-200 dark:text-neutral-900">
           {busy ? 'Running…' : 'Re-run'}
         </button>
+        <CopyButton label="Copy SQL" getText={() => sql} />
         {lastExecutedSql && result && (
           <>
             <button onClick={saveVerified} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save as verified query</button>

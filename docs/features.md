@@ -7,7 +7,10 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 ## What works today
 
 ### Chat
-- **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view.
+- **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view + copy SQL / copy result.
+- **Follow-up suggestions** — after each answer the assistant proposes 2-3 next questions (grounded in the schema + curated context) as one-click chips; toggle off if unwanted. An empty chat shows starter questions drawn from your verified queries.
+- **Quick pivot** — regroup any result table (group-by × value × aggregate) client-side without rewriting SQL, over the loaded rows.
+- **Readable agent steps** — tool calls show a plain-language label with a running/done/error status, and the model's reasoning (when emitted) is shown collapsible.
 - **Workspace layout** — on wide screens the conversation and the query results split into columns: results collapse to one-line chips in the chat and open full-width in a side panel (edited SQL and chart state survive switching); very wide screens add a session-queries rail. Narrow screens keep everything inline.
 - **One-click demo** — "Try with a sample database" on the empty connections page generates a local sample shop DB (deliberately opaque enum codes) with a pre-seeded glossary, then opens a chat against it. No database required to evaluate the product.
 - **Four engines + cloud** — PostgreSQL, MySQL/MariaDB, SQLite, SQL Server / Azure SQL, and Cloudflare D1 (remote), via a pluggable connection-provider abstraction. A **provider preset** picker pre-fills the port / SSL mode / quirks for common managed databases (see the compatibility table below).

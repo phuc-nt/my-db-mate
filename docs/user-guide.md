@@ -83,7 +83,10 @@ Từ mỗi connection có các mục: **Chat · Browse · Context**, cùng **Das
 
 ### Chat với database
 - Hỏi bằng ngôn ngữ tự nhiên; model tự khám phá schema qua tool và chạy SQL **chỉ-đọc** để trả lời (vòng lặp agentic, không phải RAG cố định).
-- Kết quả kèm **SQL sửa/chạy lại được**, **export CSV**, và **xem biểu đồ**.
+- Kết quả kèm **SQL sửa/chạy lại được**, **export CSV**, **xem biểu đồ**, và **copy SQL / copy kết quả** 1 chạm.
+- **Gợi ý câu hỏi tiếp** sau mỗi câu trả lời (bấm để hỏi luôn); màn chat trống gợi ý câu mẫu từ verified queries của bạn. Tắt được.
+- **Pivot nhanh** ngay trên bảng kết quả (group-by × giá trị × hàm tổng hợp) không cần viết lại SQL, trên số rows đã tải.
+- **Bước agent dễ đọc**: mỗi tool hiện nhãn tiếng người + trạng thái đang chạy/xong/lỗi; phần suy luận của model (nếu có) hiện gọn.
 - **Màn hình rộng tự tách 2-3 cột**: hội thoại bên trái (kết quả thu thành chip 1 dòng, bấm để mở), panel kết quả bên phải (SQL + bảng + chart, giữ nguyên state khi chuyển giữa các query), màn rất rộng thêm cột danh sách query của phiên. Màn hẹp giữ mọi thứ inline.
 - Hỗ trợ 3 engine + cloud: PostgreSQL, MySQL/MariaDB, SQLite, Cloudflare D1.
 
