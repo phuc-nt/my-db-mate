@@ -60,7 +60,7 @@ npm run smoke:llm      # test model gọi tool + độ chính xác với OPENROU
 Mở `/connections`, bấm thêm connection:
 
 0. (Tuỳ chọn) Chọn **Provider preset** (Neon/Supabase/RDS/PlanetScale/TiDB/CockroachDB/Aiven…) — tự điền engine/port/SSL + hiện ghi chú riêng của provider. Mọi ô vẫn sửa được sau đó. Xem bảng tương thích đầy đủ trong [features.md](features.md).
-1. Chọn engine: **PostgreSQL / MySQL(MariaDB) / SQLite / SQL Server** (hoặc **Cloudflare D1** remote). Với SQL Server, dùng login chỉ có `db_datareader` để read-only thật.
+1. Chọn engine: **PostgreSQL / MySQL(MariaDB) / SQLite / SQL Server** (hoặc **Cloudflare D1** remote). Với SQL Server, dùng login chỉ có `db_datareader` để read-only thật, và cấp thêm `GRANT SHOWPLAN` (quyền metadata-only) để hệ thống ước lượng được chi phí query — thiếu quyền này thì mọi query đều bị hỏi xác nhận trước khi chạy.
 2. Dán connection string (`postgres://user:pass@host:5432/db`) — form tự điền host/port/db/user; **hoặc** tự điền từng ô.
 3. Với DB cloud (Neon/Supabase/RDS/PlanetScale): chọn chế độ **SSL/TLS**:
    - **Encrypt only** — mã hoá, không verify cert (cloud nào cũng kết nối được ngay).
@@ -100,6 +100,7 @@ Từ mỗi connection có các mục: **Chat · Browse · Context**, cùng **Das
 ### An toàn (physical safety layer)
 - Mọi truy vấn đi qua: kết nối chỉ-đọc → kiểm AST (chỉ `SELECT`, chặn CTE-ghi) → denylist hàm nguy hiểm theo dialect (`pg_terminate_backend`, `COPY … TO PROGRAM`, `INTO OUTFILE`, `load_extension`, `ATTACH`, …) → tự chèn `LIMIT` → ghi audit log.
 - **Mã hoá credential** (AES-256-GCM), lưu vết mọi lần chạy.
+- **Query nặng phải được bạn duyệt**: hệ thống ước lượng chi phí (EXPLAIN) trước khi chạy — query ước lượng nặng sẽ dừng chờ xác nhận. Bấm `view →` trên chip query → **Re-run** → **Confirm & run anyway**. Agent không tự duyệt được (gõ "cho phép" trong chat không có tác dụng); sau khi bạn xác nhận, kết quả tự ghi lại vào hội thoại để agent phân tích tiếp.
 
 ### Analyst, Dashboards & Reports
 - **Investigate mode** — với câu hỏi "tại sao / so sánh / xu hướng", agent viết kế hoạch phân tích, chạy chuỗi truy vấn drill-down, và kết luận kèm bằng chứng (không trả lời một-phát). Có nút **"Analyze deeper"** biến bất kỳ kết quả nào thành một cuộc điều tra; agent tự **hỏi lại khi mơ hồ** và tự sửa SQL lỗi.

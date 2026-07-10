@@ -28,7 +28,7 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **YAML export/import** for Git backup (atomic import).
 
 ### Intelligence
-- **Risk scoring** — EXPLAIN-based tiers: low runs, medium asks for confirmation, high is blocked (a performance guard, never a security control).
+- **Risk scoring** — EXPLAIN-based tiers: low runs, medium asks for confirmation, high is blocked (a performance guard, never a security control). Confirming happens in the SQL panel (view → / Re-run / Confirm & run anyway) — the agent cannot approve its own queries; after you confirm, the result is recorded back into the conversation so the agent can keep analyzing it.
 - **Eval harness** — gold NL→SQL pairs scored by execution + structural match on a fixture DB.
 - **Column profiling** (real enum values), schema pruning for large schemas, chart rendering.
 
