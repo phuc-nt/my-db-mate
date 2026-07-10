@@ -103,7 +103,7 @@ You need a connection to a real database to demo. **Ask the human** for either a
 Then walk them through it in the UI (or do it with them):
 1. Open `/connections`, click add.
 2. Pick the engine (PostgreSQL / MySQL / SQLite / D1).
-3. Paste the connection string (auto-fills the fields) or fill host/port/db/user/password. Tick **SSL** for a cloud DB.
+3. Paste the connection string (auto-fills the fields) or fill host/port/db/user/password. For a cloud DB pick an **SSL/TLS** mode: "Encrypt only" always connects; "Encrypt + verify certificate" is MITM-proof — paste the provider's CA (PEM) if it uses a private CA (Supabase, Aiven…), or leave the CA box blank to use the system store. A pasted URL with `sslmode=require`/`verify-full` selects the mode automatically.
 4. Click **Test connection**. Expect one of:
    - **"Connected — read-only ✓"** — ideal (the DB user cannot write).
    - **"⚠ Connected but the DB user can WRITE"** — works, but advise switching to a SELECT-only user.
@@ -125,7 +125,7 @@ Full capability list is in [features.md](features.md). Full walkthrough (Vietnam
 ## Safety — state this to the human explicitly
 
 - The real protection is a **SELECT-only DB user on a read replica**. The app's in-process guards (read-only txn, AST + denylist validation, statement timeout, auto-`LIMIT`, audit log) are defense in depth, **not** a substitute for a least-privilege grant. Advise the human accordingly before they connect a production DB.
-- Ticking **SSL** encrypts the link but does **not** verify the server certificate. Fine on LAN / trusted network; over the public internet the channel is not MITM-proof.
+- The default **"Encrypt only"** SSL mode does **not** verify the server certificate — fine on LAN / trusted network, not MITM-proof over the public internet. For untrusted paths advise **"Encrypt + verify certificate"** (with the provider's CA pasted if it is a private CA).
 - **Share links are capabilities** — anyone with a dashboard/report link sees the cached result. Treat them like passwords. Do not expose the app to the internet without an auth proxy in front.
 - This is a **single-user, self-hosted** tool — no multi-user RBAC yet.
 

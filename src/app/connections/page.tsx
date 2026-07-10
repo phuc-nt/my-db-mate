@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine } from '../../lib/connection-config';
+import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
 
 interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown> }
 
-const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '', ssl: false };
+const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '', ssl: 'disable' as SslMode, sslCa: '' };
 
 export default function ConnectionsPage() {
   const [conns, setConns] = useState<Conn[]>([]);
@@ -28,7 +28,7 @@ export default function ConnectionsPage() {
     if (!raw.trim()) return;
     try {
       const p = parseConnectionString(raw);
-      setForm((f) => ({ ...f, engine: p.engine, host: p.host, port: String(p.port), database: p.database, user: p.user, secret: p.password, ssl: p.ssl === 'require' }));
+      setForm((f) => ({ ...f, engine: p.engine, host: p.host, port: String(p.port), database: p.database, user: p.user, secret: p.password, ssl: p.ssl }));
       setMsg('Filled from connection string.');
     } catch (e) {
       setMsg(`Could not parse URL: ${e instanceof Error ? e.message : String(e)}`);
@@ -39,7 +39,11 @@ export default function ConnectionsPage() {
     const kind = kindForEngine(form.engine);
     const config = form.engine === 'sqlite'
       ? { path: form.path }
-      : { host: form.host, port: Number(form.port), database: form.database, user: form.user, ssl: form.ssl ? 'require' : 'disable' };
+      : {
+          host: form.host, port: Number(form.port), database: form.database, user: form.user,
+          ssl: form.ssl,
+          ...(form.ssl === 'verify-full' && form.sslCa.trim() ? { sslCa: form.sslCa } : {}),
+        };
     return { name: form.name, kind, dialect: form.engine, config, secret: form.engine === 'sqlite' ? undefined : form.secret };
   }
 
@@ -81,7 +85,8 @@ export default function ConnectionsPage() {
       database: String(cfg.database ?? ''),
       user: String(cfg.user ?? ''),
       secret: '', // never pre-filled; blank keeps the existing password
-      ssl: cfg.ssl === 'require',
+      ssl: (cfg.ssl === 'require' || cfg.ssl === 'verify-full' ? cfg.ssl : 'disable') as SslMode,
+      sslCa: String(cfg.sslCa ?? ''),
     });
     setMsg('Editing — leave password blank to keep the current one.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -139,9 +144,19 @@ export default function ConnectionsPage() {
               <input className="rounded border p-2 dark:bg-neutral-900" placeholder="User" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} />
               <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" type="password" placeholder={editingId ? 'Password (blank = keep current)' : 'Password'} value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} />
               <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-                <input type="checkbox" checked={form.ssl} onChange={(e) => setForm({ ...form, ssl: e.target.checked })} />
-                Use SSL/TLS (required by most cloud DBs — Neon, Supabase, RDS, PlanetScale)
+                SSL/TLS
+                <select value={form.ssl} onChange={(e) => setForm({ ...form, ssl: e.target.value as SslMode })}
+                  className="rounded border p-1.5 text-sm dark:bg-neutral-900">
+                  <option value="disable">Off (local / trusted network)</option>
+                  <option value="require">Encrypt only — no cert check (most cloud DBs work)</option>
+                  <option value="verify-full">Encrypt + verify certificate (MITM-proof)</option>
+                </select>
               </label>
+              {form.ssl === 'verify-full' && (
+                <textarea className="col-span-2 rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={4}
+                  placeholder={'CA certificate (PEM) — optional. Paste your provider\'s CA here if it uses a private CA (Supabase, Aiven…). Leave blank to verify against the system CA store.'}
+                  value={form.sslCa} onChange={(e) => setForm({ ...form, sslCa: e.target.value })} />
+              )}
             </>
           )}
         </div>

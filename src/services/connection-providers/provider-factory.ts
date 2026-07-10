@@ -26,7 +26,9 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
         user: String(row.config.user),
         password,
         dialect: row.dialect === 'mysql' ? 'mysql' : 'postgres',
-        ssl: row.config.ssl === 'require' ? 'require' : 'disable',
+        ssl: row.config.ssl === 'require' || row.config.ssl === 'verify-full'
+          ? (row.config.ssl as 'require' | 'verify-full') : 'disable',
+        sslCa: typeof row.config.sslCa === 'string' ? row.config.sslCa : undefined,
       });
     }
 

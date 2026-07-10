@@ -27,10 +27,15 @@ export interface TcpConfig {
   dialect: Extract<Dialect, 'postgres' | 'mysql'>;
   /** SSL/TLS mode for the connection. Most managed cloud DBs (Neon, Supabase, RDS,
    *  PlanetScale, Aiven) REQUIRE TLS. 'require' turns TLS on without verifying the
-   *  cert chain (common for managed providers with their own CA); undefined/'disable'
-   *  = no TLS (local). Verification is intentionally relaxed — this is a data client,
-   *  and the alternative is users can't connect to any cloud DB at all. */
-  ssl?: 'require' | 'disable';
+   *  cert chain (managed providers with their own CA connect out of the box, but the
+   *  channel is not MITM-proof); 'verify-full' verifies chain + hostname against
+   *  sslCa (or the system CA store when sslCa is empty); undefined/'disable' = no
+   *  TLS (local). */
+  ssl?: 'require' | 'disable' | 'verify-full';
+  /** Optional CA certificate(s), PEM. Only used with ssl: 'verify-full' — lets a
+   *  private-CA cloud (Supabase, Aiven, self-managed) pass strict verification.
+   *  Public material, so it lives in config rather than the encrypted secret. */
+  sslCa?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -51,14 +56,23 @@ function lowerKeys(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v])));
 }
 
-/** pg SSL option: relaxed verification so managed-cloud cert chains connect. */
-function pgSslOption(cfg: TcpConfig): false | { rejectUnauthorized: false } {
-  return cfg.ssl === 'require' ? { rejectUnauthorized: false } : false;
+/** TLS options shared by both drivers: 'require' = encrypt without verification
+ *  (managed-cloud private chains connect as-is); 'verify-full' = verify chain +
+ *  hostname, against the pasted CA when present, else the system store. */
+function tlsOption(cfg: TcpConfig): undefined | { rejectUnauthorized: boolean; ca?: string } {
+  if (cfg.ssl === 'verify-full') {
+    return { rejectUnauthorized: true, ...(cfg.sslCa?.trim() ? { ca: cfg.sslCa } : {}) };
+  }
+  return cfg.ssl === 'require' ? { rejectUnauthorized: false } : undefined;
 }
 
-/** mysql2 SSL option. */
-function mySslOption(cfg: TcpConfig): undefined | { rejectUnauthorized: false } {
-  return cfg.ssl === 'require' ? { rejectUnauthorized: false } : undefined;
+/** pg wants `false` for plaintext where mysql2 wants the key omitted. */
+function pgSslOption(cfg: TcpConfig): false | { rejectUnauthorized: boolean; ca?: string } {
+  return tlsOption(cfg) ?? false;
+}
+
+function mySslOption(cfg: TcpConfig): undefined | { rejectUnauthorized: boolean; ca?: string } {
+  return tlsOption(cfg);
 }
 
 export class TcpDriverProvider implements ConnectionProvider {

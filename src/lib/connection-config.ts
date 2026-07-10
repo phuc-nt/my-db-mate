@@ -6,6 +6,15 @@
  */
 export type Engine = 'sqlite' | 'postgres' | 'mysql';
 
+/** TLS posture for a TCP connection.
+ *  - 'disable'      — plaintext (local/LAN).
+ *  - 'require'      — encrypt, do NOT verify the server cert (managed clouds with
+ *                     a private CA connect out of the box, but the channel is not
+ *                     MITM-proof).
+ *  - 'verify-full'  — encrypt + verify the cert chain and hostname. Uses the
+ *                     system CA store unless a CA PEM is provided on the config. */
+export type SslMode = 'disable' | 'require' | 'verify-full';
+
 export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite'>, number> = {
   postgres: 5432,
   mysql: 3306,
@@ -23,13 +32,14 @@ export interface ParsedConnection {
   database: string;
   user: string;
   password: string;
-  ssl: 'require' | 'disable';
+  ssl: SslMode;
 }
 
 /**
  * Parse a Postgres/MySQL connection URL. Accepts the common schemes and the
- * `sslmode=require`/`ssl=true` query hint (managed clouds set this). Throws on an
- * unrecognized scheme so the caller can show an error.
+ * `sslmode=…`/`ssl=true` query hint (managed clouds set this). `verify-full` and
+ * `verify-ca` map to certificate verification; `require`/`prefer`/`true` map to
+ * encrypt-only. Throws on an unrecognized scheme so the caller can show an error.
  */
 export function parseConnectionString(raw: string): ParsedConnection {
   const url = new URL(raw.trim());
@@ -40,9 +50,10 @@ export function parseConnectionString(raw: string): ParsedConnection {
     (() => { throw new Error(`Unsupported scheme: ${scheme} (use postgres:// or mysql://)`); })();
 
   const sslmode = (url.searchParams.get('sslmode') ?? url.searchParams.get('ssl') ?? '').toLowerCase();
-  const ssl: 'require' | 'disable' =
-    sslmode === 'require' || sslmode === 'true' || sslmode === 'verify-full' || sslmode === 'verify-ca' || sslmode === 'prefer'
-      ? 'require' : 'disable';
+  const ssl: SslMode =
+    sslmode === 'verify-full' || sslmode === 'verify-ca' ? 'verify-full' :
+    sslmode === 'require' || sslmode === 'true' || sslmode === 'prefer' ? 'require' :
+    'disable';
 
   return {
     engine,
