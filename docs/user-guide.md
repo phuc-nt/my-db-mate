@@ -48,6 +48,8 @@ npm run smoke:llm      # test model gọi tool + độ chính xác với OPENROU
 
 ## 2. Kết nối database
 
+> **Chưa có DB để thử?** Trang Connections (khi trống) có nút **"Try with a sample database"** — tạo một DB shop mẫu (orders/products/customers, mã enum kiểu `ord_sts_cd`) kèm sẵn business glossary, rồi đưa bạn thẳng vào chat.
+
 Mở `/connections`, bấm thêm connection:
 
 1. Chọn engine: **PostgreSQL / MySQL(MariaDB) / SQLite** (hoặc **Cloudflare D1** remote).

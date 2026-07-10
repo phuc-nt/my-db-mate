@@ -35,7 +35,6 @@ export default function EvalPage({ params }: { params: Promise<{ id: string }> }
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Eval</h1>
-        <Link href="/connections" className="text-sm text-blue-600">← Connections</Link>
       </div>
 
       <div className="mb-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">

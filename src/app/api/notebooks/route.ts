@@ -3,12 +3,11 @@ import { createNotebookFromSession, listNotebooks } from '../../../services/note
 
 export const runtime = 'nodejs';
 
-/** List notebooks for a connection (?connectionId=). */
+/** List notebooks — all, or one connection's with ?connectionId=. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const connectionId = url.searchParams.get('connectionId');
-  if (!connectionId) return NextResponse.json({ error: 'connectionId required' }, { status: 400 });
-  return NextResponse.json(await listNotebooks(connectionId));
+  return NextResponse.json(await listNotebooks(connectionId ?? undefined));
 }
 
 /** Save a chat session as a notebook. */

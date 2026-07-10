@@ -96,9 +96,11 @@ export async function createNotebookFromSession(connectionId: string, sessionId:
   return row;
 }
 
-export async function listNotebooks(connectionId: string) {
-  return db.select({ id: notebooks.id, title: notebooks.title, shareSlug: notebooks.shareSlug, createdAt: notebooks.createdAt })
-    .from(notebooks).where(eq(notebooks.connectionId, connectionId)).orderBy(desc(notebooks.createdAt));
+/** List notebooks — all of them, or one connection's when connectionId is given. */
+export async function listNotebooks(connectionId?: string) {
+  const base = db.select({ id: notebooks.id, title: notebooks.title, shareSlug: notebooks.shareSlug, createdAt: notebooks.createdAt }).from(notebooks);
+  const q = connectionId ? base.where(eq(notebooks.connectionId, connectionId)) : base;
+  return q.orderBy(desc(notebooks.createdAt));
 }
 
 export async function getNotebook(id: string) {

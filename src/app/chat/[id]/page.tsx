@@ -72,7 +72,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           <button onClick={distill} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Distill to context</button>
           <Link href={`/browse/${connectionId}`} className="text-blue-600">Browse</Link>
           <Link href={`/context-studio/${connectionId}`} className="text-blue-600">Context</Link>
-          <Link href="/connections" className="text-blue-600">← Connections</Link>
         </div>
       </div>
 

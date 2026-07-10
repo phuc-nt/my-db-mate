@@ -65,7 +65,6 @@ export default function BrowsePage({ params }: { params: Promise<{ id: string }>
 
       <section className="flex-1 overflow-y-auto rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
         <div className="mb-3 flex items-center justify-between">
-          <Link href="/connections" className="text-sm text-blue-600">← Connections</Link>
           {selected && <Link href={`/chat/${id}`} className="text-sm text-blue-600">Chat →</Link>}
         </div>
         {!table ? (

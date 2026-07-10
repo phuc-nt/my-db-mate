@@ -9,6 +9,7 @@ interface Widget { id: string; title: string }
 
 export default function ReportsPage() {
   const [list, setList] = useState<Report[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [dashboards, setDashboards] = useState<Dash[]>([]);
   const [widgetsByDash, setWidgetsByDash] = useState<Record<string, Widget[]>>({});
   const [title, setTitle] = useState('');
@@ -25,6 +26,7 @@ export default function ReportsPage() {
       map[d.id] = detail.widgets ?? [];
     }
     setWidgetsByDash(map);
+    setLoaded(true);
   }
   useEffect(() => { load(); }, []);
 
@@ -47,7 +49,6 @@ export default function ReportsPage() {
     <main className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Reports</h1>
-        <Link href="/dashboards" className="text-sm text-blue-600">Dashboards →</Link>
       </div>
 
       <form onSubmit={create} className="mb-6 space-y-2 rounded border border-neutral-200 p-4 dark:border-neutral-800">
@@ -69,6 +70,8 @@ export default function ReportsPage() {
       </form>
 
       <ul className="space-y-2">
+        {!loaded && <li className="text-sm text-neutral-400">Loading…</li>}
+        {loaded && list.length === 0 && <li className="text-sm text-neutral-500">No reports yet. Pick source widgets above and let the model compose one.</li>}
         {list.map((r) => (
           <li key={r.id} className="flex items-center justify-between rounded border border-neutral-200 p-3 dark:border-neutral-800">
             <Link href={`/reports/${r.id}`} className="font-medium text-blue-600">{r.title}</Link>

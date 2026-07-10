@@ -10,12 +10,13 @@ const BLANK = { name: '', engine: 'postgres' as Engine, path: '', host: 'localho
 
 export default function ConnectionsPage() {
   const [conns, setConns] = useState<Conn[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState({ ...BLANK });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => fetch('/api/connections').then((r) => r.json()).then(setConns);
+  const load = () => fetch('/api/connections').then((r) => r.json()).then(setConns).then(() => setLoaded(true));
   useEffect(() => { load(); }, []);
 
   /** Switching engine sets the conventional default port (like DBeaver). */
@@ -94,6 +95,15 @@ export default function ConnectionsPage() {
 
   function resetForm() { setEditingId(null); setForm({ ...BLANK }); }
 
+  /** One-click demo: sample shop DB + seeded context, then straight into chat. */
+  async function tryDemo() {
+    setBusy(true); setMsg('Setting up the demo database…');
+    const res = await fetch('/api/demo', { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) { setMsg(`Error: ${d.error}`); setBusy(false); return; }
+    window.location.href = `/chat/${d.id}`;
+  }
+
   async function remove(id: string) {
     await fetch(`/api/connections/${id}`, { method: 'DELETE' });
     if (editingId === id) resetForm();
@@ -104,10 +114,7 @@ export default function ConnectionsPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">My DB Mate — Connections</h1>
-        <Link href="/dashboards" className="text-sm text-blue-600">Dashboards →</Link>
-      </div>
+      <h1 className="mb-4 text-2xl font-semibold">Connections</h1>
 
       <div className="mb-6 rounded-lg border border-neutral-300 p-4 dark:border-neutral-700">
         <div className="mb-3 flex items-center justify-between">
@@ -190,7 +197,17 @@ export default function ConnectionsPage() {
             </div>
           </li>
         ))}
-        {conns.length === 0 && <li className="text-sm text-neutral-500">No connections yet.</li>}
+        {!loaded && <li className="text-sm text-neutral-400">Loading…</li>}
+        {loaded && conns.length === 0 && (
+          <li className="rounded border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+            <p className="mb-3">No connections yet. Add your database above — or explore with a sample one first:</p>
+            <button onClick={tryDemo} disabled={busy}
+              className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
+              {busy ? 'Setting up…' : '✨ Try with a sample database'}
+            </button>
+            <p className="mt-2 text-xs">Creates a small local shop DB (orders, products, customers) with a pre-seeded business glossary.</p>
+          </li>
+        )}
       </ul>
     </main>
   );

@@ -100,6 +100,8 @@ If it fails, the usual causes are a bad/empty `OPENROUTER_API_KEY` or no credit 
 
 You need a connection to a real database to demo. **Ask the human** for either a connection string (`postgres://…`, `mysql://…`) or a SQLite file path, and — importantly — **advise them to use a SELECT-only DB user pointed at a read replica** (see Safety below).
 
+If the human has no database handy, use the built-in demo instead: on the empty `/connections` page click **"Try with a sample database"** (or `POST /api/demo`) — it generates a local sample shop DB with a pre-seeded glossary and opens a chat against it.
+
 Then walk them through it in the UI (or do it with them):
 1. Open `/connections`, click add.
 2. Pick the engine (PostgreSQL / MySQL / SQLite / D1).
