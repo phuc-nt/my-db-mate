@@ -82,6 +82,7 @@ Từ mỗi connection có các mục: **Chat · Browse · Context**, cùng **Das
 ### Chat với database
 - Hỏi bằng ngôn ngữ tự nhiên; model tự khám phá schema qua tool và chạy SQL **chỉ-đọc** để trả lời (vòng lặp agentic, không phải RAG cố định).
 - Kết quả kèm **SQL sửa/chạy lại được**, **export CSV**, và **xem biểu đồ**.
+- **Màn hình rộng tự tách 2-3 cột**: hội thoại bên trái (kết quả thu thành chip 1 dòng, bấm để mở), panel kết quả bên phải (SQL + bảng + chart, giữ nguyên state khi chuyển giữa các query), màn rất rộng thêm cột danh sách query của phiên. Màn hẹp giữ mọi thứ inline.
 - Hỗ trợ 3 engine + cloud: PostgreSQL, MySQL/MariaDB, SQLite, Cloudflare D1.
 
 ### Lớp bối cảnh (Context Studio) — điểm khác biệt
