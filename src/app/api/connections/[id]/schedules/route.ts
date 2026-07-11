@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSchedule, listSchedules, runSchedule } from '../../../../../services/schedule-service';
+import { createSchedule, deleteSchedule, listSchedules, runSchedule, setScheduleEnabled } from '../../../../../services/schedule-service';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -23,4 +23,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
+}
+
+/** PATCH { scheduleId, isEnabled } → toggle a schedule. */
+export async function PATCH(req: Request) {
+  const body = await req.json();
+  if (typeof body.scheduleId !== 'string' || typeof body.isEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'scheduleId + isEnabled required' }, { status: 400 });
+  }
+  await setScheduleEnabled(body.scheduleId, body.isEnabled);
+  return NextResponse.json({ ok: true });
+}
+
+/** DELETE { scheduleId } → remove a schedule (and its cron task). */
+export async function DELETE(req: Request) {
+  const body = await req.json();
+  if (typeof body.scheduleId !== 'string') {
+    return NextResponse.json({ error: 'scheduleId required' }, { status: 400 });
+  }
+  await deleteSchedule(body.scheduleId);
+  return NextResponse.json({ ok: true });
 }

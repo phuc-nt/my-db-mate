@@ -146,3 +146,17 @@ export async function createSchedule(input: {
 export async function listSchedules(connectionId: string) {
   return db.select().from(scheduledQueries).where(eq(scheduledQueries.connectionId, connectionId));
 }
+
+/** Enable/disable a schedule. Reloads the cron registry — node-cron tasks are
+ *  registered from DB state, so a change without reload would not take effect. */
+export async function setScheduleEnabled(scheduleId: string, isEnabled: boolean) {
+  await db.update(scheduledQueries).set({ isEnabled }).where(eq(scheduledQueries.id, scheduleId));
+  await loadSchedules();
+}
+
+/** Delete a schedule. Reload matters here most: a deleted row left in the cron
+ *  registry would keep firing until restart. */
+export async function deleteSchedule(scheduleId: string) {
+  await db.delete(scheduledQueries).where(eq(scheduledQueries.id, scheduleId));
+  await loadSchedules();
+}

@@ -114,6 +114,7 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
             {t}{t === 'inbox' && suggestions.length > 0 ? ` (${suggestions.length})` : ''}
           </button>
         ))}
+        <Link href={`/db/${id}/context/eval`} className="px-3 py-2 text-sm text-neutral-500 hover:text-blue-600">eval</Link>
       </div>
       {msg && <p className="mb-2 text-xs text-neutral-500">{msg}</p>}
 

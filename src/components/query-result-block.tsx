@@ -115,6 +115,23 @@ export function QueryResultBlock({
     setSaveMsg(data.widgetId ? `Pinned to "${dashName}" ✓` : `pin failed: ${data.error ?? 'error'}`);
   }
 
+  /** Schedule the executed SQL as a recurring job (daily by default; edit in
+   *  the Automations tab). Goes through the schedules API — cron validated and
+   *  webhook SSRF-vetted server-side. */
+  async function schedule() {
+    if (!lastExecutedSql) return;
+    const name = prompt('Schedule name:', 'Scheduled query');
+    if (!name) return;
+    const cronExpr = prompt('Cron (5 fields — e.g. "0 7 * * *" = daily 07:00):', '0 7 * * *');
+    if (!cronExpr) return;
+    const r = await fetch(`/api/connections/${connectionId}/schedules`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'create', name, mode: 'sql', sql: lastExecutedSql, cron: cronExpr }),
+    });
+    const d = await r.json();
+    setSaveMsg(r.ok ? `Scheduled "${name}" ✓ — manage in Automations` : `schedule failed: ${d.error ?? 'error'}`);
+  }
+
   return (
     <div className="mt-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800">
       <div className="mb-1 font-medium text-neutral-500">SQL</div>
@@ -134,6 +151,7 @@ export function QueryResultBlock({
             <button onClick={saveVerified} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save as verified query</button>
             <button onClick={bookmark} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⭐ Bookmark</button>
             <button onClick={pin} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">📌 Pin to dashboard</button>
+            <button onClick={schedule} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⏰ Schedule</button>
           </>
         )}
         {saveMsg && <span className="text-green-600">{saveMsg}</span>}
