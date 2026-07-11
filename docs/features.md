@@ -6,6 +6,8 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 
 ## What works today
 
+**Layout:** each connection is a workspace at `/db/<id>` (Chat · Schema · Context · Automations — old URLs redirect); global nav is **Connections · Library · Settings**. Library merges dashboards/reports/notebooks into one filterable list. Settings hosts the pluggable **LLM provider** (OpenRouter / OpenAI / Anthropic / Gemini — key stored encrypted, env fallback) and MCP API keys. Inside chat: a Schema-peek tab in the results panel, a pending-suggestions badge on Context, a ⏰ Schedule button on every executed result.
+
 ### Chat
 - **Chat with a database** — the model explores the schema via tools and runs read-only SQL to answer (agentic loop, not a fixed RAG pipeline). Editable SQL + re-run + CSV export + chart view + copy SQL / copy result.
 - **Follow-up suggestions** — after each answer the assistant proposes 2-3 next questions (grounded in the schema + curated context) as one-click chips; toggle off if unwanted. An empty chat shows starter questions drawn from your verified queries.
