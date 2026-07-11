@@ -4,8 +4,9 @@
  *
  * Resolution order:
  *   1. Settings saved in the app (Settings page → app_settings, key encrypted)
- *   2. env fallback: OPENROUTER_API_KEY + OPENROUTER_MODEL — a fresh install with
- *      only .env configured behaves exactly as before this service existed.
+ *   2. env fallback, selected by LLM_PROVIDER (default openrouter): the matching
+ *      *_API_KEY + *_MODEL. A fresh install with only OPENROUTER_* in .env behaves
+ *      exactly as before this service existed.
  */
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -13,8 +14,6 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel } from 'ai';
 import { getLlmSettings, type LlmProviderId } from './settings-service';
-
-const ENV_DEFAULT_MODEL = 'qwen/qwen3.7-max';
 
 function buildModel(provider: LlmProviderId, apiKey: string, model: string): LanguageModel {
   switch (provider) {
@@ -25,12 +24,28 @@ function buildModel(provider: LlmProviderId, apiKey: string, model: string): Lan
   }
 }
 
+/** Per-provider env fallback (key + model + a sensible default model name). */
+const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; defaultModel: string }> = {
+  openrouter: { keyVar: 'OPENROUTER_API_KEY', modelVar: 'OPENROUTER_MODEL', defaultModel: 'qwen/qwen3.7-max' },
+  openai: { keyVar: 'OPENAI_API_KEY', modelVar: 'OPENAI_MODEL', defaultModel: 'gpt-5.2' },
+  anthropic: { keyVar: 'ANTHROPIC_API_KEY', modelVar: 'ANTHROPIC_MODEL', defaultModel: 'claude-sonnet-5' },
+  google: { keyVar: 'GOOGLE_GENERATIVE_AI_API_KEY', modelVar: 'GOOGLE_MODEL', defaultModel: 'gemini-3-flash' },
+};
+
+function isProvider(v: string | undefined): v is LlmProviderId {
+  return v === 'openrouter' || v === 'openai' || v === 'anthropic' || v === 'google';
+}
+
 export async function getModel(): Promise<LanguageModel> {
   const settings = await getLlmSettings();
   if (settings) return buildModel(settings.provider, settings.apiKey, settings.model);
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('No LLM configured — set one in Settings or provide OPENROUTER_API_KEY');
-  return buildModel('openrouter', apiKey, process.env.OPENROUTER_MODEL ?? ENV_DEFAULT_MODEL);
+
+  // env fallback — LLM_PROVIDER selects which provider's *_API_KEY / *_MODEL to use.
+  const provider: LlmProviderId = isProvider(process.env.LLM_PROVIDER) ? process.env.LLM_PROVIDER : 'openrouter';
+  const cfg = ENV_FALLBACK[provider];
+  const apiKey = process.env[cfg.keyVar];
+  if (!apiKey) throw new Error(`No LLM configured — set one in Settings or provide ${cfg.keyVar}`);
+  return buildModel(provider, apiKey, process.env[cfg.modelVar] ?? cfg.defaultModel);
 }
 
 /** Build a model from an UNSAVED config — used by the Settings "Test" button. */
