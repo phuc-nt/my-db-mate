@@ -134,7 +134,7 @@ export default function ConnectionsPage() {
     const res = await fetch('/api/demo', { method: 'POST' });
     const d = await res.json();
     if (!res.ok) { setMsg(`Error: ${d.error}`); setBusy(false); return; }
-    window.location.href = `/chat/${d.id}`;
+    window.location.href = `/db/${d.id}/chat`;
   }
 
   async function remove(id: string) {
@@ -264,9 +264,9 @@ export default function ConnectionsPage() {
               </span>
             </div>
             <div className="flex gap-2">
-              <Link href={`/chat/${c.id}`} className="rounded bg-neutral-800 px-3 py-1 text-sm text-white dark:bg-neutral-200 dark:text-neutral-900">Chat</Link>
-              <Link href={`/browse/${c.id}`} className="rounded border px-3 py-1 text-sm">Browse</Link>
-              <Link href={`/context-studio/${c.id}`} className="rounded border px-3 py-1 text-sm">Context</Link>
+              <Link href={`/db/${c.id}/chat`} className="rounded bg-neutral-800 px-3 py-1 text-sm text-white dark:bg-neutral-200 dark:text-neutral-900">Chat</Link>
+              <Link href={`/db/${c.id}/schema`} className="rounded border px-3 py-1 text-sm">Browse</Link>
+              <Link href={`/db/${c.id}/context`} className="rounded border px-3 py-1 text-sm">Context</Link>
               <button onClick={() => editConn(c)} className="rounded border px-3 py-1 text-sm">Edit</button>
               <button onClick={() => remove(c.id)} className="rounded border px-3 py-1 text-sm">Delete</button>
             </div>
