@@ -76,7 +76,7 @@ Mở `/connections`, bấm thêm connection:
 Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh section: **💬 Chat · 🗂 Schema · 📚 Context · ⏰ Automations** (link cũ Chat/Browse/Context tự chuyển hướng). Nav trên cùng gọn còn: **Connections · Library · ⚙ Settings**.
 
 - **Library** gộp Dashboards + Reports + Notebooks vào một danh sách, lọc theo loại/connection, tạo mới ngay tại đó.
-- **Settings** (global): chọn **LLM provider** — OpenRouter / OpenAI / Anthropic (Claude) / Google (Gemini) — dán API key (lưu mã hóa, có nút **Test** trước khi Save; để trống thì dùng `OPENROUTER_API_KEY` trong env như cũ) + quản lý **API keys cho MCP**.
+- **Settings** (global): chọn **LLM provider** — OpenRouter / OpenAI / Anthropic (Claude) / Google (Gemini) — dán API key (lưu mã hóa, có nút **Test** trước khi Save) + quản lý **API keys cho MCP**. Nhập **model ID chính xác** mà tài khoản bạn truy cập được (tên model đổi theo thời gian và theo tier). Không cấu hình gì ở đây thì dùng env fallback: `LLM_PROVIDER` + `<PROVIDER>_API_KEY`/`<PROVIDER>_MODEL` (mặc định `OPENROUTER_API_KEY`).
 - Trong Chat: panel kết quả có tab **🗂 Schema** để xem bảng/cột/sample không rời hội thoại; khi có gợi ý context chờ duyệt sẽ hiện **badge trên mục Context** + chip nhắc sau mỗi lượt; nút **⏰ Schedule** trên mỗi kết quả để đặt lịch chạy định kỳ (quản lý trong Automations).
 - **Schema → Saved**: bookmark và verified query nằm cạnh nhau; bấm **Promote to verified** để nâng bookmark thành ví dụ few-shot cho agent.
 - **Schema → Health**: mỗi cảnh báo data có nút **Ask agent →** mở chat với câu hỏi điền sẵn.

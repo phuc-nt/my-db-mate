@@ -85,6 +85,7 @@ export function LlmProviderForm() {
           value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
         <input className="w-full rounded border p-2 dark:bg-neutral-900" placeholder={`Model — e.g. ${ph}`}
           value={model} onChange={(e) => setModel(e.target.value)} />
+        <p className="text-xs text-neutral-400">Use an exact model ID your account can access (the placeholder is only an example). Hit Test to confirm before saving.</p>
         <div className="flex items-center gap-2">
           <button onClick={test} disabled={busy || !model.trim()} className="rounded border px-3 py-1 text-sm disabled:opacity-50">Test</button>
           <button onClick={save} disabled={busy || !model.trim()} className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50">Save</button>
