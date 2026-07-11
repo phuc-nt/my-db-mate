@@ -15,6 +15,7 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
+import { connections } from '../db/schema';
 import { notebooks } from '../db/notebook-schema';
 import { getMessages } from './session-service';
 import { touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
@@ -98,7 +99,11 @@ export async function createNotebookFromSession(connectionId: string, sessionId:
 
 /** List notebooks — all of them, or one connection's when connectionId is given. */
 export async function listNotebooks(connectionId?: string) {
-  const base = db.select({ id: notebooks.id, title: notebooks.title, shareSlug: notebooks.shareSlug, createdAt: notebooks.createdAt }).from(notebooks);
+  const base = db.select({
+    id: notebooks.id, title: notebooks.title, shareSlug: notebooks.shareSlug,
+    createdAt: notebooks.createdAt, connectionId: notebooks.connectionId,
+    connectionName: connections.name,
+  }).from(notebooks).leftJoin(connections, eq(connections.id, notebooks.connectionId));
   const q = connectionId ? base.where(eq(notebooks.connectionId, connectionId)) : base;
   return q.orderBy(desc(notebooks.createdAt));
 }

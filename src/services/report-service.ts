@@ -23,6 +23,7 @@ import { and, asc, desc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { reports, reportSources, reportVersions } from '../db/report-schema';
 import { dashboardWidgets } from '../db/dashboard-schema';
+import { connections } from '../db/schema';
 import { verifiedQueries } from '../db/context-schema';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { validateChartSpec } from './chart-spec-service';
@@ -40,7 +41,23 @@ function model() {
 }
 
 export async function listReports() {
-  return db.select().from(reports).orderBy(asc(reports.createdAt));
+  const rows = await db.select().from(reports).orderBy(asc(reports.createdAt));
+  // Derived for the Library: connections behind each report's sources. Sources are
+  // widgets OR verified queries, so both paths are joined and merged.
+  const widgetPairs = await db.select({ reportId: reportSources.reportId, name: connections.name })
+    .from(reportSources)
+    .innerJoin(dashboardWidgets, eq(dashboardWidgets.id, reportSources.widgetId))
+    .innerJoin(connections, eq(connections.id, dashboardWidgets.connectionId));
+  const vqPairs = await db.select({ reportId: reportSources.reportId, name: connections.name })
+    .from(reportSources)
+    .innerJoin(verifiedQueries, eq(verifiedQueries.id, reportSources.verifiedQueryId))
+    .innerJoin(connections, eq(connections.id, verifiedQueries.connectionId));
+  const byReport = new Map<string, Set<string>>();
+  for (const p of [...widgetPairs, ...vqPairs]) {
+    if (!byReport.has(p.reportId)) byReport.set(p.reportId, new Set());
+    byReport.get(p.reportId)!.add(p.name);
+  }
+  return rows.map((r) => ({ ...r, connectionNames: [...(byReport.get(r.id) ?? [])] }));
 }
 
 export async function createReport(title: string, instruction: string | undefined, sources: { widgetId?: string; verifiedQueryId?: string }[]) {

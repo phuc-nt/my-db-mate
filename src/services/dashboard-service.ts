@@ -14,6 +14,7 @@ import { generateShareSlug } from '../lib/share';
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
+import { connections } from '../db/schema';
 import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { validateSql } from './safety/safety-service';
@@ -25,7 +26,18 @@ import type { Dialect } from './connection-providers/provider-interface';
 const LAST_RESULT_ROW_CAP = 500;
 
 export async function listDashboards() {
-  return db.select().from(dashboards).orderBy(asc(dashboards.createdAt));
+  const rows = await db.select().from(dashboards).orderBy(asc(dashboards.createdAt));
+  // Derived for the Library: which connections feed each dashboard (via widgets).
+  // A dashboard has no connection column — widgets do, and may span several DBs.
+  const pairs = await db.select({ dashboardId: dashboardWidgets.dashboardId, name: connections.name })
+    .from(dashboardWidgets)
+    .innerJoin(connections, eq(connections.id, dashboardWidgets.connectionId));
+  const byDash = new Map<string, Set<string>>();
+  for (const p of pairs) {
+    if (!byDash.has(p.dashboardId)) byDash.set(p.dashboardId, new Set());
+    byDash.get(p.dashboardId)!.add(p.name);
+  }
+  return rows.map((r) => ({ ...r, connectionNames: [...(byDash.get(r.id) ?? [])] }));
 }
 
 export async function createDashboard(name: string) {
