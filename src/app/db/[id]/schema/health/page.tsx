@@ -60,9 +60,13 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
           ) : (
             <ul className="space-y-1 text-sm">
               {health.flags.map((f, i) => (
-                <li key={i} className="flex items-center justify-between rounded border border-neutral-200 p-2 dark:border-neutral-800">
+                <li key={i} className="flex items-center justify-between gap-2 rounded border border-neutral-200 p-2 dark:border-neutral-800">
                   <span className="font-mono text-xs">{f.tableName}.{f.columnName}</span>
-                  <span className="text-xs">{ISSUE_LABEL[f.issue] ?? f.issue} · {f.detail}</span>
+                  <span className="min-w-0 flex-1 text-right text-xs">{ISSUE_LABEL[f.issue] ?? f.issue} · {f.detail}</span>
+                  <Link className="shrink-0 text-xs text-blue-600 hover:underline"
+                    href={`/db/${id}/chat?q=${encodeURIComponent(`Column ${f.columnName} in table ${f.tableName} was flagged: ${ISSUE_LABEL[f.issue] ?? f.issue} (${f.detail}). Investigate whether this is a data problem and what it means.`)}`}>
+                    Ask agent →
+                  </Link>
                 </li>
               ))}
             </ul>

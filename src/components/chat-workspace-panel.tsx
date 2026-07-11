@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { QueryResultBlock } from './query-result-block';
+import { SchemaPeek } from './schema-peek';
 import type { ExportDialect } from '../lib/export-formats';
 import type { ChatArtifact } from './chat-artifact-chip';
 
@@ -24,26 +26,42 @@ export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, conn
   onAnalyzeDeeper: (sql: string) => void;
   onConfirmedRun?: (label: string, info: { sql: string; columns: string[]; rows: unknown[][] }) => void;
 }) {
-  if (artifacts.length === 0) {
+  // Schema peek (M1): browse tables/columns/samples without leaving the chat.
+  // Hooks must run before any early return.
+  const [showSchema, setShowSchema] = useState(false);
+
+  if (artifacts.length === 0 && !showSchema) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-neutral-200 text-sm text-neutral-400 dark:border-neutral-800">
-        Query results will appear here.
+      <div className="flex h-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-200 text-sm text-neutral-400 dark:border-neutral-800">
+        <span>Query results will appear here.</span>
+        <button onClick={() => setShowSchema(true)} className="text-xs text-blue-600 hover:underline" data-testid="schema-peek-toggle">🗂 Peek at the schema</button>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-lg border border-neutral-200 dark:border-neutral-800">
-      {/* Horizontal tab strip — replaced by the vertical session rail at 2xl. */}
-      <div className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 py-1.5 2xl:hidden dark:border-neutral-800">
+      {/* Tab strip: artifacts (hidden at 2xl — session rail takes over) + the
+          always-available Schema peek toggle. */}
+      <div className="flex items-center gap-1 border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto 2xl:hidden">
           {artifacts.map((a) => (
-            <button key={a.toolCallId} onClick={() => onSelect(a.toolCallId)}
-              className={`shrink-0 rounded px-2 py-0.5 text-xs ${selected === a.toolCallId ? 'bg-blue-600 text-white' : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}>
+            <button key={a.toolCallId} onClick={() => { setShowSchema(false); onSelect(a.toolCallId); }}
+              className={`shrink-0 rounded px-2 py-0.5 text-xs ${!showSchema && selected === a.toolCallId ? 'bg-blue-600 text-white' : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}>
               Q{a.index}{unseen.has(a.toolCallId) && <span className="ml-1 text-blue-400">●</span>}
             </button>
           ))}
+        </div>
+        <div className="ml-auto hidden 2xl:block" />
+        <button onClick={() => setShowSchema(!showSchema)} data-testid="schema-peek-toggle"
+          className={`shrink-0 rounded px-2 py-0.5 text-xs ${showSchema ? 'bg-blue-600 text-white' : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}>
+          🗂 Schema
+        </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className={`min-h-0 flex-1 overflow-y-auto p-3 ${showSchema ? '' : 'hidden'}`}>
+        {showSchema && <SchemaPeek connectionId={connectionId} />}
+      </div>
+      <div className={`min-h-0 flex-1 overflow-y-auto p-3 ${showSchema ? 'hidden' : ''}`}>
         {artifacts.map((a) => {
           const ok = !a.blocked && !a.error && a.columns;
           return (

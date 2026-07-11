@@ -3,6 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import { use, useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -21,6 +22,17 @@ interface RunSqlPart {
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: connectionId } = use(params);
   const [input, setInput] = useState('');
+  const router = useRouter();
+  // Deep-link prefill (?q=…): fill the input ONCE on mount, never auto-send, and
+  // strip the param so a reload doesn't re-fill over what the user typed since.
+  // window.location (not useSearchParams) keeps this client page Suspense-free.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q');
+    if (!q) return;
+    setInput(q);
+    router.replace(`/db/${connectionId}/chat`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [investigate, setInvestigate] = useState(false);
   const [sessionId, setSessionId] = useState<string>();
   const [distillMsg, setDistillMsg] = useState('');
@@ -39,6 +51,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       .then((r) => r.json()).then((d) => setStarters(Array.isArray(d.questions) ? d.questions : []))
       .catch(() => {});
   }, [connectionId]);
+
+  // Knowledge-Inbox nudge (M2): after a completed turn, surface pending
+  // suggestions as a one-per-session chip near the input.
+  const [inboxCount, setInboxCount] = useState(0);
+  const [inboxChipDismissed, setInboxChipDismissed] = useState(false);
+  const inboxMsgIdRef = useRef<string | null>(null);
 
   // Follow-up question suggestions after a completed turn.
   const [followups, setFollowups] = useState<string[]>([]);
@@ -150,6 +168,21 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       .catch(() => { /* aborted or failed — leave chips empty */ });
   }, [status, messages, followupsOn, connectionId, artifacts]);
 
+  // M2: refresh the pending-suggestions count once per completed turn.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    const lastPart = last.parts[last.parts.length - 1];
+    if (lastPart?.type !== 'text') return;
+    if (inboxMsgIdRef.current === last.id) return;
+    inboxMsgIdRef.current = last.id;
+    fetch(`/api/connections/${connectionId}/suggestions`)
+      .then((r) => r.json())
+      .then((d) => setInboxCount(Array.isArray(d) ? d.length : 0))
+      .catch(() => {});
+  }, [status, messages, connectionId]);
+
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' = 'chat') {
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
@@ -192,7 +225,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const analyzeDeeper = (sql: string) =>
     send(`Analyze this result more deeply — trends, comparisons, and anomalies. The query was: ${sql}`, 'investigate');
 
+  const okRunCount = artifacts.filter((a) => a.columns && !a.blocked && !a.error).length;
+  const [distilledThisSession, setDistilledThisSession] = useState(false);
+  // M3: after 3 successful queries, the quiet header button grows a dot + count so
+  // the "teach the context layer" loop is visible right when there is material.
+  const distillHot = okRunCount >= 3 && !distilledThisSession;
+
   async function distill() {
+    setDistilledThisSession(true);
     if (!sessionId) return;
     setDistillMsg('Distilling…');
     const r = await fetch(`/api/sessions/${sessionId}/distill`, { method: 'POST' });
@@ -226,7 +266,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             {distillMsg && <span className="text-xs text-neutral-500">{distillMsg}</span>}
             <button onClick={toggleFollowups} className={followupsOn ? 'text-blue-600' : 'text-neutral-400'} title="Suggest follow-up questions after each answer">Follow-ups {followupsOn ? 'on' : 'off'}</button>
             <button onClick={saveNotebook} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Save as notebook</button>
-            <button onClick={distill} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Distill to context</button>
+            <button onClick={distill} disabled={!sessionId || messages.length === 0}
+              className={distillHot ? 'font-medium text-blue-600' : 'text-blue-600 disabled:opacity-40'}>
+              {distillHot ? `● Distill what we learned (${okRunCount})` : 'Distill to context'}</button>
             <Link href={`/db/${connectionId}/schema`} className="text-blue-600">Browse</Link>
             <Link href={`/db/${connectionId}/context`} className="text-blue-600">Context</Link>
           </div>
@@ -356,6 +398,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* Follow-up suggestion chips — click to ask next. */}
+        {inboxCount > 0 && !inboxChipDismissed && !busy && (
+          <div className="mb-1 flex items-center gap-2 text-xs" data-testid="inbox-chip">
+            <Link href={`/db/${connectionId}/context`} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 hover:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300">
+              💡 {inboxCount} context suggestion{inboxCount === 1 ? '' : 's'} waiting for review →
+            </Link>
+            <button onClick={() => setInboxChipDismissed(true)} className="text-neutral-400 hover:text-neutral-600" title="Dismiss">✕</button>
+          </div>
+        )}
         {followupsOn && followups.length > 0 && !busy && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {followups.map((q, i) => (

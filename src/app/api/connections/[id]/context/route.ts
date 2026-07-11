@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../../../../db/client';
 import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '../../../../../db/context-schema';
 import {
@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     db.select().from(columnAnnotations).where(eq(columnAnnotations.connectionId, id)),
     db.select({ id: glossaryTerms.id, term: glossaryTerms.term, definition: glossaryTerms.definition, sqlMapping: glossaryTerms.sqlMapping, synonyms: glossaryTerms.synonyms }).from(glossaryTerms).where(eq(glossaryTerms.connectionId, id)),
     db.select().from(manualRelationships).where(eq(manualRelationships.connectionId, id)),
-    db.select({ id: verifiedQueries.id, question: verifiedQueries.question, sql: verifiedQueries.sql, isDisabled: verifiedQueries.isDisabled }).from(verifiedQueries).where(eq(verifiedQueries.connectionId, id)),
+    db.select({ id: verifiedQueries.id, question: verifiedQueries.question, sql: verifiedQueries.sql, isDisabled: verifiedQueries.isDisabled }).from(verifiedQueries).where(and(eq(verifiedQueries.connectionId, id), eq(verifiedQueries.isBookmark, false))),
   ]);
   return NextResponse.json({ tables, columns, glossary, relationships, verified });
 }

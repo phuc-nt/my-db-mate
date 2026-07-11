@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -14,8 +15,17 @@ const ITEMS = [
   { seg: 'automations', label: '⏰ Automations' },
 ];
 
-export function WorkspaceRail({ id, contextBadge }: { id: string; contextBadge?: number }) {
+export function WorkspaceRail({ id }: { id: string }) {
   const pathname = usePathname();
+  // Pending Knowledge-Inbox count. Client-side on purpose: a server layout would
+  // not re-render on child navigation, so a server-fetched badge goes stale.
+  const [contextBadge, setContextBadge] = useState(0);
+  useEffect(() => {
+    fetch(`/api/connections/${id}/suggestions`)
+      .then((r) => r.json())
+      .then((d) => setContextBadge(Array.isArray(d) ? d.length : 0))
+      .catch(() => {});
+  }, [id, pathname]);
   return (
     <div className="flex items-center gap-1 overflow-x-auto">
       {ITEMS.map((it) => {
