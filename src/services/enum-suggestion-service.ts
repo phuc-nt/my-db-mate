@@ -11,11 +11,11 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { knowledgeSuggestions, columnAnnotations } from '../db/context-schema';
 import { profileColumn } from './profiling-service';
+import { getModel } from './llm-service';
 
 const DEFAULT_MAX_COLUMNS = 60;
 const MIN_ENUM_DISTINCT = 2;
@@ -52,11 +52,6 @@ function valuesLookLikeIds(values: unknown[]): boolean {
   return idCount >= Math.ceil(nonEmpty.length * 0.6);
 }
 
-function model() {
-  const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
-
 interface Candidate { tableName: string; columnName: string; distinctCount: number; values: unknown[] }
 
 /** Draft meanings for ALL enum candidates in ONE batched LLM call (not per-column —
@@ -66,7 +61,7 @@ async function draftAllMeanings(cands: Candidate[]): Promise<Record<string, Reco
   try {
     const spec = cands.map((c) => `${c.tableName}.${c.columnName}: ${JSON.stringify(c.values)}`).join('\n');
     const { text } = await generateText({
-      model: model(),
+      model: await getModel(),
       system:
         'You draft SHORT candidate meanings for enum code values, as hints a human will verify. ' +
         'Say "unknown" if you cannot reasonably guess. Return strict JSON keyed by "table.column": ' +

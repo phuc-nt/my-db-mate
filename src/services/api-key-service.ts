@@ -32,7 +32,7 @@ export async function resolveApiKey(token: string) {
 
 export async function listApiKeys() {
   // Never returns keyHash.
-  return db.select({ id: apiKeys.id, name: apiKeys.name, connectionId: apiKeys.connectionId, maxTier: apiKeys.maxTier, lastUsedAt: apiKeys.lastUsedAt, revokedAt: apiKeys.revokedAt }).from(apiKeys);
+  return db.select({ id: apiKeys.id, name: apiKeys.name, connectionId: apiKeys.connectionId, maxTier: apiKeys.maxTier, lastUsedAt: apiKeys.lastUsedAt, revokedAt: apiKeys.revokedAt, createdAt: apiKeys.createdAt }).from(apiKeys);
 }
 
 export async function revokeApiKey(id: string) {

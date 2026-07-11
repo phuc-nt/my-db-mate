@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const LINKS = [
   { href: '/connections', label: 'Connections' },
   { href: '/library', label: 'Library' },
+  { href: '/settings', label: '⚙ Settings' },
 ];
 
 /** Slim global top bar. Hidden on share pages — anonymous viewers get no app chrome. */

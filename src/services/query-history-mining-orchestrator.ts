@@ -5,7 +5,6 @@
  * stays unit-testable without a database).
  */
 import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import { knowledgeSuggestions, verifiedQueries } from '../db/context-schema';
@@ -13,14 +12,10 @@ import { schemaTables, schemaForeignKeys } from '../db/schema';
 import { getProvider } from './connection-service';
 import { analyzeQueries, parametrizeLiterals, parsePastedLog, fetchQueryLog } from './query-history-mining-service';
 import { normalizeSqlForDedup } from './safety/safety-service';
+import { getModel } from './llm-service';
 
 const VERIFIED_CAP = 5;   // human must review each NL↔SQL pair — keep it small
 const RELATIONSHIP_CAP = 20;
-
-function llm() {
-  const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
 
 /** Ask the model for one NL question per query, matched back by id (never by
  *  array position — a reordered/short response would mislabel a query, poisoning
@@ -30,7 +25,7 @@ async function generateQuestions(items: { id: number; sql: string }[]): Promise<
   if (items.length === 0) return out;
   const list = items.map((it) => `#${it.id}: ${it.sql}`).join('\n');
   const { text } = await generateText({
-    model: llm(),
+    model: await getModel(),
     prompt:
       `For each SQL query below, write ONE short natural-language question a business user might ask that this query answers. ` +
       `Return ONLY lines in the exact form "id|question", one per query, using the given id. No preamble.\n\n${list}`,

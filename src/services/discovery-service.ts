@@ -17,19 +17,14 @@
  * and FK-less relationship candidates — still inbox-gated so a human confirms.
  */
 import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { knowledgeSuggestions } from '../db/context-schema';
+import { getModel } from './llm-service';
 
 const DEFAULT_MAX_TABLES = 40;
-
-function model() {
-  const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
 
 const DISCOVERY = z.object({
   tables: z.array(z.object({
@@ -63,7 +58,7 @@ export async function runDiscovery(connectionId: string, opts?: { maxTables?: nu
   let parsed: z.infer<typeof DISCOVERY>;
   try {
     const { text } = await generateText({
-      model: model(),
+      model: await getModel(),
       system:
         'You draft DB documentation from a schema. Return STRICT JSON: ' +
         '{"tables":[{"tableName","description","businessAlias"}],"relationships":[{"fromTable","fromColumn","toTable","toColumn"}]}. ' +

@@ -5,7 +5,6 @@
  * context store until a DBA accepts it.
  */
 import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
@@ -14,11 +13,7 @@ import { getMessages } from './session-service';
 import { chatSessions, queryRuns } from '../db/schema';
 import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
 import { normalizeSqlForDedup } from './safety/safety-service';
-
-function model() {
-  const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
+import { getModel } from './llm-service';
 
 // Lenient: models return confidence as number OR enum, and alias/synonym fields
 // as string OR array. Normalize downstream rather than reject the whole batch.
@@ -50,7 +45,7 @@ export async function mineSession(sessionId: string): Promise<number> {
   const successfulSql = runs.map((r) => r.sql).join('\n---\n');
 
   const { text } = await generateText({
-    model: model(),
+    model: await getModel(),
     system:
       'You extract reusable DB knowledge from a chat transcript. Propose ONLY well-supported items. ' +
       'Return STRICT JSON matching: {"suggestions":[{"kind","reason","confidence","payload"}]}. ' +

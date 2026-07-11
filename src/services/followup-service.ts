@@ -8,16 +8,9 @@
  * and the schema summary — never raw result-set cell values.
  */
 import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { getSchemaSummary } from './schema-sync-service';
 import { getRelevantContext, renderContextForPrompt } from './context-service';
-
-function model() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY missing');
-  const openrouter = createOpenRouter({ apiKey });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
+import { getModel } from './llm-service';
 
 /** Propose up to 3 follow-up questions grounded in the schema + curated context.
  *  `resultColumns` are column NAMES only (no cell values). */
@@ -33,7 +26,7 @@ export async function generateFollowups(
     : '';
 
   const { text } = await generateText({
-    model: model(),
+    model: await getModel(),
     prompt:
       `You suggest follow-up questions for a database chat assistant.\n` +
       `The user just asked: "${question}"${cols}\n\n` +

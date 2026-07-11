@@ -7,7 +7,6 @@
  * Error-feedback loop: a failed/blocked execution returns its reason as the tool
  * result, letting the model reason about a fix (bounded by stepCountIs).
  */
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { streamText, tool, stepCountIs, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -22,6 +21,7 @@ import { getRelevantContext, renderContextForPrompt, listGlossary } from './cont
 import { getPrunedSchemaSummary } from './schema-pruning-service';
 import { profileColumn } from './profiling-service';
 import { detectAnomalies } from './anomaly-service';
+import { getModel } from './llm-service';
 
 export type AgentMode = 'chat' | 'investigate';
 
@@ -33,13 +33,6 @@ const MAX_STEPS_INVESTIGATE = Number(process.env.INVESTIGATE_MAX_STEPS ?? 24);
 const MAX_SQL_PER_INVESTIGATION = Number(process.env.INVESTIGATE_MAX_SQL ?? 30);
 // Self-repair: how many consecutive failed run_sql attempts before we stop retrying.
 const MAX_CONSECUTIVE_SQL_FAILURES = 3;
-
-function model() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY missing');
-  const openrouter = createOpenRouter({ apiKey });
-  return openrouter(process.env.OPENROUTER_MODEL ?? 'qwen/qwen3.7-max');
-}
 
 const SYSTEM = (schema: string, dialect: string) =>
   `You are My DB Mate, a careful data assistant for a ${dialect} database.
@@ -281,7 +274,7 @@ export async function streamAgentAnswer(params: {
     (contextBlock ? `\n\n## Curated context for this database\n${contextBlock}` : '');
 
   return streamText({
-    model: model(),
+    model: await getModel(),
     system,
     messages,
     tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect),
