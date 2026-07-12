@@ -66,6 +66,9 @@ export function QueryResultBlock({
   const feedbackIdRef = useRef<string | null>(null);
   const [teachFixReady, setTeachFixReady] = useState(false);
   const [teachSaveOpen, setTeachSaveOpen] = useState(false);
+  // Multi-candidate (confirm path only): one alternative formulation + its risk.
+  const [alternative, setAlternative] = useState<{ sql: string; risk: { tier: string; reason: string } } | null>(null);
+  const [chosenSql, setChosenSql] = useState<'original' | 'alternative'>('original');
   useEffect(() => {
     setSqlShown(localStorage.getItem(`mdm.sqlDisplay.${connectionId}`) !== 'on-demand');
   }, [connectionId]);
@@ -93,7 +96,18 @@ export function QueryResultBlock({
       });
       const data = await res.json();
       if (data.status === 'blocked') { setBlocked(data.reason); setResult(undefined); }
-      else if (data.status === 'needs_confirmation') { setConfirmRisk(data.risk); setResult(undefined); }
+      else if (data.status === 'needs_confirmation') {
+        setConfirmRisk(data.risk);
+        setResult(undefined);
+        setAlternative(null);
+        setChosenSql('original');
+        // Confirm path only: offer ONE differently-formulated candidate with its
+        // own risk so the user can pick. Silent fallback on null.
+        fetch(`/api/connections/${connectionId}/alternative-sql`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sql: runSql, question, riskReason: data.risk?.reason }),
+        }).then((r) => r.json()).then((d) => setAlternative(d.alternative ?? null)).catch(() => {});
+      }
       else if (data.status === 'error') { setError(data.error); setResult(undefined); }
       else {
         setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql });
@@ -227,7 +241,20 @@ export function QueryResultBlock({
       {confirmRisk && (
         <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           <div>⚠ {confirmRisk.tier}-risk query: {confirmRisk.reason}</div>
-          <button onClick={() => rerun(true)} disabled={busy} className="mt-1 rounded bg-amber-600 px-3 py-1 text-white">Confirm & run anyway</button>
+          {alternative && (
+            <div className="mt-1 space-y-1" data-testid="candidate-picker">
+              <label className="flex items-start gap-1">
+                <input type="radio" name="cand" checked={chosenSql === 'original'} onChange={() => setChosenSql('original')} />
+                <span><b>Original</b> ({confirmRisk.tier}: {confirmRisk.reason})<pre className="mt-0.5 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">{sql}</pre></span>
+              </label>
+              <label className="flex items-start gap-1">
+                <input type="radio" name="cand" checked={chosenSql === 'alternative'} onChange={() => setChosenSql('alternative')} />
+                <span><b>Alternative</b> ({alternative.risk.tier}: {alternative.risk.reason})<pre className="mt-0.5 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">{alternative.sql}</pre></span>
+              </label>
+            </div>
+          )}
+          <button onClick={() => { setAlternative(null); rerun(true, chosenSql === 'alternative' && alternative ? alternative.sql : undefined); }}
+            disabled={busy} className="mt-1 rounded bg-amber-600 px-3 py-1 text-white">Confirm & run {alternative ? 'selected' : 'anyway'}</button>
         </div>
       )}
       {blocked && <p className="mt-1 text-amber-600">Blocked: {blocked}</p>}
