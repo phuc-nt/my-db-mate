@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CopyButton } from './copy-button';
+import { FormModal, type FormModalField } from './form-modal';
 import { ResultTable } from './result-table';
 import type { ExportDialect } from '../lib/export-formats';
 
@@ -47,6 +48,8 @@ export function QueryResultBlock({
   const [lastExecutedSql, setLastExecutedSql] = useState(initialResult?.executedSql);
   const [saveMsg, setSaveMsg] = useState('');
   const [confirmRisk, setConfirmRisk] = useState<{ tier: string; reason: string } | undefined>();
+  // Which save-action dialog is open (replaces the old chained window.prompt flows).
+  const [modal, setModal] = useState<null | 'verified' | 'bookmark' | 'pin' | 'schedule'>(null);
 
   async function rerun(confirmed = false) {
     setBusy(true);
@@ -75,8 +78,7 @@ export function QueryResultBlock({
     setBusy(false);
   }
 
-  async function saveVerified() {
-    const question = prompt('Question this query answers:');
+  async function saveVerified(question: string) {
     if (!question || !lastExecutedSql) return;
     const r = await fetch(`/api/connections/${connectionId}/context`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -86,10 +88,8 @@ export function QueryResultBlock({
   }
 
   /** Bookmark the executed SQL for quick 1-click re-run later. */
-  async function bookmark() {
-    if (!lastExecutedSql) return;
-    const name = prompt('Bookmark name:');
-    if (!name) return;
+  async function bookmark(name: string) {
+    if (!lastExecutedSql || !name) return;
     const r = await fetch(`/api/connections/${connectionId}/bookmarks`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name, sql: lastExecutedSql }),
@@ -98,11 +98,8 @@ export function QueryResultBlock({
   }
 
   /** Pin this executed result to a dashboard (create-or-reuse by name). */
-  async function pin() {
-    if (!lastExecutedSql) return;
-    const dashName = prompt('Pin to which dashboard? (name — created if new)');
-    if (!dashName) return;
-    const title = prompt('Widget title:', 'Result') ?? 'Result';
+  async function pin(dashName: string, title: string) {
+    if (!lastExecutedSql || !dashName) return;
     // Find existing dashboard by name or create one.
     const list = await (await fetch('/api/dashboards')).json();
     let dash = (list as { id: string; name: string }[]).find((d) => d.name === dashName);
@@ -118,12 +115,8 @@ export function QueryResultBlock({
   /** Schedule the executed SQL as a recurring job (daily by default; edit in
    *  the Automations tab). Goes through the schedules API — cron validated and
    *  webhook SSRF-vetted server-side. */
-  async function schedule() {
-    if (!lastExecutedSql) return;
-    const name = prompt('Schedule name:', 'Scheduled query');
-    if (!name) return;
-    const cronExpr = prompt('Cron (5 fields — e.g. "0 7 * * *" = daily 07:00):', '0 7 * * *');
-    if (!cronExpr) return;
+  async function schedule(name: string, cronExpr: string) {
+    if (!lastExecutedSql || !name || !cronExpr) return;
     const r = await fetch(`/api/connections/${connectionId}/schedules`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'create', name, mode: 'sql', sql: lastExecutedSql, cron: cronExpr }),
@@ -148,10 +141,10 @@ export function QueryResultBlock({
         <CopyButton label="Copy SQL" getText={() => sql} />
         {lastExecutedSql && result && (
           <>
-            <button onClick={saveVerified} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save as verified query</button>
-            <button onClick={bookmark} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⭐ Bookmark</button>
-            <button onClick={pin} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">📌 Pin to dashboard</button>
-            <button onClick={schedule} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⏰ Schedule</button>
+            <button onClick={() => setModal('verified')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save as verified query</button>
+            <button onClick={() => setModal('bookmark')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⭐ Bookmark</button>
+            <button onClick={() => setModal('pin')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">📌 Pin to dashboard</button>
+            <button onClick={() => setModal('schedule')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⏰ Schedule</button>
           </>
         )}
         {saveMsg && <span className="text-green-600">{saveMsg}</span>}
@@ -165,6 +158,42 @@ export function QueryResultBlock({
       {blocked && <p className="mt-1 text-amber-600">Blocked: {blocked}</p>}
       {error && <p className="mt-1 text-red-600">Error: {error}</p>}
       {result && <ResultTable columns={result.columns} rows={result.rows} dialect={dialect} />}
+
+      {(() => {
+        const cfg: Record<string, { title: string; submitLabel: string; fields: FormModalField[]; run: (v: Record<string, string>) => void }> = {
+          verified: {
+            title: 'Save as verified query', submitLabel: 'Save',
+            fields: [{ name: 'question', label: 'Question this query answers', required: true, placeholder: 'e.g. Monthly revenue for the last 12 months' }],
+            run: (v) => saveVerified(v.question.trim()),
+          },
+          bookmark: {
+            title: 'Bookmark this query', submitLabel: 'Bookmark',
+            fields: [{ name: 'name', label: 'Bookmark name', required: true }],
+            run: (v) => bookmark(v.name.trim()),
+          },
+          pin: {
+            title: 'Pin to dashboard', submitLabel: 'Pin',
+            fields: [
+              { name: 'dash', label: 'Dashboard (created if new)', required: true },
+              { name: 'title', label: 'Widget title', defaultValue: 'Result', required: true },
+            ],
+            run: (v) => pin(v.dash.trim(), v.title.trim()),
+          },
+          schedule: {
+            title: 'Schedule this query', submitLabel: 'Create schedule',
+            fields: [
+              { name: 'name', label: 'Schedule name', defaultValue: 'Scheduled query', required: true },
+              { name: 'cron', label: 'Cron (5 fields — e.g. 0 7 * * * = daily 07:00)', defaultValue: '0 7 * * *', required: true, mono: true },
+            ],
+            run: (v) => schedule(v.name.trim(), v.cron.trim()),
+          },
+        };
+        const active = modal ? cfg[modal] : null;
+        return active ? (
+          <FormModal open title={active.title} submitLabel={active.submitLabel} fields={active.fields}
+            onSubmit={(v) => { setModal(null); active.run(v); }} onClose={() => setModal(null)} />
+        ) : null;
+      })()}
     </div>
   );
 }

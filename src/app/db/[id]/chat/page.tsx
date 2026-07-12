@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm';
 import { QueryResultBlock } from '../../../../components/query-result-block';
 import { ChatArtifactChip, type ChatArtifact } from '../../../../components/chat-artifact-chip';
 import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat-workspace-panel';
+import { FormModal } from '../../../../components/form-modal';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -240,10 +241,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setDistillMsg(d.created != null ? `${d.created} suggestion(s) added to Context Studio inbox` : `error: ${d.error}`);
   }
 
-  async function saveNotebook() {
-    if (!sessionId) return;
-    const title = prompt('Notebook title:', 'Analysis notebook');
-    if (!title) return;
+  const [notebookModal, setNotebookModal] = useState(false);
+  async function saveNotebook(title: string) {
+    if (!sessionId || !title) return;
     setDistillMsg('Saving notebook…');
     const r = await fetch('/api/notebooks', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -265,7 +265,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           <div className="flex items-center gap-3 text-sm">
             {distillMsg && <span className="text-xs text-neutral-500">{distillMsg}</span>}
             <button onClick={toggleFollowups} className={followupsOn ? 'text-blue-600' : 'text-neutral-400'} title="Suggest follow-up questions after each answer">Follow-ups {followupsOn ? 'on' : 'off'}</button>
-            <button onClick={saveNotebook} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Save as notebook</button>
+            <button onClick={() => setNotebookModal(true)} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Save as notebook</button>
             <button onClick={distill} disabled={!sessionId || messages.length === 0}
               className={distillHot ? 'font-medium text-blue-600' : 'text-blue-600 disabled:opacity-40'}>
               {distillHot ? `● Distill what we learned (${okRunCount})` : 'Distill to context'}</button>
@@ -451,6 +451,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       <div className="hidden h-full min-h-0 2xl:block">
         <ChatSessionRail artifacts={artifacts} selected={selected} onSelect={selectArtifact} unseen={unseen} />
       </div>
+          <FormModal open={notebookModal} title="Save session as notebook" submitLabel="Save"
+        fields={[{ name: 'title', label: 'Notebook title', defaultValue: 'Analysis notebook', required: true }]}
+        onSubmit={(v) => { setNotebookModal(false); saveNotebook(v.title.trim()); }} onClose={() => setNotebookModal(false)} />
     </main>
   );
 }

@@ -3,6 +3,7 @@
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ResultTable } from '../../../../../components/result-table';
+import { FormModal } from '../../../../../components/form-modal';
 
 interface Bookmark { id: string; name: string; sql: string }
 interface Verified { id: string; question: string; sql: string; isDisabled: boolean }
@@ -46,8 +47,8 @@ export default function BookmarksPage({ params }: { params: Promise<{ id: string
   /** Promote a bookmark into a verified query. Goes through the standard create
    *  path (POST context) so the embedding is computed — a flag-flip would leave
    *  the query invisible to retrieval — then removes the bookmark to avoid dupes. */
-  async function promote(b: Bookmark) {
-    const question = prompt('Question this query answers (used for retrieval):', b.name);
+  const [promoting, setPromoting] = useState<Bookmark | null>(null);
+  async function promote(b: Bookmark, question: string) {
     if (!question?.trim()) return;
     const r = await fetch(`/api/connections/${id}/context`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -73,7 +74,7 @@ export default function BookmarksPage({ params }: { params: Promise<{ id: string
               <span className="font-medium">{b.name}</span>
               <div className="flex gap-2 text-xs">
                 <button onClick={() => run(b.id)} className="text-blue-600">Run</button>
-                <button onClick={() => promote(b)} className="text-amber-600" title="Verified queries are retrieved as few-shot examples for the agent">Promote to verified</button>
+                <button onClick={() => setPromoting(b)} className="text-amber-600" title="Verified queries are retrieved as few-shot examples for the agent">Promote to verified</button>
                 <button onClick={() => remove(b.id)} className="text-red-600">Delete</button>
               </div>
             </div>
@@ -103,6 +104,11 @@ export default function BookmarksPage({ params }: { params: Promise<{ id: string
         </div>
       )}
       {result && <ResultTable columns={result.columns} rows={result.rows} dialect={dialect} />}
+          {promoting && (
+        <FormModal open title="Promote bookmark to verified query" submitLabel="Promote"
+          fields={[{ name: 'question', label: 'Question this query answers (used for retrieval)', defaultValue: promoting.name, required: true }]}
+          onSubmit={(v) => { const b = promoting; setPromoting(null); promote(b, v.question.trim()); }} onClose={() => setPromoting(null)} />
+      )}
     </main>
   );
 }
