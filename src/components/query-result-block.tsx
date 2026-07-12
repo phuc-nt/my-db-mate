@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CopyButton } from './copy-button';
 import { FormModal, type FormModalField } from './form-modal';
 import { ResultTable } from './result-table';
@@ -26,6 +26,7 @@ export function QueryResultBlock({
   initialError,
   dialect,
   onConfirmedRun,
+  question,
 }: {
   connectionId: string;
   sessionId?: string;
@@ -37,6 +38,8 @@ export function QueryResultBlock({
   /** Fired after a "Confirm & run anyway" succeeds — the chat page records the
    *  result into the transcript (the agent never sees manual executions). */
   onConfirmedRun?: (info: { sql: string; columns: string[]; rows: unknown[][] }) => void;
+  /** User question that produced this query — teach-flow + save-verified prefill. */
+  question?: string;
 }) {
   const [sql, setSql] = useState(initialSql);
   const [result, setResult] = useState<RunResult | undefined>(initialResult);
@@ -54,6 +57,15 @@ export function QueryResultBlock({
   // connections.config: the edit form rebuilds config from an allowlist and
   // would silently drop extra keys). 'expanded' keeps today's behavior.
   const [sqlShown, setSqlShown] = useState(true);
+  // Teach flow (thumbs-down): log why the answer was wrong, let the user fix the
+  // SQL and rerun, then offer saving the fix as a verified query (the correction
+  // becomes future few-shot material — the whole point of the loop).
+  const [teachOpen, setTeachOpen] = useState(false);
+  // Ref (not state): submitTeach sets it then immediately reruns — state would
+  // still be stale inside that same rerun call.
+  const feedbackIdRef = useRef<string | null>(null);
+  const [teachFixReady, setTeachFixReady] = useState(false);
+  const [teachSaveOpen, setTeachSaveOpen] = useState(false);
   useEffect(() => {
     setSqlShown(localStorage.getItem(`mdm.sqlDisplay.${connectionId}`) !== 'on-demand');
   }, [connectionId]);
@@ -65,7 +77,9 @@ export function QueryResultBlock({
     });
   }
 
-  async function rerun(confirmed = false) {
+  async function rerun(confirmed = false, sqlOverride?: string) {
+    const runSql = sqlOverride ?? sql;
+    if (sqlOverride) setSql(sqlOverride);
     setBusy(true);
     setBlocked(undefined);
     setError(undefined);
@@ -75,7 +89,7 @@ export function QueryResultBlock({
       const res = await fetch(`/api/connections/${connectionId}/execute`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sql, sessionId, confirmed }),
+        body: JSON.stringify({ sql: runSql, sessionId, confirmed }),
       });
       const data = await res.json();
       if (data.status === 'blocked') { setBlocked(data.reason); setResult(undefined); }
@@ -84,7 +98,8 @@ export function QueryResultBlock({
       else {
         setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql });
         setLastExecutedSql(data.executedSql);
-        if (confirmed) onConfirmedRun?.({ sql: data.executedSql ?? sql, columns: data.columns, rows: data.rows });
+        if (feedbackIdRef.current) setTeachFixReady(true);
+        if (confirmed) onConfirmedRun?.({ sql: data.executedSql ?? runSql, columns: data.columns, rows: data.rows });
       }
     } catch (e) {
       setError(String(e));
@@ -139,6 +154,37 @@ export function QueryResultBlock({
     setSaveMsg(r.ok ? `Scheduled "${name}" ✓ — manage in Automations` : `schedule failed: ${d.error ?? 'error'}`);
   }
 
+  async function submitTeach(v: Record<string, string>) {
+    // Log the feedback row first (even if the fixed SQL later fails to run).
+    const r = await fetch(`/api/connections/${connectionId}/feedback`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question: question ?? '(unknown)', sql, reason: v.reason, note: v.note, sessionId }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.id) feedbackIdRef.current = d.id;
+    setTeachFixReady(false);
+    if (v.sql.trim() && v.sql.trim() !== sql.trim()) await rerun(false, v.sql.trim());
+  }
+
+  /** Save the teach-flow fix as a verified query and link it to the feedback row. */
+  async function saveTeachFix(q: string) {
+    if (!lastExecutedSql) return;
+    const r = await fetch(`/api/connections/${connectionId}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'verified_query', question: q, sql: lastExecutedSql }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.id && feedbackIdRef.current) {
+      await fetch(`/api/connections/${connectionId}/feedback`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ feedbackId: feedbackIdRef.current, fixedVerifiedQueryId: d.id }),
+      });
+    }
+    setTeachFixReady(false);
+    feedbackIdRef.current = null;
+    setSaveMsg(r.ok ? 'Fix saved as verified query ✓' : 'save failed');
+  }
+
   return (
     <div className="mt-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800">
       <div className="mb-1 flex items-center justify-between font-medium text-neutral-500">
@@ -168,8 +214,16 @@ export function QueryResultBlock({
             <button onClick={() => setModal('schedule')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⏰ Schedule</button>
           </>
         )}
+        <button onClick={() => setTeachOpen(true)} data-testid="teach-flow-open"
+          className="rounded border px-2 py-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" title="Sai rồi — sửa và dạy lại">👎</button>
         {saveMsg && <span className="text-green-600">{saveMsg}</span>}
       </div>
+      {teachFixReady && (
+        <div className="mt-1 rounded border border-green-300 bg-green-50 p-2 text-green-800 dark:bg-green-950/30 dark:text-green-400" data-testid="teach-fix-cta">
+          Fix ran OK.{' '}
+          <button onClick={() => { setModal(null); setTeachSaveOpen(true); }} className="underline">Save fix as verified query</button>
+        </div>
+      )}
       {confirmRisk && (
         <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           <div>⚠ {confirmRisk.tier}-risk query: {confirmRisk.reason}</div>
@@ -215,6 +269,25 @@ export function QueryResultBlock({
             onSubmit={(v) => { setModal(null); active.run(v); }} onClose={() => setModal(null)} />
         ) : null;
       })()}
+      {teachOpen && (
+        <FormModal open title="Sai rồi — dạy lại" submitLabel="Sửa & chạy lại"
+          fields={[
+            { name: 'reason', label: 'Sai chỗ nào?', type: 'select', options: [
+              { value: 'wrong-data', label: 'Sai data / sai số' },
+              { value: 'missing-context', label: 'Thiếu ngữ cảnh nghiệp vụ' },
+              { value: 'misunderstood', label: 'Hiểu sai câu hỏi' },
+              { value: 'other', label: 'Khác' },
+            ] },
+            { name: 'note', label: 'Ghi chú (tuỳ chọn)' },
+            { name: 'sql', label: 'SQL (sửa trực tiếp rồi chạy lại)', type: 'textarea', mono: true, defaultValue: sql, required: true },
+          ]}
+          onSubmit={(v) => { setTeachOpen(false); submitTeach(v); }} onClose={() => setTeachOpen(false)} />
+      )}
+      {teachSaveOpen && (
+        <FormModal open title="Save fix as verified query" submitLabel="Save"
+          fields={[{ name: 'question', label: 'Question this query answers', defaultValue: question ?? '', required: true }]}
+          onSubmit={(v) => { setTeachSaveOpen(false); saveTeachFix(v.question.trim()); }} onClose={() => setTeachSaveOpen(false)} />
+      )}
     </div>
   );
 }

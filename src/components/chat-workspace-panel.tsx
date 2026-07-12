@@ -75,6 +75,7 @@ export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, conn
                 initialBlockedReason={a.blocked ? a.blockedReason : undefined}
                 initialError={a.error}
                 onConfirmedRun={(info) => onConfirmedRun?.(`Q${a.index}`, info)}
+                question={a.question}
               />
               {ok && !busy && (
                 <button onClick={() => onAnalyzeDeeper(a.executedSql ?? a.sql)}

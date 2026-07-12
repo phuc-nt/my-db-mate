@@ -31,7 +31,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       case 'column_annotation': await upsertColumnAnnotation({ connectionId: id, ...body }); break;
       case 'glossary': await addGlossaryTerm({ connectionId: id, ...body }); break;
       case 'relationship': await addManualRelationship({ connectionId: id, ...body }); break;
-      case 'verified_query': await addVerifiedQuery({ connectionId: id, ...body }); break;
+      case 'verified_query': {
+        const row = await addVerifiedQuery({ connectionId: id, ...body });
+        return NextResponse.json({ ok: true, id: row.id });
+      }
       case 'verified_query_disable': await setVerifiedQueryDisabled(body.queryId, body.disabled); break;
       default: return NextResponse.json({ error: 'unknown type' }, { status: 400 });
     }

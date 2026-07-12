@@ -95,7 +95,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // never duplicated into separate state.
   const artifacts = useMemo<ChatArtifact[]>(() => {
     const list: ChatArtifact[] = [];
+    let lastUserText = '';
     for (const m of messages) {
+      if (m.role === 'user') {
+        lastUserText = m.parts.filter((pt) => pt.type === 'text').map((pt) => (pt as { text: string }).text).join(' ');
+      }
       for (const part of m.parts) {
         if (part.type !== 'tool-run_sql') continue;
         const p = part as unknown as RunSqlPart;
@@ -114,6 +118,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           notRunReason: !p.output?.columns && !p.output?.blocked && !p.output?.error
             ? (p.output?.reason ?? p.output?.note) : undefined,
           index: list.length + 1,
+          question: lastUserText || undefined,
         });
       }
     }
@@ -356,6 +361,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             initialBlockedReason={out?.blocked ? out.reason : undefined}
                             initialError={out?.error}
                             onConfirmedRun={(info) => recordConfirmedRun(`Q${artifact?.index ?? '?'}`, info)}
+                            question={artifact?.question}
                           />
                           {ok && !busy && (
                             <button onClick={() => analyzeDeeper(out!.executedSql ?? p.input?.sql ?? '')}

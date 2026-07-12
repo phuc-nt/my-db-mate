@@ -17,6 +17,8 @@ export interface ChatArtifact {
   notRunReason?: string;
   /** 1-based position in the session, used as the Q{n} label. */
   index: number;
+  /** The user question that led to this query (teach-flow context). */
+  question?: string;
 }
 
 export function ChatArtifactChip({ artifact, active, onClick }: {
