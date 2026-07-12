@@ -133,7 +133,7 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
       {tab === 'glossary' && <GlossaryTab data={data} onAdd={(b) => post({ type: 'glossary', ...b })} />}
       {tab === 'annotations' && <AnnotationsTab data={data} onAdd={(b) => post(b)} />}
       {tab === 'relationships' && <RelationshipsTab data={data} onAdd={(b) => post({ type: 'relationship', ...b })} />}
-      {tab === 'verified' && <VerifiedTab data={data} onToggle={(queryId, disabled) => post({ type: 'verified_query_disable', queryId, disabled })} />}
+      {tab === 'verified' && <VerifiedTab connectionId={id} data={data} onToggle={(queryId, disabled) => post({ type: 'verified_query_disable', queryId, disabled })} />}
       {tab === 'inbox' && <InboxTab suggestions={suggestions} onAction={suggestionAction} />}
       {tab === 'coverage' && <CoverageTab data={data} />}
     </main>
@@ -197,7 +197,18 @@ function RelationshipsTab({ data, onAdd }: { data: ContextData | null; onAdd: (b
   );
 }
 
-function VerifiedTab({ data, onToggle }: { data: ContextData | null; onToggle: (id: string, disabled: boolean) => void }) {
+function VerifiedTab({ connectionId, data, onToggle }: { connectionId: string; data: ContextData | null; onToggle: (id: string, disabled: boolean) => void }) {
+  // Per-item outcome of "Track as metric" — the server shape-validates the SQL,
+  // so non-(time, value) queries fail here with the server's reason.
+  const [trackMsg, setTrackMsg] = useState<Record<string, string>>({});
+  async function track(v: { id: string; question: string; sql: string }) {
+    const r = await fetch(`/api/connections/${connectionId}/metrics`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: v.question, sql: v.sql }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setTrackMsg((m) => ({ ...m, [v.id]: r.ok ? 'Tracking ✓ — see Metrics tab' : (d.error ?? 'failed') }));
+  }
   return (
     <ul className="space-y-2 text-sm">
       {data?.verified.map((v) => (
@@ -205,6 +216,8 @@ function VerifiedTab({ data, onToggle }: { data: ContextData | null; onToggle: (
           <div className="font-medium">{v.question}</div>
           <code className="text-xs text-neutral-500">{v.sql}</code>
           <button onClick={() => onToggle(v.id, !v.isDisabled)} className="ml-2 text-xs text-blue-600">{v.isDisabled ? 'enable' : 'disable'}</button>
+          <button onClick={() => track(v)} className="ml-2 text-xs text-blue-600">📈 Track as metric</button>
+          {trackMsg[v.id] && <span className="ml-2 text-xs text-neutral-500">{trackMsg[v.id]}</span>}
         </li>
       ))}
       {data?.verified.length === 0 && <li className="text-neutral-500">No verified queries yet. Save them from chat.</li>}

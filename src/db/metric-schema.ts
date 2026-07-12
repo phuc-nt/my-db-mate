@@ -1,0 +1,19 @@
+import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { connections } from './schema';
+
+/** A tracked metric: owner-defined SQL returning exactly (time_bucket, numeric value).
+ *  Shape is validated by a trial run at create/update time; after that runMetric may
+ *  skip the risk gate (the SQL is app-validated stored SQL, and connectionId is
+ *  immutable so it can never be replayed against another database). */
+export const metrics = pgTable('metrics', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectionId: uuid('connection_id').notNull().references(() => connections.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  sql: text('sql').notNull(),
+  /** Bucket size of the time column — drives sparkline labels and digest wording. */
+  timeGrain: text('time_grain').notNull().default('month'),
+  /** Which direction is good news: colors the delta badge and digest tone. */
+  direction: text('direction').notNull().default('up_good'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

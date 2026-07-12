@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CopyButton } from './copy-button';
 import { FormModal, type FormModalField } from './form-modal';
 import { ResultTable } from './result-table';
+import { shouldAutoChart } from '../services/chart-spec-service';
+import { guessGrain } from '../lib/metric-math';
 import type { ExportDialect } from '../lib/export-formats';
 
 interface RunResult {
@@ -53,7 +55,7 @@ export function QueryResultBlock({
   const [saveMsg, setSaveMsg] = useState('');
   const [confirmRisk, setConfirmRisk] = useState<{ tier: string; reason: string } | undefined>();
   // Which save-action dialog is open (replaces the old chained window.prompt flows).
-  const [modal, setModal] = useState<null | 'verified' | 'bookmark' | 'pin' | 'schedule'>(null);
+  const [modal, setModal] = useState<null | 'verified' | 'bookmark' | 'pin' | 'schedule' | 'metric'>(null);
   // Per-connection SQL visibility default (localStorage — deliberately NOT in
   // connections.config: the edit form rebuilds config from an allowlist and
   // would silently drop extra keys). 'expanded' keeps today's behavior.
@@ -169,6 +171,18 @@ export function QueryResultBlock({
     setSaveMsg(r.ok ? `Scheduled "${name}" ✓ — manage in Automations` : `schedule failed: ${d.error ?? 'error'}`);
   }
 
+  /** Save the executed (time, value) query as a tracked metric. Server re-runs
+   *  and shape-validates it, so a mis-shaped query fails with a clear message. */
+  async function trackAsMetric(v: Record<string, string>) {
+    if (!lastExecutedSql) return;
+    const r = await fetch(`/api/connections/${connectionId}/metrics`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: v.name.trim(), sql: lastExecutedSql, timeGrain: v.timeGrain, direction: v.direction }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setSaveMsg(r.ok ? `Tracking "${v.name.trim()}" ✓ — see the Metrics tab` : `metric failed: ${d.error ?? 'error'}`);
+  }
+
   async function submitTeach(v: Record<string, string>) {
     // Log the feedback row first (even if the fixed SQL later fails to run).
     const r = await fetch(`/api/connections/${connectionId}/feedback`, {
@@ -227,6 +241,10 @@ export function QueryResultBlock({
             <button onClick={() => setModal('bookmark')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⭐ Bookmark</button>
             <button onClick={() => setModal('pin')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">📌 Pin to dashboard</button>
             <button onClick={() => setModal('schedule')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">⏰ Schedule</button>
+            {shouldAutoChart(result.columns, result.rows)?.type === 'line' && (
+              <button onClick={() => setModal('metric')} data-testid="track-as-metric"
+                className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">📈 Track as metric</button>
+            )}
           </>
         )}
         <button onClick={() => setTeachOpen(true)} data-testid="teach-flow-open"
@@ -288,6 +306,20 @@ export function QueryResultBlock({
               { name: 'title', label: 'Widget title', defaultValue: 'Result', required: true },
             ],
             run: (v) => pin(v.dash.trim(), v.title.trim()),
+          },
+          metric: {
+            title: 'Track as metric', submitLabel: 'Track',
+            fields: [
+              { name: 'name', label: 'Metric name', defaultValue: question ?? '', required: true },
+              { name: 'timeGrain', label: 'Time grain (guessed from the result)', type: 'select',
+                defaultValue: result ? guessGrain(result.rows) : 'month', options: [
+                  { value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' },
+                ] },
+              { name: 'direction', label: 'Good direction', type: 'select', defaultValue: 'up_good', options: [
+                { value: 'up_good', label: '▲ Up is good' }, { value: 'down_good', label: '▼ Down is good' }, { value: 'neutral', label: 'Neutral' },
+              ] },
+            ],
+            run: (v) => trackAsMetric(v),
           },
           schedule: {
             title: 'Schedule this query', submitLabel: 'Create schedule',

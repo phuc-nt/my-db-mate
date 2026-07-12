@@ -12,6 +12,7 @@ const ITEMS = [
   { seg: 'chat', label: '💬 Chat' },
   { seg: 'schema', label: '🗂 Schema' },
   { seg: 'context', label: '📚 Context' },
+  { seg: 'metrics', label: '📈 Metrics' },
   { seg: 'automations', label: '⏰ Automations' },
 ];
 

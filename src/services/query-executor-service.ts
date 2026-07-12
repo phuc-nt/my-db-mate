@@ -76,9 +76,12 @@ export async function executeQuery(params: {
   /** Skip the risk gate — caller already confirmed a medium-risk query. High risk
    *  is never runnable this way; it must go through P4 approval. */
   confirmed?: boolean;
-  /** Skip the risk EXPLAIN for app-generated, known-cheap queries (e.g. the
-   *  sample_rows tool's `... LIMIT 5`) to avoid a per-query EXPLAIN round-trip on
-   *  the hot path (code-review M2). Never set from user/agent free-form SQL. */
+  /** Skip the risk EXPLAIN for two safe classes: (a) app-generated, known-cheap
+   *  queries (e.g. the sample_rows tool's `... LIMIT 5`) to avoid a per-query
+   *  EXPLAIN round-trip on the hot path (code-review M2); (b) app-validated
+   *  STORED SQL that already passed the full gate at save time and is immutable
+   *  without re-validation (metrics, monitors). Never set from user/agent
+   *  FREE-FORM SQL — validateSql still applies either way. */
   skipRiskGate?: boolean;
 }): Promise<ExecuteResult> {
   const { connectionId, sql, sessionId, actor = 'owner', confirmed = false, skipRiskGate = false } = params;
