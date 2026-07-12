@@ -70,11 +70,16 @@ export async function setShare(id: string, enable: boolean): Promise<string | nu
   return slug;
 }
 
-/** Update widget layout (size and/or position). Owner-only surface. */
-export async function updateWidgetLayout(widgetId: string, patch: { size?: string; position?: number }) {
+/** Update widget layout (size/position) and/or its chart spec. Owner-only
+ *  surface; the spec is zod-validated before storage and re-validated on read. */
+export async function updateWidgetLayout(widgetId: string, patch: { size?: string; position?: number; chartSpec?: unknown }) {
   const set: Record<string, unknown> = {};
   if (patch.size && ['s', 'm', 'l'].includes(patch.size)) set.size = patch.size;
   if (typeof patch.position === 'number') set.position = patch.position;
+  if (patch.chartSpec !== undefined) {
+    const spec = validateChartSpec(patch.chartSpec);
+    if (spec) set.chartSpec = spec;
+  }
   if (Object.keys(set).length === 0) return;
   await db.update(dashboardWidgets).set(set).where(eq(dashboardWidgets.id, widgetId));
 }

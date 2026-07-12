@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ResultTable } from './result-table';
 import { ResultChart } from './result-chart';
+import { ChartConfigPicker } from './chart-config-picker';
 import { validateChartSpec } from '../services/chart-spec-service';
 
 export interface WidgetData {
@@ -40,6 +41,7 @@ export function DashboardWidget({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [confirm, setConfirm] = useState<{ reason: string } | undefined>();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const result = overrideResult ?? widget.lastResult;
   const validSpec = validateChartSpec(widget.chartSpec); // M2: validate on read
@@ -64,6 +66,16 @@ export function DashboardWidget({
     onChanged?.();
   }
 
+  /** Persist the picker's chart spec (server re-validates before storing). */
+  async function saveSpec(spec: unknown) {
+    if (!dashboardId) return;
+    await fetch(`/api/dashboards/${dashboardId}/widgets/${widget.id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chartSpec: spec }),
+    });
+    setPickerOpen(false);
+    onChanged?.();
+  }
+
   return (
     <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="mb-2 flex items-center justify-between">
@@ -71,6 +83,7 @@ export function DashboardWidget({
         {!readOnly && dashboardId && (
           <div className="flex items-center gap-2 text-xs">
             <button onClick={() => refresh(false)} disabled={busy} className="text-blue-600 disabled:opacity-40">{busy ? '…' : 'Refresh'}</button>
+            {result && <button onClick={() => setPickerOpen(!pickerOpen)} className="text-blue-600" title="Chart type / axes / series" data-testid="widget-chart-config">⚙</button>}
             <button onClick={remove} className="text-red-600">Remove</button>
           </div>
         )}
@@ -82,10 +95,13 @@ export function DashboardWidget({
         </div>
       )}
       {msg && <p className="mb-1 text-xs text-red-600">{msg}</p>}
+      {pickerOpen && result && (
+        <div className="mb-2"><ChartConfigPicker columns={result.columns} value={validSpec} onApply={saveSpec} /></div>
+      )}
       {!result ? (
         <p className="text-xs text-neutral-500">{readOnly ? 'No data yet — the owner hasn’t refreshed this widget.' : 'Not run yet — click Refresh.'}</p>
       ) : showChart ? (
-        <ResultChart columns={result.columns} rows={result.rows} />
+        <ResultChart columns={result.columns} rows={result.rows} spec={validSpec} />
       ) : (
         <ResultTable columns={result.columns} rows={result.rows} />
       )}

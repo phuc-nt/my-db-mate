@@ -28,10 +28,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ ok: true });
 }
 
-/** PATCH { size?, position? } → update widget layout. */
+/** PATCH { size?, position?, chartSpec? } → update widget layout / chart config. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; widgetId: string }> }) {
   const { widgetId } = await params;
   const body = await req.json().catch(() => ({}));
-  await updateWidgetLayout(widgetId, { size: body.size, position: body.position });
+  await updateWidgetLayout(widgetId, { size: body.size, position: body.position, chartSpec: body.chartSpec });
   return NextResponse.json({ ok: true });
 }

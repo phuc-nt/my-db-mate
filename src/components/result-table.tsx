@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { ResultChart } from './result-chart';
+import { ChartConfigPicker } from './chart-config-picker';
 import { pivot, type PivotAgg } from '../lib/pivot';
-import { shouldAutoChart } from '../services/chart-spec-service';
+import { shouldAutoChart, type ChartSpec } from '../services/chart-spec-service';
 import { CopyButton } from './copy-button';
 import { toCsv, toJson, toSqlInsert, downloadText, type ExportDialect } from '../lib/export-formats';
 
@@ -17,6 +18,9 @@ export function ResultTable({ columns, rows, dialect = 'sqlite' }: { columns: st
   const [view, setView] = useState<'table' | 'chart'>(() => (shouldAutoChart(columns, rows) ? 'chart' : 'table'));
   // Pivot state: when set, the table shows the client-side regrouped result.
   const [pv, setPv] = useState<{ group: string; value: string; agg: PivotAgg } | null>(null);
+  // Session-only chart config from the picker (widgets persist theirs via PATCH).
+  const [chartSpec, setChartSpec] = useState<ChartSpec | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const baseRows = rows ?? [];
   const baseCols = columns ?? [];
 
@@ -55,7 +59,15 @@ export function ResultTable({ columns, rows, dialect = 'sqlite' }: { columns: st
           {baseRows.length >= SAFETY_CAP ? ' — may be capped at 500; ask the agent to GROUP BY for the full table' : ''}.
         </p>
       )}
-      {view === 'chart' && <ResultChart columns={safeCols} rows={safeRows} />}
+      {view === 'chart' && (
+        <>
+          <button onClick={() => setPickerOpen(!pickerOpen)} className="mb-1 text-xs text-blue-600 hover:underline" data-testid="chart-config-toggle">
+            ⚙ Chart config
+          </button>
+          {pickerOpen && <ChartConfigPicker columns={safeCols} value={chartSpec} onApply={(s) => setChartSpec(s)} />}
+          <ResultChart columns={safeCols} rows={safeRows} spec={chartSpec} />
+        </>
+      )}
       <div className="max-h-80 overflow-auto rounded border border-neutral-200 dark:border-neutral-800">
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 bg-neutral-100 dark:bg-neutral-800">

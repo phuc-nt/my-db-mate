@@ -2,9 +2,13 @@
 import { z } from 'zod';
 
 export const ChartSpecSchema = z.object({
-  type: z.enum(['bar', 'line', 'area', 'pie']),
+  // kpi + stacked-bar are picker-only (never auto-inferred); old {type,x,y}
+  // specs parse unchanged — `series` is optional.
+  type: z.enum(['bar', 'line', 'area', 'pie', 'kpi', 'stacked-bar']),
   x: z.string(),
   y: z.string(),
+  /** Grouping column for stacked-bar / multi-series line (long-format data). */
+  series: z.string().optional(),
 });
 export type ChartSpec = z.infer<typeof ChartSpecSchema>;
 
