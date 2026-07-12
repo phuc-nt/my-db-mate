@@ -177,7 +177,7 @@ export function QueryResultBlock({
     if (!lastExecutedSql) return;
     const r = await fetch(`/api/connections/${connectionId}/metrics`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: v.name.trim(), sql: lastExecutedSql, timeGrain: v.timeGrain, direction: v.direction }),
+      body: JSON.stringify({ name: v.name.trim(), sql: lastExecutedSql, timeGrain: v.timeGrain, direction: v.direction, target: v.target || undefined }),
     });
     const d = await r.json().catch(() => ({}));
     setSaveMsg(r.ok ? `Tracking "${v.name.trim()}" ✓ — see the Metrics tab` : `metric failed: ${d.error ?? 'error'}`);
@@ -318,6 +318,7 @@ export function QueryResultBlock({
               { name: 'direction', label: 'Good direction', type: 'select', defaultValue: 'up_good', options: [
                 { value: 'up_good', label: '▲ Up is good' }, { value: 'down_good', label: '▼ Down is good' }, { value: 'neutral', label: 'Neutral' },
               ] },
+              { name: 'target', label: 'Target (optional)' },
             ],
             run: (v) => trackAsMetric(v),
           },

@@ -11,6 +11,7 @@ export interface MetricRowUI {
   description: string | null;
   timeGrain: string;
   direction: string;
+  target?: number | null;
 }
 
 /** One metric card: latest value + delta badge + axis-less sparkline. Runs the
@@ -59,6 +60,20 @@ export function MetricCard({ connectionId, metric, onEdit, onDelete }: {
               </span>
             )}
           </div>
+          {metric.target != null && run.latest != null && (() => {
+            // Mirrors computeInsights' target rules: direction decides on/off-track;
+            // neutral metrics only show distance, never a judgement color.
+            const pct = metric.target === 0 ? null : (run.latest / metric.target) * 100;
+            const met = metric.direction === 'up_good' ? run.latest >= metric.target : run.latest <= metric.target;
+            const cls = metric.direction === 'neutral' ? 'text-neutral-500'
+              : met ? 'text-green-600' : 'text-red-600';
+            return (
+              <p className={`mt-0.5 text-[11px] ${cls}`} data-testid="metric-goal">
+                🎯 {formatMetricValue(metric.target)}{pct != null && ` — ${pct.toFixed(0)}%`}
+                {metric.direction !== 'neutral' && (met ? ' · on track' : ' · off track')}
+              </p>
+            );
+          })()}
           {run.series.length > 1 && (
             <div className="mt-1 h-10">
               <ResponsiveContainer width="100%" height="100%">

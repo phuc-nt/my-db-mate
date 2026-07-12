@@ -134,11 +134,56 @@ describe('computeInsights', () => {
   });
 });
 
+describe('computeInsights — target', () => {
+  const mk = (vals: number[]) => vals.map((v, i) => ({ t: `2026-01-${String(i + 1).padStart(2, '0')}`, v }));
+
+  it('up_good below target → off_track + flag with pct', () => {
+    const ins = computeInsights(mk([100, 88]), 'up_good', 100);
+    expect(ins.targetStatus).toBe('off_track');
+    expect(ins.targetPct).toBe(88);
+    expect(ins.flags).toContain('below target (88%)');
+  });
+
+  it('up_good at/above target → on_track, no flag', () => {
+    const ins = computeInsights(mk([90, 120]), 'up_good', 100);
+    expect(ins.targetStatus).toBe('on_track');
+    expect(ins.flags.some((f) => f.includes('target'))).toBe(false);
+  });
+
+  it('down_good above target → off_track "above target"', () => {
+    const ins = computeInsights(mk([5, 12]), 'down_good', 10);
+    expect(ins.targetStatus).toBe('off_track');
+    expect(ins.flags.some((f) => f.startsWith('above target'))).toBe(true);
+  });
+
+  it('neutral: no status judgement, pct only', () => {
+    const ins = computeInsights(mk([100, 88]), 'neutral', 100);
+    expect(ins.targetStatus).toBeNull();
+    expect(ins.targetPct).toBe(88);
+    expect(ins.flags.some((f) => f.includes('target'))).toBe(false);
+  });
+
+  it('target 0 → pct null but status still computed', () => {
+    const ins = computeInsights(mk([100, -5]), 'up_good', 0);
+    expect(ins.targetPct).toBeNull();
+    expect(ins.targetStatus).toBe('off_track');
+  });
+
+  it('no target → both null; changeFlags excludes target flag', () => {
+    const ins = computeInsights(mk([100, 30]), 'up_good', 50);
+    expect(ins.changeFlags.some((f) => f.includes('target'))).toBe(false);
+    expect(ins.flags.some((f) => f.includes('target'))).toBe(true);
+    const noTarget = computeInsights(mk([100, 30]), 'up_good');
+    expect(noTarget.targetStatus).toBeNull();
+    expect(noTarget.targetPct).toBeNull();
+  });
+});
+
 describe('renderDigestFallback', () => {
   it('renders numbers-only markdown with goodness badges', () => {
     const md = renderDigestFallback([
-      { name: 'Revenue', latest: 1_234_567, insight: { deltaPct: -12.3, vsAvg4Pct: null, isOutlier: false, flags: ['-12.3% vs prev'], goodness: 'bad' } },
-      { name: 'Errors', latest: 4, insight: { deltaPct: null, vsAvg4Pct: null, isOutlier: false, flags: [], goodness: 'neutral' } },
+      { name: 'Revenue', latest: 1_234_567, insight: { deltaPct: -12.3, vsAvg4Pct: null, isOutlier: false, flags: ['-12.3% vs prev'], changeFlags: ['-12.3% vs prev'], goodness: 'bad', targetStatus: null, targetPct: null } },
+      { name: 'Errors', latest: 4, insight: { deltaPct: null, vsAvg4Pct: null, isOutlier: false, flags: [], changeFlags: [], goodness: 'neutral', targetStatus: null, targetPct: null } },
     ]);
     expect(md).toContain('## Metrics digest');
     expect(md).toContain('🔴 **Revenue**: 1.23M (-12.3% vs prev)');

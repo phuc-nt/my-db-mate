@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
 import { connections } from './schema';
 
 /** A tracked metric: owner-defined SQL returning exactly (time_bucket, numeric value).
@@ -15,5 +15,10 @@ export const metrics = pgTable('metrics', {
   timeGrain: text('time_grain').notNull().default('month'),
   /** Which direction is good news: colors the delta badge and digest tone. */
   direction: text('direction').notNull().default('up_good'),
+  /** Goal value; on/off-track derived from direction. doublePrecision (not
+   *  numeric) so drizzle returns a number, not a string. */
+  target: doublePrecision('target'),
+  /** ≤3 column names the digest slices by for top-driver breakdowns. */
+  dimensions: jsonb('dimensions').$type<string[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

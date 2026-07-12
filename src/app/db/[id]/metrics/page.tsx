@@ -10,6 +10,7 @@ const METRIC_FIELDS = (m?: MetricRow): FormModalField[] => [
   { name: 'name', label: 'Metric name', required: true, defaultValue: m?.name ?? '' },
   { name: 'description', label: 'Description (optional)', defaultValue: m?.description ?? '' },
   { name: 'sql', label: 'SQL — must return exactly (time_bucket, value)', type: 'textarea', mono: true, required: true, defaultValue: m?.sql ?? '' },
+  { name: 'target', label: 'Target (optional — goal for the latest value)', defaultValue: m?.target != null ? String(m.target) : '' },
   { name: 'timeGrain', label: 'Time grain', type: 'select', defaultValue: m?.timeGrain ?? 'month', options: [
     { value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' },
   ] },
@@ -55,7 +56,7 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
     setMsg('');
     const r = await fetch(`/api/connections/${id}/schedules`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'create', name: v.name, mode: 'metrics_digest', cron: v.cron, webhookUrl: v.webhookUrl || undefined }),
+      body: JSON.stringify({ action: 'create', name: v.name, mode: 'metrics_digest', cron: v.cron, webhookUrl: v.webhookUrl || undefined, config: v.quiet === 'yes' ? { quiet: true } : undefined }),
     });
     const d = await r.json().catch(() => ({}));
     setMsg(r.ok ? 'Digest scheduled ✓ — manage in Automations' : (d.error ?? 'schedule failed'));
@@ -103,6 +104,10 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
               { value: '0 * * * *', label: 'Hourly' },
             ] },
             { name: 'webhookUrl', label: 'Webhook URL (optional — digest markdown is POSTed; empty = view in Automations)' },
+            { name: 'quiet', label: 'Quiet mode', type: 'select', defaultValue: 'no', options: [
+              { value: 'no', label: 'Always send' },
+              { value: 'yes', label: 'Only send when something changed (no LLM call when all quiet)' },
+            ] },
           ]}
           onSubmit={(v) => { setDigestOpen(false); createDigest(v); }} onClose={() => setDigestOpen(false)} />
       )}

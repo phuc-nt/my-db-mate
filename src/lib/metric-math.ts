@@ -81,14 +81,22 @@ export interface MetricInsight {
   vsAvg4Pct: number | null;
   /** Latest sits outside mean±2σ of the rest of the series (needs ≥5 points). */
   isOutlier: boolean;
-  /** Deterministic flags for the digest, e.g. ["-64.9% vs prev", "outlier ±2σ"]. */
+  /** All deterministic flags for display/payload: changeFlags + target flag. */
   flags: string[];
+  /** CHANGE flags only (delta/avg4/outlier). Quiet mode keys off these — a
+   *  target flag is persistent state and would disable quiet forever. */
+  changeFlags: string[];
   /** Whether the latest move is good/bad news given the metric's direction. */
   goodness: 'good' | 'bad' | 'neutral';
+  /** Goal tracking; null when no target set or direction is neutral (a neutral
+   *  metric shows distance via targetPct but never judges on/off-track). */
+  targetStatus: 'on_track' | 'off_track' | null;
+  /** latest / target × 100; null when target is 0/absent or latest unknown. */
+  targetPct: number | null;
 }
 
 /** Deterministic digest insights — the LLM only narrates these numbers. */
-export function computeInsights(series: MetricPoint[], direction: MetricDirection): MetricInsight {
+export function computeInsights(series: MetricPoint[], direction: MetricDirection, target?: number | null): MetricInsight {
   const { deltaPct } = computeDelta(series);
   const flags: string[] = [];
 
@@ -117,7 +125,25 @@ export function computeInsights(series: MetricPoint[], direction: MetricDirectio
   const goodness: MetricInsight['goodness'] = direction === 'neutral' || signal == null || Math.abs(signal) < 5
     ? 'neutral'
     : (signal >= 0) === (direction === 'up_good') ? 'good' : 'bad';
-  return { deltaPct, vsAvg4Pct, isOutlier, flags, goodness };
+
+  // Goal tracking. Change flags are frozen BEFORE the target flag is appended —
+  // quiet mode must see only the change flags.
+  const changeFlags = [...flags];
+  const latest = series.length ? series[series.length - 1].v : null;
+  let targetStatus: MetricInsight['targetStatus'] = null;
+  let targetPct: number | null = null;
+  if (target != null && Number.isFinite(target) && latest != null) {
+    targetPct = target === 0 ? null : (latest / target) * 100;
+    if (direction !== 'neutral') {
+      const met = direction === 'up_good' ? latest >= target : latest <= target;
+      targetStatus = met ? 'on_track' : 'off_track';
+      if (!met) {
+        const rel = latest < target ? 'below' : 'above';
+        flags.push(`${rel} target${targetPct != null ? ` (${targetPct.toFixed(0)}%)` : ''}`);
+      }
+    }
+  }
+  return { deltaPct, vsAvg4Pct, isOutlier, flags, changeFlags, goodness, targetStatus, targetPct };
 }
 
 export interface DigestMetricLine {

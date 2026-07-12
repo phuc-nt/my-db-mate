@@ -239,7 +239,7 @@ const DIGEST_METRIC_CAP = 20; // one LLM call regardless — cap the prompt, log
  *  deterministically, one LLM call to narrate (numbers stay authoritative),
  *  merge the latest monitor findings, deliver as markdown. */
 async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
-  const cfg = (s.config ?? {}) as { metricIds?: string[] };
+  const cfg = (s.config ?? {}) as { metricIds?: string[]; quiet?: boolean };
   let all = await listMetrics(s.connectionId);
   if (Array.isArray(cfg.metricIds) && cfg.metricIds.length > 0) {
     const wanted = new Set(cfg.metricIds);
@@ -255,7 +255,7 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   for (const m of picked) {
     const r = await runMetric(m.id);
     if (r.error || !r.run) { errors.push(`${m.name}: ${r.error}`); continue; }
-    lines.push({ name: m.name, latest: r.run.latest, insight: computeInsights(r.run.series, m.direction as MetricDirection) });
+    lines.push({ name: m.name, latest: r.run.latest, insight: computeInsights(r.run.series, m.direction as MetricDirection, m.target) });
   }
   if (lines.length === 0) { await record(s.id, 'error', `all metrics failed: ${errors.join('; ').slice(0, 700)}`); return; }
 
@@ -275,6 +275,22 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
     }
   } catch { /* monitor section is best-effort */ }
 
+  // Mark the run BEFORE any exit path (a quiet skip is still a run).
+  await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
+  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags, targetStatus: l.insight.targetStatus, targetPct: l.insight.targetPct }));
+  // scheduled_runs.result is typed {columns, rows} — markdown goes in `detail` (capped like monitor).
+  const runResult = { columns: ['metric', 'latest', 'deltaPct', 'flags'], rows: metricsPayload.map((m) => [m.name, formatMetricValue(m.latest), m.deltaPct?.toFixed(1) ?? '', m.flags.join(', ')]) };
+
+  // Quiet mode: skip the LLM call + delivery when nothing CHANGED. Keyed off
+  // changeFlags only — a persistently-missed target would otherwise disable
+  // quiet forever. Metric-run errors always disable the skip: 19/20 metrics
+  // failing must never read as "all quiet".
+  const hasChanges = lines.some((l) => l.insight.changeFlags.length > 0);
+  if (cfg.quiet && !hasChanges && monitorFindings.length === 0 && errors.length === 0) {
+    await record(s.id, 'ok', 'quiet — no significant changes, digest skipped', lines.length, runResult);
+    return;
+  }
+
   // One LLM call. The prompt carries ONLY computed numbers (never raw series) and
   // wraps every user-controlled string (metric names) in <data> against injection.
   const fallback = renderDigestFallback(lines);
@@ -282,7 +298,7 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   let narrated = false;
   try {
     const promptLines = lines.map((l) =>
-      `- name: <data>${l.name.replace(/<\/?data>/g, '')}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}`);
+      `- name: <data>${l.name.replace(/<\/?data>/g, '')}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}${l.insight.targetStatus ? ` target=${l.insight.targetStatus} (${l.insight.targetPct?.toFixed(0) ?? '?'}% of goal)` : ''}`);
     const monitorText = monitorFindings.length ? `\nMonitor findings (data drift):\n<data>${JSON.stringify(monitorFindings).slice(0, 2000)}</data>` : '';
     const { text } = await generateText({
       model: await getModel(),
@@ -297,10 +313,6 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
     digest += `\n\n### Monitor findings\n${monitorFindings.map((f) => `- ${JSON.stringify(f)}`).join('\n')}`;
   }
 
-  await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
-  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags }));
-  // scheduled_runs.result is typed {columns, rows} — markdown goes in `detail` (capped like monitor).
-  const runResult = { columns: ['metric', 'latest', 'deltaPct', 'flags'], rows: metricsPayload.map((m) => [m.name, formatMetricValue(m.latest), m.deltaPct?.toFixed(1) ?? '', m.flags.join(', ')]) };
   const detail = [digest.slice(0, 900), ...errors.map((e) => `metric failed: ${e}`)].join(' | ').slice(0, 1200);
 
   if (s.webhookUrl) {

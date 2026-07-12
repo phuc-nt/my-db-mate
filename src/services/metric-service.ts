@@ -13,6 +13,17 @@ export interface MetricInput {
   sql: string;
   timeGrain?: TimeGrain;
   direction?: MetricDirection;
+  /** Goal value; forms post strings — coerced/validated by parseTarget. */
+  target?: number | string | null;
+}
+
+/** Coerce a form/API target into number | null. Undefined = "not provided"
+ *  (update keeps the old value); '' and null clear it. */
+function parseTarget(raw: number | string | null | undefined): { ok: true; value: number | null } | { ok: false } | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === '') return { ok: true, value: null };
+  const n = Number(raw);
+  return Number.isFinite(n) ? { ok: true, value: n } : { ok: false };
 }
 
 const GRAINS = new Set(['day', 'week', 'month']);
@@ -41,6 +52,8 @@ export async function createMetric(connectionId: string, input: MetricInput) {
   if (!input.sql?.trim()) return { error: 'sql required' };
   if (input.timeGrain && !GRAINS.has(input.timeGrain)) return { error: 'invalid timeGrain' };
   if (input.direction && !DIRECTIONS.has(input.direction)) return { error: 'invalid direction' };
+  const target = parseTarget(input.target);
+  if (target && !target.ok) return { error: 'target must be a number' };
   const v = await validateMetricSql(connectionId, input.sql);
   if (!v.ok) return { error: v.error };
   const [row] = await db.insert(metrics).values({
@@ -50,6 +63,7 @@ export async function createMetric(connectionId: string, input: MetricInput) {
     sql: input.sql.trim(),
     timeGrain: input.timeGrain ?? 'month',
     direction: input.direction ?? 'up_good',
+    target: target?.ok ? target.value : null,
   }).returning();
   return { metric: row };
 }
@@ -70,6 +84,8 @@ export async function updateMetric(metricId: string, patch: Partial<MetricInput>
   if (!existing) return { error: 'not found' };
   if (patch.timeGrain && !GRAINS.has(patch.timeGrain)) return { error: 'invalid timeGrain' };
   if (patch.direction && !DIRECTIONS.has(patch.direction)) return { error: 'invalid direction' };
+  const target = parseTarget(patch.target);
+  if (target && !target.ok) return { error: 'target must be a number' };
   if (patch.sql && patch.sql.trim() !== existing.sql) {
     const v = await validateMetricSql(existing.connectionId, patch.sql);
     if (!v.ok) return { error: v.error };
@@ -80,6 +96,7 @@ export async function updateMetric(metricId: string, patch: Partial<MetricInput>
     ...(patch.sql !== undefined ? { sql: patch.sql.trim() } : {}),
     ...(patch.timeGrain !== undefined ? { timeGrain: patch.timeGrain } : {}),
     ...(patch.direction !== undefined ? { direction: patch.direction } : {}),
+    ...(target !== undefined ? { target: target.value } : {}),
   }).where(eq(metrics.id, metricId)).returning();
   return { metric: row };
 }
