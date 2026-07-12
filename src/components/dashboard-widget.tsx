@@ -24,17 +24,24 @@ export function DashboardWidget({
   dashboardId,
   readOnly = false,
   onChanged,
+  overrideResult,
+  parametrized = false,
 }: {
   widget: WidgetData;
   dashboardId?: string;
   readOnly?: boolean;
   onChanged?: () => void;
+  /** Transient result from a dashboard date-range run — rendered instead of the
+   *  cache, never persisted (the share view must keep the default-range cache). */
+  overrideResult?: { columns: string[]; rows: unknown[][] } | null;
+  /** Widget SQL contains {{from}}/{{to}} — shows the 📅 responds-to-range badge. */
+  parametrized?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [confirm, setConfirm] = useState<{ reason: string } | undefined>();
 
-  const result = widget.lastResult;
+  const result = overrideResult ?? widget.lastResult;
   const validSpec = validateChartSpec(widget.chartSpec); // M2: validate on read
   const showChart = !!validSpec && !!result && result.rows.length > 0;
 
@@ -60,7 +67,7 @@ export function DashboardWidget({
   return (
     <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-medium">{widget.title}</h3>
+        <h3 className="text-sm font-medium">{widget.title}{parametrized && <span className="ml-1" title="Responds to the dashboard date range ({{from}}/{{to}})">📅</span>}</h3>
         {!readOnly && dashboardId && (
           <div className="flex items-center gap-2 text-xs">
             <button onClick={() => refresh(false)} disabled={busy} className="text-blue-600 disabled:opacity-40">{busy ? '…' : 'Refresh'}</button>
@@ -82,7 +89,9 @@ export function DashboardWidget({
       ) : (
         <ResultTable columns={result.columns} rows={result.rows} />
       )}
-      {widget.lastRefreshedAt && (
+      {overrideResult ? (
+        <p className="mt-1 text-[10px] text-amber-600" data-testid="range-transient-note">Custom range view — not saved (share keeps the default range)</p>
+      ) : widget.lastRefreshedAt && (
         <p className="mt-1 text-[10px] text-neutral-400">Last refreshed {new Date(widget.lastRefreshedAt).toLocaleString()}</p>
       )}
     </div>

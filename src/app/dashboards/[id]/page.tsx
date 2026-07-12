@@ -4,8 +4,18 @@ import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { DashboardWidget, type WidgetData } from '../../../components/dashboard-widget';
 import { FormModal } from '../../../components/form-modal';
+import { hasDateRangePlaceholders, isValidIsoDate } from '../../../lib/sql-param';
 
-interface DashDetail { id: string; name: string; shareSlug: string | null; widgets: WidgetData[] }
+interface DashDetail { id: string; name: string; shareSlug: string | null; widgets: (WidgetData & { sql?: string })[] }
+
+/** Preset → {from,to} (ISO). Computed client-side at click time. */
+function presetRange(preset: '7d' | '30d' | '90d' | 'ytd'): { from: string; to: string } {
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  if (preset === 'ytd') return { from: `${now.getUTCFullYear()}-01-01`, to };
+  const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
+  return { from: new Date(now.getTime() - days * 24 * 3600 * 1000).toISOString().slice(0, 10), to };
+}
 
 // Layout width per widget size (6-col grid): s=1/3, m=1/2, l=full.
 const SIZE_CLS: Record<string, string> = { s: 'md:col-span-2', m: 'md:col-span-3', l: 'md:col-span-6' };
@@ -18,6 +28,11 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   const [refreshSched, setRefreshSched] = useState<{ id: string; cron: string } | null>(null);
   const [schedModal, setSchedModal] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
+  // Dashboard date range: view-state only (never persisted — reload returns to
+  // the cached default-range results). Transient results keyed by widget id.
+  const [range, setRange] = useState({ from: '', to: '' });
+  const [rangeResults, setRangeResults] = useState<Record<string, { columns: string[]; rows: unknown[][] }>>({});
+  const [rangeMsg, setRangeMsg] = useState('');
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/dashboards/${id}`);
@@ -72,6 +87,31 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
     setRefreshSched(null);
   }
 
+  /** Run all {{from}}/{{to}} widgets with the given range, transiently. */
+  async function applyRange(r: { from: string; to: string }) {
+    if (!dash) return;
+    setRange(r);
+    setRangeMsg('');
+    if (!isValidIsoDate(r.from) || !isValidIsoDate(r.to)) { setRangeMsg('Dates must be YYYY-MM-DD'); return; }
+    const targets = dash.widgets.filter((w) => w.sql && hasDateRangePlaceholders(w.sql));
+    if (targets.length === 0) { setRangeMsg('No widget uses {{from}}/{{to}} — add the placeholders to a widget SQL to make it range-aware.'); return; }
+    const next: Record<string, { columns: string[]; rows: unknown[][] }> = {};
+    await Promise.allSettled(targets.map(async (w) => {
+      const res = await fetch(`/api/dashboards/${id}/widgets/${w.id}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: r.from, to: r.to }),
+      });
+      const d = await res.json();
+      if (d.status === 'ok') next[w.id] = { columns: d.columns, rows: d.rows };
+    }));
+    setRangeResults(next);
+  }
+
+  function clearRange() {
+    setRange({ from: '', to: '' });
+    setRangeResults({});
+    setRangeMsg('');
+  }
+
   async function setLayout(widgetId: string, patch: { size?: string; position?: number }) {
     await fetch(`/api/dashboards/${id}/widgets/${widgetId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) });
     load();
@@ -103,6 +143,19 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
       {shareMsg && <p className="mb-3 break-all rounded bg-green-50 p-2 text-xs text-green-700 dark:bg-green-950/40 dark:text-green-300">{shareMsg}</p>}
+      {dash.widgets.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800" data-testid="daterange-control">
+          <span className="text-neutral-500">📅 Date range</span>
+          {(['7d', '30d', '90d', 'ytd'] as const).map((p) => (
+            <button key={p} onClick={() => applyRange(presetRange(p))} className="rounded border px-2 py-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-800">{p.toUpperCase()}</button>
+          ))}
+          <input value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} placeholder="from YYYY-MM-DD" className="w-32 rounded border p-1 font-mono dark:bg-neutral-900" data-testid="range-from" />
+          <input value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} placeholder="to YYYY-MM-DD" className="w-32 rounded border p-1 font-mono dark:bg-neutral-900" data-testid="range-to" />
+          <button onClick={() => applyRange(range)} className="rounded bg-blue-600 px-2 py-0.5 text-white" data-testid="range-apply">Apply</button>
+          {Object.keys(rangeResults).length > 0 && <button onClick={clearRange} className="text-blue-600 hover:underline">Reset to default (30d cache)</button>}
+          {rangeMsg && <span className="text-amber-600">{rangeMsg}</span>}
+        </div>
+      )}
       {dash.widgets.length === 0 ? (
         <p className="text-sm text-neutral-500">No widgets. Pin a result from chat (📌 Pin to dashboard).</p>
       ) : (
@@ -117,7 +170,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
                 <button onClick={() => swapOrder(i, i - 1)} disabled={i === 0} className="disabled:opacity-30" title="Move up">↑</button>
                 <button onClick={() => swapOrder(i, i + 1)} disabled={i === dash.widgets.length - 1} className="disabled:opacity-30" title="Move down">↓</button>
               </div>
-              <DashboardWidget widget={w} dashboardId={id} onChanged={load} />
+              <DashboardWidget widget={w} dashboardId={id} onChanged={load}
+                overrideResult={rangeResults[w.id] ?? null}
+                parametrized={!!w.sql && hasDateRangePlaceholders(w.sql)} />
             </div>
           ))}
         </div>

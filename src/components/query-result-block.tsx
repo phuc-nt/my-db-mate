@@ -303,7 +303,7 @@ export function QueryResultBlock({
             title: 'Pin to dashboard', submitLabel: 'Pin',
             fields: [
               { name: 'dash', label: 'Dashboard (created if new)', required: true },
-              { name: 'title', label: 'Widget title', defaultValue: 'Result', required: true },
+              { name: 'title', label: 'Widget title — tip: use {{from}} and {{to}} in the SQL to make the widget follow the dashboard date range', defaultValue: 'Result', required: true },
             ],
             run: (v) => pin(v.dash.trim(), v.title.trim()),
           },

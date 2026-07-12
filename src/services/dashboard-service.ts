@@ -21,6 +21,7 @@ import { validateSql } from './safety/safety-service';
 import { validateChartSpec } from './chart-spec-service';
 import { assessRisk } from './risk-scoring-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
+import { PROBE_RANGE, defaultDateRange, hasDateRangePlaceholders, substituteDateRange, type DateRange } from '../lib/sql-param';
 import type { Dialect } from './connection-providers/provider-interface';
 
 const LAST_RESULT_ROW_CAP = 500;
@@ -99,7 +100,13 @@ export async function pinWidget(input: PinInput): Promise<PinResult> {
   const conn = await getConnection(input.connectionId);
   if (!conn) return { ok: false, reason: 'Connection not found' };
 
-  const verdict = validateSql(input.sql, conn.dialect as Dialect);
+  // {{from}}/{{to}} widgets: the parser fail-closes on `{{`, so validate/assess a
+  // PROBE-substituted copy while the widget stores the RAW placeholder SQL —
+  // every execution path substitutes a real (or default) range before running.
+  const isParametrized = hasDateRangePlaceholders(input.sql);
+  const sqlForChecks = isParametrized ? substituteDateRange(input.sql, PROBE_RANGE) : input.sql;
+
+  const verdict = validateSql(sqlForChecks, conn.dialect as Dialect);
   if (verdict.status === 'blocked') return { ok: false, reason: `Unsafe query: ${verdict.reason}` };
 
   // C4: never let a query over sensitive columns become a shareable widget.
@@ -129,7 +136,9 @@ export async function pinWidget(input: PinInput): Promise<PinResult> {
     dashboardId: input.dashboardId,
     connectionId: input.connectionId,
     title: input.title,
-    sql: verdict.sql,
+    // Parametrized widgets keep the raw placeholders (verdict.sql belongs to the
+    // probe copy); execution re-validates after each substitution anyway.
+    sql: isParametrized ? input.sql.trim() : verdict.sql,
     chartSpec,
     riskTier,
   }).returning({ id: dashboardWidgets.id });
@@ -146,23 +155,40 @@ export type RefreshResult =
 
 /**
  * OWNER-side widget refresh. Runs through the query-executor choke point WITHOUT
- * auto-confirming medium risk — the owner stays in the loop. On success the result
- * is cached so the share view can render it without any execution.
+ * auto-confirming medium risk — the owner stays in the loop.
+ *
+ * {{from}}/{{to}} widgets are substituted BEFORE execution on every path:
+ * an explicit `range` runs transiently (result returned, cache untouched — the
+ * share view must never inherit someone's personal range); no range means the
+ * default last-30-days, and only those runs write the cache.
  */
-export async function runWidget(widgetId: string, confirmed = false): Promise<RefreshResult> {
+export async function runWidget(widgetId: string, confirmed = false, range?: DateRange): Promise<RefreshResult> {
   const [w] = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.id, widgetId));
   if (!w) return { status: 'error', message: 'Widget not found' };
 
-  const res = await executeQuery({ connectionId: w.connectionId, sql: w.sql, actor: 'dashboard', confirmed });
+  const isParametrized = hasDateRangePlaceholders(w.sql);
+  let sql = w.sql;
+  if (isParametrized) {
+    try {
+      sql = substituteDateRange(w.sql, range ?? defaultDateRange());
+    } catch (e) {
+      return { status: 'error', message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const transient = isParametrized && range != null;
+
+  const res = await executeQuery({ connectionId: w.connectionId, sql, actor: 'dashboard', confirmed });
   if (res.status === 'blocked') return { status: 'blocked', message: res.blockedReason ?? 'blocked' };
   if (res.status === 'needs_confirmation') return { status: 'needs_confirmation', message: 'This widget is estimated as medium-risk. Confirm to run it.', risk: res.risk };
   if (res.status === 'error') return { status: 'error', message: res.errorMessage ?? 'error' };
 
   const rows = (res.result!.rows ?? []).slice(0, LAST_RESULT_ROW_CAP);
   const refreshedAt = new Date();
-  await db.update(dashboardWidgets)
-    .set({ lastResult: { columns: res.result!.columns, rows }, lastRefreshedAt: refreshedAt })
-    .where(eq(dashboardWidgets.id, widgetId));
+  if (!transient) {
+    await db.update(dashboardWidgets)
+      .set({ lastResult: { columns: res.result!.columns, rows }, lastRefreshedAt: refreshedAt })
+      .where(eq(dashboardWidgets.id, widgetId));
+  }
   return { status: 'ok', columns: res.result!.columns, rows, refreshedAt: refreshedAt.toISOString() };
 }
 
