@@ -12,6 +12,7 @@ export interface MetricRowUI {
   timeGrain: string;
   direction: string;
   target?: number | null;
+  dimensions?: string[] | null;
 }
 
 /** One metric card: latest value + delta badge + axis-less sparkline. Runs the
@@ -45,7 +46,14 @@ export function MetricCard({ connectionId, metric, onEdit, onDelete }: {
       <div className="flex items-start justify-between gap-2">
         <Link href={`/db/${connectionId}/chat?q=${encodeURIComponent(`Analyze the metric "${metric.name}" — recent trend, drivers, anomalies`)}`}
           className="text-sm font-medium hover:underline" title="Analyze in chat">{metric.name}</Link>
-        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800">{metric.timeGrain}</span>
+        <span className="flex items-center gap-1">
+          {!!metric.dimensions?.length && (
+            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800" title="Digest reports top drivers per these columns" data-testid="metric-dims">
+              ⊞ {metric.dimensions.join(', ')}
+            </span>
+          )}
+          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800">{metric.timeGrain}</span>
+        </span>
       </div>
       {metric.description && <p className="mt-0.5 text-[11px] text-neutral-500">{metric.description}</p>}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}

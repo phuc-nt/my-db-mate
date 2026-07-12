@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDelta, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
+import { computeDelta, computeDrivers, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
 
 describe('parseSeries', () => {
   it('sorts non-chronological input and drops invalid rows', () => {
@@ -176,6 +176,56 @@ describe('computeInsights — target', () => {
     const noTarget = computeInsights(mk([100, 30]), 'up_good');
     expect(noTarget.targetStatus).toBeNull();
     expect(noTarget.targetPct).toBeNull();
+  });
+});
+
+describe('computeDrivers', () => {
+  const rows = [
+    ['2026-06', 100, 'A'], ['2026-06', 200, 'B'],
+    ['2026-07', 40, 'A'], ['2026-07', 210, 'B'],
+    ['2026-05', 999, 'A'], // older bucket — ignored
+  ];
+
+  it('ranks movers by |delta| with Σ|c| share', () => {
+    const d = computeDrivers(rows, 'seg', '2026-07', '2026-06');
+    expect(d.dimension).toBe('seg');
+    expect(d.movers[0]).toEqual({ value: 'A', delta: -60, sharePct: (60 / 70) * 100 });
+    expect(d.movers[1].value).toBe('B');
+    expect(d.movers[1].delta).toBe(10);
+  });
+
+  it('new slice contributes +latest, vanished slice −prev', () => {
+    const d = computeDrivers([
+      ['2026-06', 50, 'gone'],
+      ['2026-07', 30, 'new'],
+    ], 'seg', '2026-07', '2026-06');
+    const byVal = Object.fromEntries(d.movers.map((m) => [m.value, m.delta]));
+    expect(byVal.gone).toBe(-50);
+    expect(byVal.new).toBe(30);
+  });
+
+  it('null dim value buckets under (none)', () => {
+    const d = computeDrivers([['2026-07', 5, null]], 'seg', '2026-07', '2026-06');
+    expect(d.movers[0].value).toBe('(none)');
+  });
+
+  it('nothing moved → sharePct null', () => {
+    const d = computeDrivers([
+      ['2026-06', 10, 'A'], ['2026-07', 10, 'A'],
+    ], 'seg', '2026-07', '2026-06');
+    expect(d.movers[0].sharePct).toBeNull();
+    expect(d.movers[0].delta).toBe(0);
+  });
+
+  it('duplicate (t, slice) rows are summed', () => {
+    const d = computeDrivers([
+      ['2026-07', 5, 'A'], ['2026-07', 7, 'A'],
+    ], 'seg', '2026-07', '2026-06');
+    expect(d.movers[0].delta).toBe(12);
+  });
+
+  it('empty rows → no movers', () => {
+    expect(computeDrivers([], 'seg', '2026-07', '2026-06').movers).toEqual([]);
   });
 });
 

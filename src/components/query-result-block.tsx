@@ -177,7 +177,10 @@ export function QueryResultBlock({
     if (!lastExecutedSql) return;
     const r = await fetch(`/api/connections/${connectionId}/metrics`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: v.name.trim(), sql: lastExecutedSql, timeGrain: v.timeGrain, direction: v.direction, target: v.target || undefined }),
+      body: JSON.stringify({
+        name: v.name.trim(), sql: lastExecutedSql, timeGrain: v.timeGrain, direction: v.direction, target: v.target || undefined,
+        dimensions: (v.dimensions ?? '').split(',').map((d) => d.trim()).filter(Boolean) || undefined,
+      }),
     });
     const d = await r.json().catch(() => ({}));
     setSaveMsg(r.ok ? `Tracking "${v.name.trim()}" ✓ — see the Metrics tab` : `metric failed: ${d.error ?? 'error'}`);
@@ -319,6 +322,7 @@ export function QueryResultBlock({
                 { value: 'up_good', label: '▲ Up is good' }, { value: 'down_good', label: '▼ Down is good' }, { value: 'neutral', label: 'Neutral' },
               ] },
               { name: 'target', label: 'Target (optional)' },
+              { name: 'dimensions', label: 'Dimensions (optional, ≤3 columns comma-separated — digest reports top drivers)' },
             ],
             run: (v) => trackAsMetric(v),
           },

@@ -22,8 +22,8 @@ import { executeQuery } from './query-executor-service';
 import { runAgentAnswer } from './agent-service';
 import { generateText } from 'ai';
 import { getModel } from './llm-service';
-import { listMetrics, runMetric } from './metric-service';
-import { computeInsights, formatMetricValue, renderDigestFallback, type DigestMetricLine, type MetricDirection } from '../lib/metric-math';
+import { listMetrics, runMetric, runMetricDrivers } from './metric-service';
+import { computeInsights, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection } from '../lib/metric-math';
 
 const tasks = new Map<string, ScheduledTask>();
 const running = new Set<string>(); // concurrency lock per schedule id
@@ -250,12 +250,22 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   if (cut > 0) console.warn(`metrics digest ${s.id}: capping to ${DIGEST_METRIC_CAP} metrics (${cut} dropped)`);
   const picked = all.slice(0, DIGEST_METRIC_CAP);
 
-  const lines: DigestMetricLine[] = [];
+  const lines: (DigestMetricLine & { drivers: DriverBreakdown[] })[] = [];
   const errors: string[] = [];
   for (const m of picked) {
     const r = await runMetric(m.id);
     if (r.error || !r.run) { errors.push(`${m.name}: ${r.error}`); continue; }
-    lines.push({ name: m.name, latest: r.run.latest, insight: computeInsights(r.run.series, m.direction as MetricDirection, m.target) });
+    // Top-driver slices for metrics that declared dimensions — always run (user
+    // decision), keyed by the exact labels of the main series' last two buckets.
+    let drivers: DriverBreakdown[] = [];
+    if (m.dimensions?.length && r.run.series.length >= 2) {
+      const latestT = r.run.series[r.run.series.length - 1].t;
+      const prevT = r.run.series[r.run.series.length - 2].t;
+      const dr = await runMetricDrivers(m.id, latestT, prevT);
+      drivers = dr.drivers;
+      errors.push(...dr.errors.map((e) => `${m.name} driver ${e}`));
+    }
+    lines.push({ name: m.name, latest: r.run.latest, insight: computeInsights(r.run.series, m.direction as MetricDirection, m.target), drivers });
   }
   if (lines.length === 0) { await record(s.id, 'error', `all metrics failed: ${errors.join('; ').slice(0, 700)}`); return; }
 
@@ -277,9 +287,12 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
 
   // Mark the run BEFORE any exit path (a quiet skip is still a run).
   await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
-  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags, targetStatus: l.insight.targetStatus, targetPct: l.insight.targetPct }));
+  // Compact "D −80%, C +15%" text per metric for the run table + fallback.
+  const driverText = (drivers: DriverBreakdown[]) => drivers.map((d) =>
+    `${d.dimension}: ${d.movers.map((mv) => `${mv.value} ${mv.delta >= 0 ? '+' : ''}${formatMetricValue(mv.delta)}${mv.sharePct != null ? ` (${mv.sharePct.toFixed(0)}%)` : ''}`).join(', ')}`).join('; ');
+  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags, targetStatus: l.insight.targetStatus, targetPct: l.insight.targetPct, drivers: l.drivers }));
   // scheduled_runs.result is typed {columns, rows} — markdown goes in `detail` (capped like monitor).
-  const runResult = { columns: ['metric', 'latest', 'deltaPct', 'flags'], rows: metricsPayload.map((m) => [m.name, formatMetricValue(m.latest), m.deltaPct?.toFixed(1) ?? '', m.flags.join(', ')]) };
+  const runResult = { columns: ['metric', 'latest', 'deltaPct', 'flags', 'drivers'], rows: lines.map((l) => [l.name, formatMetricValue(l.latest), l.insight.deltaPct?.toFixed(1) ?? '', l.insight.flags.join(', '), driverText(l.drivers)]) };
 
   // Quiet mode: skip the LLM call + delivery when nothing CHANGED. Keyed off
   // changeFlags only — a persistently-missed target would otherwise disable
@@ -292,13 +305,21 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   }
 
   // One LLM call. The prompt carries ONLY computed numbers (never raw series) and
-  // wraps every user-controlled string (metric names) in <data> against injection.
-  const fallback = renderDigestFallback(lines);
+  // wraps every user-controlled string in <data> against injection — that
+  // includes driver slice VALUES, which come straight from database rows.
+  const clean = (s: string) => s.replace(/<\/?data>/g, '').slice(0, 60);
+  let fallback = renderDigestFallback(lines);
+  const fallbackDrivers = lines.filter((l) => l.drivers.length).map((l) => `- ${l.name} drivers — ${driverText(l.drivers)}`);
+  if (fallbackDrivers.length) fallback += `\n\n### Drivers\n${fallbackDrivers.join('\n')}`;
   let digest = fallback;
   let narrated = false;
   try {
-    const promptLines = lines.map((l) =>
-      `- name: <data>${l.name.replace(/<\/?data>/g, '')}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}${l.insight.targetStatus ? ` target=${l.insight.targetStatus} (${l.insight.targetPct?.toFixed(0) ?? '?'}% of goal)` : ''}`);
+    const promptLines = lines.map((l) => {
+      const driverLine = l.drivers.length
+        ? ` drivers=[${l.drivers.map((d) => `${d.dimension}: ${d.movers.map((mv) => `<data>${clean(mv.value)}</data> ${mv.delta >= 0 ? '+' : ''}${mv.delta.toFixed(1)}${mv.sharePct != null ? ` (${mv.sharePct.toFixed(0)}% of movement)` : ''}`).join(', ')}]`).join('; ')}]`
+        : '';
+      return `- name: <data>${clean(l.name)}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}${l.insight.targetStatus ? ` target=${l.insight.targetStatus} (${l.insight.targetPct?.toFixed(0) ?? '?'}% of goal)` : ''}${driverLine}`;
+    });
     const monitorText = monitorFindings.length ? `\nMonitor findings (data drift):\n<data>${JSON.stringify(monitorFindings).slice(0, 2000)}</data>` : '';
     const { text } = await generateText({
       model: await getModel(),

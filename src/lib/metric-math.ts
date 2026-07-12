@@ -146,6 +146,55 @@ export function computeInsights(series: MetricPoint[], direction: MetricDirectio
   return { deltaPct, vsAvg4Pct, isOutlier, flags, changeFlags, goodness, targetStatus, targetPct };
 }
 
+export interface DriverMover {
+  /** Dimension value (slice label); null in the data buckets under '(none)'. */
+  value: string;
+  /** v_latest − v_prev for this slice; a new slice contributes +v_latest, a
+   *  vanished one −v_prev. */
+  delta: number;
+  /** |delta| / Σ|delta| × 100 across all slices of this dimension — stable even
+   *  when movers cancel out; null when nothing moved at all. */
+  sharePct: number | null;
+}
+
+export interface DriverBreakdown {
+  dimension: string;
+  movers: DriverMover[];
+}
+
+/** Top movers for one dimension from driver rows (time, value, dim).
+ *  Buckets are keyed by the EXACT t labels of the main series' last two points
+ *  — never re-derived from the driver rows, which may be truncated or hold
+ *  extra buckets. */
+export function computeDrivers(rows: unknown[][], dimension: string, latestT: string, prevT: string, topN = 2): DriverBreakdown {
+  const prev = new Map<string, number>();
+  const latest = new Map<string, number>();
+  for (const r of rows) {
+    if (!r || r.length < 3) continue;
+    const t = r[0] == null ? '' : String(r[0]);
+    const v = Number(r[1]);
+    if (Number.isNaN(v)) continue;
+    const slice = r[2] == null ? '(none)' : String(r[2]);
+    if (t === latestT) latest.set(slice, (latest.get(slice) ?? 0) + v);
+    else if (t === prevT) prev.set(slice, (prev.get(slice) ?? 0) + v);
+  }
+  const slices = new Set([...prev.keys(), ...latest.keys()]);
+  const deltas: { value: string; delta: number }[] = [];
+  for (const s of slices) {
+    deltas.push({ value: s, delta: (latest.get(s) ?? 0) - (prev.get(s) ?? 0) });
+  }
+  const totalAbs = deltas.reduce((a, d) => a + Math.abs(d.delta), 0);
+  deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  return {
+    dimension,
+    movers: deltas.slice(0, topN).map((d) => ({
+      value: d.value,
+      delta: d.delta,
+      sharePct: totalAbs === 0 ? null : (Math.abs(d.delta) / totalAbs) * 100,
+    })),
+  };
+}
+
 export interface DigestMetricLine {
   name: string;
   latest: number | null;

@@ -4,13 +4,14 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { FormModal, type FormModalField } from '../../../../components/form-modal';
 import { MetricCard, type MetricRowUI } from '../../../../components/metric-card';
 
-interface MetricRow extends MetricRowUI { sql: string }
+interface MetricRow extends MetricRowUI { sql: string; dimensions?: string[] | null }
 
 const METRIC_FIELDS = (m?: MetricRow): FormModalField[] => [
   { name: 'name', label: 'Metric name', required: true, defaultValue: m?.name ?? '' },
   { name: 'description', label: 'Description (optional)', defaultValue: m?.description ?? '' },
   { name: 'sql', label: 'SQL — must return exactly (time_bucket, value)', type: 'textarea', mono: true, required: true, defaultValue: m?.sql ?? '' },
   { name: 'target', label: 'Target (optional — goal for the latest value)', defaultValue: m?.target != null ? String(m.target) : '' },
+  { name: 'dimensions', label: 'Dimensions (optional, ≤3 columns comma-separated — digest reports top drivers per slice)', defaultValue: (m?.dimensions ?? []).join(', ') },
   { name: 'timeGrain', label: 'Time grain', type: 'select', defaultValue: m?.timeGrain ?? 'month', options: [
     { value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' },
   ] },
@@ -39,10 +40,13 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
 
   async function save(values: Record<string, string>, metricId?: string) {
     setMsg('');
+    // The form posts dimensions as a comma-separated string — the API wants string[].
+    const dims = (values.dimensions ?? '').split(',').map((d) => d.trim()).filter(Boolean);
+    const body = { ...values, dimensions: dims.length ? dims : null };
     const r = await fetch(metricId ? `/api/connections/${id}/metrics/${metricId}` : `/api/connections/${id}/metrics`, {
       method: metricId ? 'PATCH' : 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(values),
+      body: JSON.stringify(body),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { setMsg(d.error ?? 'save failed'); return; }
