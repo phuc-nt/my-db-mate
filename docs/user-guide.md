@@ -115,6 +115,16 @@ Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh se
 - **Pin & Dashboards** — ghim kết quả chat thành widget; gom widget lên dashboard; **chia sẻ chỉ-đọc** qua link ký. Người xem ẩn danh chỉ thấy kết quả cache, **không** chạy query, **không** thấy SQL.
 - **Reports** — gom widget/verified query làm nguồn, để model soạn một report markdown có cấu trúc (executive summary → sections → phụ lục SQL), có version, tạo lại được, in ra PDF.
 
+### Metrics & bản tin digest (kiểu Tableau Pulse)
+- **Theo dõi chỉ số**: một metric = 1 câu SQL trả đúng 2 cột `(mốc thời gian, giá trị)`. Cách nhanh nhất: hỏi chat ("doanh thu theo tháng") → bấm **📈 Track as metric** trên kết quả (tên + grain điền sẵn) → tab **Metrics** hiện card sparkline + badge % thay đổi. Chọn "hướng tốt" (▲ tốt cho doanh thu, ▼ tốt cho lỗi/huỷ đơn) để badge tô màu đúng nghĩa.
+- **Digest theo lịch**: tab Metrics → **⏰ Digest schedule** → chọn tuần/ngày/giờ + webhook (tuỳ chọn). Mỗi lần chạy: app tự tính delta / so trung bình 4 kỳ / outlier ±2σ (tất định, không phải LLM đoán số), rồi 1 LLM call duy nhất diễn giải thành bản tin markdown, gộp thêm cảnh báo data-drift monitor nếu có, và POST vào webhook. LLM lỗi thì bản tin thuần số vẫn được gửi. Không có webhook thì xem trong **Automations → Show runs**.
+- **Nối webhook đi đâu?** Bất kỳ endpoint HTTP nào nhận JSON: n8n (Webhook node), Zapier (Catch Hook), hoặc script tự viết rồi đẩy vào Slack/Telegram. Payload: `{ name, connectionId, digest (markdown), metrics: [{name, latest, deltaPct, flags}], monitorFindings }`. Webhook nội bộ (localhost/LAN) mặc định bị chặn SSRF — mở riêng từng host:port qua env `WEBHOOK_PRIVATE_ALLOWLIST=host:port`.
+
+### Dashboard theo khoảng thời gian
+- Khi pin widget, viết SQL dùng `{{from}}` / `{{to}}` (không kèm nháy — ví dụ `WHERE order_date BETWEEN {{from}} AND {{to}}`) → widget có badge 📅 và phản ứng với thanh **Date range** (7D/30D/90D/YTD/tuỳ chọn) trên đầu dashboard.
+- Chạy theo range là **tạm thời**: chỉ hiển thị cho bạn, không ghi đè cache. Share link **luôn** thấy bản mặc định 30 ngày gần nhất (người xem ẩn danh không bao giờ chạy query — như cũ).
+- Widget cũng có nút **⚙** để đổi kiểu chart: KPI tile (số to + delta), stacked bar, multi-series line (kết quả dạng `(x, series, y)`).
+
 ### DB client & phân tích
 - **Schema browser + ERD** — duyệt bảng → cột (type/PK/FK/row count) + sample rows; xem sơ đồ quan hệ (ERD) tương tác.
 - **Execution-plan viewer** — EXPLAIN một query (chỉ xem plan, không chạy) kèm cảnh báo full-scan.

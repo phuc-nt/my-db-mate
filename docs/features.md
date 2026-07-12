@@ -48,7 +48,17 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 
 - **Investigate mode** — for "why / compare / trend" questions the agent writes an analysis plan, runs a series of drill-down queries, and concludes with evidence (not a one-shot answer). It **asks a clarifying question** when a request is ambiguous instead of guessing, self-repairs failed SQL, and applies big-table guardrails. An **"Analyze deeper"** button turns any result into an investigation.
 - **Pin & Dashboards** — pin a chat result as a widget; group widgets on a dashboard; **share read-only** via a signed link. Sharing serves the owner-refreshed cached result — an anonymous viewer never runs a query or sees the SQL.
+- **Dashboard date range** — write `{{from}}`/`{{to}}` (unquoted) in a widget's SQL and it follows the dashboard's date control (7D/30D/90D/YTD/custom). Substitution is server-side with strict ISO validation (injection-proof), placeholder SQL is validated against a probe range at pin time, and every no-range path (Refresh, Refresh all, cron refresh) uses a default last-30-days window — so the cache and the share view always hold the default-range snapshot; a custom range renders transiently and never overwrites what viewers see.
+- **Chart depth** — a per-widget/per-result chart config picker (type · x · y · series): **KPI tile** (big number + delta from the result itself), **stacked bar** and **multi-series line** from long-format `(x, series, y)` results (capped at 12 series, tail folds into "Other"). Widget specs persist; old dashboards render unchanged.
 - **Reports** — gather widgets / verified queries as sources and have the model compose one structured markdown report (executive summary → sections → SQL appendix), versioned and regenerable, with read-only share links and print-to-PDF.
+
+### Metrics & Pulse-style digest
+
+![Metrics: sparkline cards with delta badges](images/metrics.png)
+
+- **Tracked metrics** — a metric is a SQL query returning exactly `(time_bucket, value)`, plus a time grain (day/week/month) and a "good direction" (up/down/neutral — colors the delta badge: a *drop* in cancelled orders shows green). Create one with **📈 Track as metric** on any time-series chat result (name/grain prefilled) or from a verified query, or write the SQL by hand in the Metrics tab.
+- **Shape-validated at the choke point** — create/update trial-runs the SQL through the full safety + risk gate and rejects wrong shapes with a plain message; sensitive-column queries can't become metrics; the connection binding is immutable. After that, cards run the stored SQL live (30s timeout; snapshots are a planned optimization).
+- **Metrics digest (the "OSS Tableau Pulse" bit)** — a `metrics_digest` schedule runs all metrics of a connection, computes insights **deterministically** (Δ vs previous bucket, vs the 4-bucket average, ±2σ outliers, direction-aware good/bad), then makes **one** LLM call to narrate exactly those numbers (metric names are data-wrapped against prompt injection; raw series never enter the prompt), merges the latest data-drift monitor findings (≤7 days old), and POSTs markdown to your webhook (n8n, Zapier, a Slack bridge — same SSRF-guarded plumbing as other schedules). If the LLM fails, a numbers-only fallback digest is sent instead — the digest always arrives. No webhook? Read it in the Automations run history. Hourly cost floor; ≤20 metrics per digest.
 
 ### DB client & analysis
 

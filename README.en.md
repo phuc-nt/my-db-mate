@@ -37,6 +37,38 @@ docker compose --profile full up    # app + DB + auto-migrate → http://localho
 
 ---
 
+## For Tableau users
+
+If what you use Tableau for is mostly *tracking metrics and getting insight digests* (the **Tableau Pulse** workflow) rather than hand-building complex visuals, a self-hosted My DB Mate covers that part for $0:
+
+| You need | Tableau | My DB Mate |
+|---|---|---|
+| Metric tracking: sparkline + % change | Pulse | ✅ Metrics tab — created 1-click from a chat result |
+| Recurring insight digest (deltas, outliers) | Pulse (AI) | ✅ Scheduled digest → markdown webhook; numbers computed deterministically, the LLM only narrates |
+| Ask your data in natural language | Ask Data / Agent | ✅ Chat + a context layer you grow over time |
+| Dashboards + auto-refresh + read-only share | ✅ | ✅ plus date range (`{{from}}`/`{{to}}`), KPI tiles, stacked bars, multi-series lines |
+| Data anomaly alerts | Alerts | ✅ Data-drift monitor (snapshot diff, explicit thresholds, no opaque ML) |
+| Price | ~$75/user/month (Creator) | $0 self-hosted — you only pay for your own LLM API key |
+| **Drag-and-drop viz builder (VizQL)** | ✅ | ❌ **Not there, and not planned** — this product is chat-first; if you need a viz canvas, use [Apache Superset](https://superset.apache.org/) |
+| Prep/ETL · enterprise governance · multi-user RBAC | ✅ | ❌ Not yet (currently single-user, self-hosted scope) |
+
+![Metrics: sparkline cards + delta badges](docs/images/metrics.png)
+
+A sample digest (JSON POSTed to your webhook — n8n / Zapier / a script that forwards to Slack):
+
+```json
+{
+  "name": "Weekly metrics digest",
+  "digest": "## Metrics digest\n\nMonthly revenue dropped sharply, −64.9% vs the previous bucket (70.5K) — a ±2σ outlier across the 19-month series…",
+  "metrics": [{ "name": "Monthly revenue", "latest": 70526.13, "deltaPct": -64.9, "flags": ["-64.9% vs prev", "outlier ±2σ"] }],
+  "monitorFindings": []
+}
+```
+
+Details: [features.md](docs/features.md) · [user guide (Vietnamese)](docs/user-guide.md).
+
+---
+
 ## License
 
 Released under the **[PolyForm Noncommercial License 1.0.0](LICENSE.md)** — free to use, modify, and share for any **noncommercial** purpose (personal, education, research, nonprofit).

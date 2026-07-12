@@ -37,6 +37,38 @@ docker compose --profile full up    # app + DB + tự migrate → http://localho
 
 ---
 
+## Cho người dùng Tableau
+
+Nếu bạn dùng Tableau chủ yếu để *theo dõi chỉ số và nhận bản tin insight* (kiểu **Tableau Pulse**) chứ không phải để kéo-thả dựng visual phức tạp, My DB Mate self-host làm được phần đó với chi phí $0:
+
+| Bạn cần | Tableau | My DB Mate |
+|---|---|---|
+| Theo dõi metric: sparkline + % thay đổi | Pulse | ✅ Tab Metrics — tạo 1-click từ kết quả chat |
+| Bản tin insight định kỳ (delta, outlier) | Pulse (AI) | ✅ Digest theo lịch → webhook markdown; số tính tất định, LLM chỉ diễn giải |
+| Hỏi dữ liệu bằng ngôn ngữ tự nhiên | Ask Data / Agent | ✅ Chat + lớp context bạn bồi đắp theo thời gian |
+| Dashboard + auto-refresh + share chỉ-đọc | ✅ | ✅ kèm date-range (`{{from}}`/`{{to}}`), KPI tile, stacked bar, multi-series |
+| Cảnh báo dữ liệu bất thường | Alerts | ✅ Data-drift monitor (snapshot-diff, ngưỡng tường minh, không ML mờ) |
+| Giá | ~$75/user/tháng (Creator) | $0 self-host — chỉ trả API key LLM của chính bạn |
+| **Kéo-thả dựng visual (VizQL)** | ✅ | ❌ **Không có và không định làm** — hướng đi là chat-first; cần viz canvas hãy dùng [Apache Superset](https://superset.apache.org/) |
+| Prep/ETL · governance doanh nghiệp · multi-user RBAC | ✅ | ❌ Chưa có (đang ở phạm vi single-user self-host) |
+
+![Metrics: sparkline cards + delta badge](docs/images/metrics.png)
+
+Bản tin digest mẫu (JSON POST vào webhook của bạn — n8n / Zapier / script tự đẩy vào Slack):
+
+```json
+{
+  "name": "Weekly metrics digest",
+  "digest": "## Metrics digest\n\nDoanh thu tháng gần nhất giảm mạnh −64.9% so với kỳ trước (70.5K), là outlier ±2σ trên chuỗi 19 tháng…",
+  "metrics": [{ "name": "Monthly revenue", "latest": 70526.13, "deltaPct": -64.9, "flags": ["-64.9% vs prev", "outlier ±2σ"] }],
+  "monitorFindings": []
+}
+```
+
+Chi tiết: [Metrics & digest trong user guide](docs/user-guide.md) · [features.md](docs/features.md).
+
+---
+
 ## Giấy phép
 
 Phát hành theo **[PolyForm Noncommercial License 1.0.0](LICENSE.md)** — tự do dùng, sửa, chia sẻ cho mọi mục đích **phi thương mại** (cá nhân, học tập, nghiên cứu, tổ chức phi lợi nhuận).
