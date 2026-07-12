@@ -12,13 +12,14 @@ import { ChatArtifactChip, type ChatArtifact } from '../../../../components/chat
 import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat-workspace-panel';
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
+import { InboxPopover } from '../../../../components/inbox-popover';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
   state?: string;
   toolCallId: string;
   input?: { sql?: string };
-  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string };
+  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null };
 }
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
@@ -60,6 +61,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [provenance, setProvenance] = useState<Provenance | null>(null);
   const provenanceMsgIdRef = useRef<string | null>(null);
   const [inboxChipDismissed, setInboxChipDismissed] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const inboxMsgIdRef = useRef<string | null>(null);
 
   // Follow-up question suggestions after a completed turn.
@@ -119,6 +121,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             ? (p.output?.reason ?? p.output?.note) : undefined,
           index: list.length + 1,
           question: lastUserText || undefined,
+          lineage: p.output?.lineage ?? null,
         });
       }
     }
@@ -357,7 +360,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             dialect={dialect}
                             sessionId={sessionId}
                             initialSql={out?.executedSql ?? p.input?.sql ?? ''}
-                            initialResult={ok ? { columns: out!.columns!, rows: out!.rows ?? [], executedSql: out!.executedSql } : undefined}
+                            initialResult={ok ? { columns: out!.columns!, rows: out!.rows ?? [], executedSql: out!.executedSql, lineage: out!.lineage } : undefined}
                             initialBlockedReason={out?.blocked ? out.reason : undefined}
                             initialError={out?.error}
                             onConfirmedRun={(info) => recordConfirmedRun(`Q${artifact?.index ?? '?'}`, info)}
@@ -429,11 +432,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
         {/* Follow-up suggestion chips — click to ask next. */}
         {provenance && !busy && <ContextProvenanceBadge p={provenance} connectionId={connectionId} />}
-        {inboxCount > 0 && !inboxChipDismissed && !busy && (
+        {inboxOpen && <InboxPopover connectionId={connectionId} onClose={() => setInboxOpen(false)} onChanged={(n) => { setInboxCount(n); if (n === 0) setInboxOpen(false); }} />}
+        {inboxCount > 0 && !inboxChipDismissed && !busy && !inboxOpen && (
           <div className="mb-1 flex items-center gap-2 text-xs" data-testid="inbox-chip">
-            <Link href={`/db/${connectionId}/context`} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 hover:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300">
-              💡 {inboxCount} context suggestion{inboxCount === 1 ? '' : 's'} waiting for review →
-            </Link>
+            <button onClick={() => setInboxOpen(true)} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 hover:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300">
+              💡 {inboxCount} context suggestion{inboxCount === 1 ? '' : 's'} — review here →
+            </button>
             <button onClick={() => setInboxChipDismissed(true)} className="text-neutral-400 hover:text-neutral-600" title="Dismiss">✕</button>
           </div>
         )}

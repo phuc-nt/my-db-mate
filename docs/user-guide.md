@@ -80,6 +80,7 @@ Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh se
 - Trong Chat: panel kết quả có tab **🗂 Schema** để xem bảng/cột/sample không rời hội thoại; khi có gợi ý context chờ duyệt sẽ hiện **badge trên mục Context** + chip nhắc sau mỗi lượt; nút **⏰ Schedule** trên mỗi kết quả để đặt lịch chạy định kỳ (quản lý trong Automations).
 - **Schema → Saved**: bookmark và verified query nằm cạnh nhau; bấm **Promote to verified** để nâng bookmark thành ví dụ few-shot cho agent.
 - **Schema → Health**: mỗi cảnh báo data có nút **Ask agent →** mở chat với câu hỏi điền sẵn.
+- **Vòng lặp tin cậy trong Chat**: dưới mỗi câu trả lời có **badge nguồn gốc + độ tin cậy** (đã dùng verified query/glossary nào); bấm **👎** khi trả lời sai → chọn loại lỗi, sửa SQL ngay trong dialog, chạy lại, và **lưu bản sửa thành verified query** (lần hỏi tương tự sau sẽ đúng). Query nặng cần xác nhận giờ hiện **2 ứng viên SQL** (bản gốc + bản viết khác, kèm risk từng bản) để bạn chọn. Kết quả dạng chuỗi thời gian tự mở **chart**; dưới bảng có 1 dòng **lineage** (từ bảng nào, lọc gì, nhóm gì); nút ẩn/hiện SQL nhớ theo từng connection; chip 💡 gợi ý context mở **popover duyệt ngay trong chat**.
 
 > **Khuyến nghị an toàn:** Cấp cho connection một DB user **chỉ có quyền `SELECT`**, và trỏ vào **read replica** nếu có. Đây là ranh giới bảo vệ thật; các lớp chặn trong app chỉ là phòng thủ nhiều lớp, không thay thế việc cấp quyền tối thiểu.
 

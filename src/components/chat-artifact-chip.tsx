@@ -19,6 +19,7 @@ export interface ChatArtifact {
   index: number;
   /** The user question that led to this query (teach-flow context). */
   question?: string;
+  lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null;
 }
 
 export function ChatArtifactChip({ artifact, active, onClick }: {

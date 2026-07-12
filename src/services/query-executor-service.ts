@@ -12,6 +12,7 @@ import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
+import { extractLineage } from '../lib/sql-lineage';
 import type { QueryResult, Dialect } from './connection-providers/provider-interface';
 
 /** Largest synced rowCount among tables whose name appears in the SQL (red-team
@@ -63,6 +64,8 @@ export interface ExecuteResult {
   executedSql?: string;
   /** Present when status='needs_confirmation' (P3 risk tier). */
   risk?: { tier: 'medium' | 'high'; score: number; reason: string };
+  /** AST-derived read lineage (tables/filters/grouping) — null when unparsable. */
+  lineage?: import('../lib/sql-lineage').SqlLineage | null;
 }
 
 export async function executeQuery(params: {
@@ -129,7 +132,7 @@ export async function executeQuery(params: {
       durationMs: Date.now() - started,
       blockedReason: onWritableConn ? 'executed on a NON-read-only connection (DB user can write)' : undefined,
     });
-    return { status: 'ok', result, executedSql: finalSql };
+    return { status: 'ok', result, executedSql: finalSql, lineage: extractLineage(finalSql, conn.dialect) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await audit({

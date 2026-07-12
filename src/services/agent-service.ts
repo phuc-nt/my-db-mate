@@ -168,7 +168,7 @@ export function buildAgentTools(
         const sanityNote = res.result!.rowCount === 0
           ? { sanityNote: 'Query returned 0 rows. Before concluding "there is none", verify the filter values/join actually exist (e.g. check DISTINCT values of the filtered column). If you already did, answer with that evidence.' }
           : {};
-        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, ...sanityNote };
+        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, lineage: res.lineage ?? undefined, ...sanityNote };
       },
     }),
     glossary_lookup: tool({

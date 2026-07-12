@@ -27,3 +27,17 @@ export function validateChartSpec(spec: unknown): ChartSpec | null {
   const r = ChartSpecSchema.safeParse(spec);
   return r.success ? r.data : null;
 }
+
+/** Conservative auto-open rule for the result view (stricter than inferChartSpec,
+ *  which is a "best chart IF the user asks" heuristic):
+ *  - temporal label + numeric → line (any row count — time series read better as lines)
+ *  - exactly 2 columns, categorical + numeric, ≤20 rows → bar
+ *  - anything else → null (table stays the default)
+ *  User toggles always win; this only picks the INITIAL view. */
+export function shouldAutoChart(columns: string[], rows: unknown[][]): ChartSpec | null {
+  const spec = inferChartSpec(columns, rows);
+  if (!spec) return null;
+  if (spec.type === 'line') return spec;                 // temporal — always chart-worthy
+  if (columns.length === 2 && rows.length > 0 && rows.length <= 20) return spec; // small categorical
+  return null;
+}

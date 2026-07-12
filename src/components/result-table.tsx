@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ResultChart } from './result-chart';
 import { pivot, type PivotAgg } from '../lib/pivot';
+import { shouldAutoChart } from '../services/chart-spec-service';
 import { CopyButton } from './copy-button';
 import { toCsv, toJson, toSqlInsert, downloadText, type ExportDialect } from '../lib/export-formats';
 
@@ -12,7 +13,8 @@ const RENDER_CAP = 200;
 const SAFETY_CAP = 500; // the server-side LIMIT; a full 500-row set is likely capped
 
 export function ResultTable({ columns, rows, dialect = 'sqlite' }: { columns: string[]; rows: unknown[][]; dialect?: ExportDialect }) {
-  const [view, setView] = useState<'table' | 'chart'>('table');
+  // Initial view only — user toggles always win afterwards (state, never re-derived).
+  const [view, setView] = useState<'table' | 'chart'>(() => (shouldAutoChart(columns, rows) ? 'chart' : 'table'));
   // Pivot state: when set, the table shows the client-side regrouped result.
   const [pv, setPv] = useState<{ group: string; value: string; agg: PivotAgg } | null>(null);
   const baseRows = rows ?? [];
@@ -44,8 +46,8 @@ export function ResultTable({ columns, rows, dialect = 'sqlite' }: { columns: st
         <CopyButton label="Copy" getText={() => toCsv(safeCols, safeRows)} />
       </div>
       {/* Client-side pivot control — regroups the loaded rows without re-querying. */}
-      {view === 'table' && baseCols.length >= 1 && (
-        <PivotControl columns={baseCols} value={pv} onChange={setPv} />
+      {baseCols.length >= 1 && (
+        <PivotControl columns={baseCols} value={pv} onChange={(v) => { setPv(v); if (v) setView('table'); }} />
       )}
       {pivoted && (
         <p className="mb-1 text-xs text-amber-600">

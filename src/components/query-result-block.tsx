@@ -10,6 +10,7 @@ interface RunResult {
   columns: string[];
   rows: unknown[][];
   executedSql?: string;
+  lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null;
 }
 
 /**
@@ -110,7 +111,7 @@ export function QueryResultBlock({
       }
       else if (data.status === 'error') { setError(data.error); setResult(undefined); }
       else {
-        setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql });
+        setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql, lineage: data.lineage });
         setLastExecutedSql(data.executedSql);
         if (feedbackIdRef.current) setTeachFixReady(true);
         if (confirmed) onConfirmedRun?.({ sql: data.executedSql ?? runSql, columns: data.columns, rows: data.rows });
@@ -259,6 +260,13 @@ export function QueryResultBlock({
       )}
       {blocked && <p className="mt-1 text-amber-600">Blocked: {blocked}</p>}
       {error && <p className="mt-1 text-red-600">Error: {error}</p>}
+      {result?.lineage && result.lineage.tables.length > 0 && (
+        <p className="mt-1 text-[11px] text-neutral-400" data-testid="lineage-line">
+          from {result.lineage.tables.join(', ')}
+          {result.lineage.whereColumns.length > 0 && <> · filtered by {result.lineage.whereColumns.join(', ')}</>}
+          {result.lineage.groupBy.length > 0 && <> · grouped by {result.lineage.groupBy.join(', ')}</>}
+        </p>
+      )}
       {result && <ResultTable columns={result.columns} rows={result.rows} dialect={dialect} />}
 
       {(() => {

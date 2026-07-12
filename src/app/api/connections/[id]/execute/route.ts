@@ -15,5 +15,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (res.status === 'blocked') return NextResponse.json({ status: 'blocked', reason: res.blockedReason }, { status: 200 });
   if (res.status === 'needs_confirmation') return NextResponse.json({ status: 'needs_confirmation', risk: res.risk, executedSql: res.executedSql }, { status: 200 });
   if (res.status === 'error') return NextResponse.json({ status: 'error', error: res.errorMessage, executedSql: res.executedSql }, { status: 200 });
-  return NextResponse.json({ status: 'ok', ...res.result, executedSql: res.executedSql });
+  return NextResponse.json({ status: 'ok', ...res.result, executedSql: res.executedSql, lineage: res.lineage ?? null });
 }
