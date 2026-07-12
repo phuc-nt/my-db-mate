@@ -27,6 +27,7 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState<MetricRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [digestOpen, setDigestOpen] = useState(false);
   const [msg, setMsg] = useState('');
 
   const load = useCallback(async () => {
@@ -48,6 +49,18 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
     load();
   }
 
+  /** Pulse-style digest schedule over this connection's metrics (server enforces
+   *  the hourly cost floor — one LLM call per run). */
+  async function createDigest(v: Record<string, string>) {
+    setMsg('');
+    const r = await fetch(`/api/connections/${id}/schedules`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'create', name: v.name, mode: 'metrics_digest', cron: v.cron, webhookUrl: v.webhookUrl || undefined }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setMsg(r.ok ? 'Digest scheduled ✓ — manage in Automations' : (d.error ?? 'schedule failed'));
+  }
+
   async function remove(metricId: string) {
     await fetch(`/api/connections/${id}/metrics/${metricId}`, { method: 'DELETE' });
     load();
@@ -57,9 +70,16 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">📈 Metrics</h2>
-        <button onClick={() => setCreating(true)} className="rounded bg-blue-600 px-3 py-1 text-xs text-white" data-testid="new-metric">
-          + New metric
-        </button>
+        <div className="flex gap-2">
+          {list.length > 0 && (
+            <button onClick={() => setDigestOpen(true)} className="rounded border px-3 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800" data-testid="digest-schedule">
+              ⏰ Digest schedule
+            </button>
+          )}
+          <button onClick={() => setCreating(true)} className="rounded bg-blue-600 px-3 py-1 text-xs text-white" data-testid="new-metric">
+            + New metric
+          </button>
+        </div>
       </div>
       {msg && <p className="text-xs text-green-600" data-testid="metric-msg">{msg}</p>}
       {loaded && list.length === 0 && (
@@ -73,6 +93,19 @@ export default function MetricsPage({ params }: { params: Promise<{ id: string }
           <MetricCard key={m.id} connectionId={id} metric={m} onEdit={() => setEditing(m)} onDelete={() => remove(m.id)} />
         ))}
       </div>
+      {digestOpen && (
+        <FormModal open title="Schedule a metrics digest" submitLabel="Create schedule"
+          fields={[
+            { name: 'name', label: 'Schedule name', defaultValue: 'Metrics digest', required: true },
+            { name: 'cron', label: 'Cron — hourly or less often, exact minute (1 LLM call per run)', type: 'select', defaultValue: '0 7 * * 1', options: [
+              { value: '0 7 * * 1', label: 'Weekly — Monday 07:00' },
+              { value: '0 7 * * *', label: 'Daily — 07:00' },
+              { value: '0 * * * *', label: 'Hourly' },
+            ] },
+            { name: 'webhookUrl', label: 'Webhook URL (optional — digest markdown is POSTed; empty = view in Automations)' },
+          ]}
+          onSubmit={(v) => { setDigestOpen(false); createDigest(v); }} onClose={() => setDigestOpen(false)} />
+      )}
       {(creating || editing) && (
         <FormModal open title={editing ? `Edit "${editing.name}"` : 'New metric'} submitLabel={editing ? 'Save' : 'Create'}
           fields={METRIC_FIELDS(editing ?? undefined)}

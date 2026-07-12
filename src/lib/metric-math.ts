@@ -74,6 +74,69 @@ export function validateMetricShape(columns: string[], rows: unknown[][]): { ok:
   return { ok: true };
 }
 
+export interface MetricInsight {
+  /** vs previous bucket, % (null when undefined). */
+  deltaPct: number | null;
+  /** vs mean of the 4 buckets before the latest, % (null when <2 prior buckets or mean 0). */
+  vsAvg4Pct: number | null;
+  /** Latest sits outside mean±2σ of the rest of the series (needs ≥5 points). */
+  isOutlier: boolean;
+  /** Deterministic flags for the digest, e.g. ["-64.9% vs prev", "outlier ±2σ"]. */
+  flags: string[];
+  /** Whether the latest move is good/bad news given the metric's direction. */
+  goodness: 'good' | 'bad' | 'neutral';
+}
+
+/** Deterministic digest insights — the LLM only narrates these numbers. */
+export function computeInsights(series: MetricPoint[], direction: MetricDirection): MetricInsight {
+  const { deltaPct } = computeDelta(series);
+  const flags: string[] = [];
+
+  // vs average of up to 4 buckets immediately before the latest.
+  let vsAvg4Pct: number | null = null;
+  if (series.length >= 3) {
+    const prior = series.slice(Math.max(0, series.length - 5), series.length - 1).map((p) => p.v);
+    const mean = prior.reduce((a, b) => a + b, 0) / prior.length;
+    if (mean !== 0) vsAvg4Pct = ((series[series.length - 1].v - mean) / Math.abs(mean)) * 100;
+  }
+
+  // ±2σ outlier: latest vs distribution of everything before it.
+  let isOutlier = false;
+  if (series.length >= 5) {
+    const rest = series.slice(0, -1).map((p) => p.v);
+    const mean = rest.reduce((a, b) => a + b, 0) / rest.length;
+    const sd = Math.sqrt(rest.reduce((a, b) => a + (b - mean) ** 2, 0) / rest.length);
+    if (sd > 0) isOutlier = Math.abs(series[series.length - 1].v - mean) > 2 * sd;
+  }
+
+  if (deltaPct != null && Math.abs(deltaPct) >= 5) flags.push(`${deltaPct > 0 ? '+' : ''}${deltaPct.toFixed(1)}% vs prev`);
+  if (vsAvg4Pct != null && Math.abs(vsAvg4Pct) >= 10) flags.push(`${vsAvg4Pct > 0 ? '+' : ''}${vsAvg4Pct.toFixed(1)}% vs 4-bucket avg`);
+  if (isOutlier) flags.push('outlier ±2σ');
+
+  const signal = deltaPct ?? vsAvg4Pct;
+  const goodness: MetricInsight['goodness'] = direction === 'neutral' || signal == null || Math.abs(signal) < 5
+    ? 'neutral'
+    : (signal >= 0) === (direction === 'up_good') ? 'good' : 'bad';
+  return { deltaPct, vsAvg4Pct, isOutlier, flags, goodness };
+}
+
+export interface DigestMetricLine {
+  name: string;
+  latest: number | null;
+  insight: MetricInsight;
+}
+
+/** Numbers-only digest markdown — the LLM-failure fallback AND the source of
+ *  truth the LLM narrative is checked against (it never sees other numbers). */
+export function renderDigestFallback(lines: DigestMetricLine[]): string {
+  const rows = lines.map((l) => {
+    const d = l.insight.deltaPct;
+    const badge = l.insight.goodness === 'good' ? '🟢' : l.insight.goodness === 'bad' ? '🔴' : '⚪';
+    return `- ${badge} **${l.name}**: ${formatMetricValue(l.latest)}${d != null ? ` (${d > 0 ? '+' : ''}${d.toFixed(1)}% vs prev)` : ''}${l.insight.flags.length ? ` — ${l.insight.flags.join(', ')}` : ''}`;
+  });
+  return `## Metrics digest\n\n${rows.join('\n')}`;
+}
+
 /** Compact display for card values: 1234567 → "1.23M". */
 export function formatMetricValue(v: number | null): string {
   if (v == null) return '—';

@@ -157,9 +157,48 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
             </div>
             {(s.sql || s.question) && <pre className="mt-1 overflow-x-auto text-xs text-neutral-500">{s.sql ?? s.question}</pre>}
             {s.targetName && <p className="mt-1 text-xs text-neutral-500">{s.mode === 'dashboard_refresh' ? '📊 refresh dashboard' : s.mode === 'report_regenerate' ? '📝 regenerate report' : s.mode} · <b>{s.targetName}</b></p>}
+            {s.mode === 'metrics_digest' && <p className="mt-1 text-xs text-neutral-500">📈 metrics digest — all metrics of this connection, 1 LLM call/run</p>}
+            {s.mode === 'monitor' && <p className="mt-1 text-xs text-neutral-500">🔎 data monitor</p>}
+            <RunHistory connectionId={id} scheduleId={s.id} />
           </li>
         ))}
       </ul>
     </main>
+  );
+}
+
+interface RunRow { id: string; status: string; detail: string | null; ranAt: string; rowCount: number | null }
+
+/** Collapsible last-runs list per schedule. Digest runs keep their (capped)
+ *  markdown in `detail`, so a webhook-less digest is still readable here. */
+function RunHistory({ connectionId, scheduleId }: { connectionId: string; scheduleId: string }) {
+  const [open, setOpen] = useState(false);
+  const [runs, setRuns] = useState<RunRow[] | null>(null);
+  async function toggleOpen() {
+    const next = !open;
+    setOpen(next);
+    if (next && runs === null) {
+      const r = await fetch(`/api/connections/${connectionId}/schedules/runs?scheduleId=${scheduleId}`);
+      setRuns(await r.json().catch(() => []));
+    }
+  }
+  return (
+    <div className="mt-1">
+      <button onClick={toggleOpen} className="text-xs text-blue-600" data-testid="run-history-toggle">
+        {open ? 'Hide runs' : 'Show runs'}
+      </button>
+      {open && runs && (
+        <ul className="mt-1 space-y-1 text-xs" data-testid="run-history">
+          {runs.map((r) => (
+            <li key={r.id} className="rounded border border-neutral-200 p-1.5 dark:border-neutral-800">
+              <span className={r.status === 'ok' ? 'text-green-600' : r.status === 'skipped' ? 'text-neutral-400' : 'text-amber-600'}>{r.status}</span>
+              <span className="text-neutral-400"> · {new Date(r.ranAt).toLocaleString()}{r.rowCount != null ? ` · ${r.rowCount} rows` : ''}</span>
+              {r.detail && <pre className="mt-0.5 whitespace-pre-wrap text-neutral-500">{r.detail}</pre>}
+            </li>
+          ))}
+          {runs.length === 0 && <li className="text-neutral-400">No runs yet.</li>}
+        </ul>
+      )}
+    </div>
   );
 }

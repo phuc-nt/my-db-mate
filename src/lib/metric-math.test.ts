@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDelta, formatMetricValue, guessGrain, parseSeries, validateMetricShape } from './metric-math';
+import { computeDelta, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
 
 describe('parseSeries', () => {
   it('sorts non-chronological input and drops invalid rows', () => {
@@ -86,6 +86,63 @@ describe('validateMetricShape', () => {
       ['2026-01-01', 1], ['2026-02-01', 2], ['2026-03-01', 3], ['2026-04-01', 4], ['bad', 'bad'],
     ];
     expect(validateMetricShape(['month', 'v'], rows)).toEqual({ ok: true });
+  });
+});
+
+describe('computeInsights', () => {
+  const mk = (vals: number[]) => vals.map((v, i) => ({ t: `2026-01-${String(i + 1).padStart(2, '0')}`, v }));
+
+  it('flags a big drop vs prev and vs avg4 as bad for up_good', () => {
+    const ins = computeInsights(mk([100, 100, 100, 100, 30]), 'up_good');
+    expect(ins.deltaPct).toBe(-70);
+    expect(ins.vsAvg4Pct).toBe(-70);
+    expect(ins.goodness).toBe('bad');
+    expect(ins.flags.join(' ')).toContain('vs prev');
+  });
+
+  it('same drop is good for down_good (errors falling)', () => {
+    expect(computeInsights(mk([100, 100, 100, 100, 30]), 'down_good').goodness).toBe('good');
+  });
+
+  it('neutral direction never scores goodness', () => {
+    expect(computeInsights(mk([100, 100, 100, 100, 30]), 'neutral').goodness).toBe('neutral');
+  });
+
+  it('detects ±2σ outlier on a stable series', () => {
+    const ins = computeInsights(mk([100, 101, 99, 100, 101, 100, 300]), 'up_good');
+    expect(ins.isOutlier).toBe(true);
+    expect(ins.flags).toContain('outlier ±2σ');
+  });
+
+  it('no outlier when spread is normal', () => {
+    expect(computeInsights(mk([100, 110, 90, 105, 95, 102]), 'up_good').isOutlier).toBe(false);
+  });
+
+  it('short series (1 point): all null, no flags, neutral', () => {
+    const ins = computeInsights(mk([5]), 'up_good');
+    expect(ins.deltaPct).toBeNull();
+    expect(ins.vsAvg4Pct).toBeNull();
+    expect(ins.isOutlier).toBe(false);
+    expect(ins.flags).toEqual([]);
+    expect(ins.goodness).toBe('neutral');
+  });
+
+  it('small move (<5%) stays neutral and unflagged', () => {
+    const ins = computeInsights(mk([100, 100, 100, 100, 102]), 'up_good');
+    expect(ins.goodness).toBe('neutral');
+    expect(ins.flags.filter((f) => f.includes('vs prev'))).toEqual([]);
+  });
+});
+
+describe('renderDigestFallback', () => {
+  it('renders numbers-only markdown with goodness badges', () => {
+    const md = renderDigestFallback([
+      { name: 'Revenue', latest: 1_234_567, insight: { deltaPct: -12.3, vsAvg4Pct: null, isOutlier: false, flags: ['-12.3% vs prev'], goodness: 'bad' } },
+      { name: 'Errors', latest: 4, insight: { deltaPct: null, vsAvg4Pct: null, isOutlier: false, flags: [], goodness: 'neutral' } },
+    ]);
+    expect(md).toContain('## Metrics digest');
+    expect(md).toContain('🔴 **Revenue**: 1.23M (-12.3% vs prev)');
+    expect(md).toContain('⚪ **Errors**: 4');
   });
 });
 
