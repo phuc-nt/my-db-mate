@@ -35,9 +35,12 @@ export default function SharedDashboardPage({ params }: { params: Promise<{ slug
       {dash.widgets.length === 0 ? (
         <p className="text-sm text-neutral-500">This dashboard has no widgets.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-6 print:block">
           {dash.widgets.map((w) => (
-            <DashboardWidget key={w.id} widget={w} readOnly />
+            <div key={w.id}
+              className={`${({ s: 'md:col-span-2', m: 'md:col-span-3', l: 'md:col-span-6' } as Record<string, string>)[(w as { size?: string }).size ?? 'm']} print:mb-4 print:break-inside-avoid`}>
+              <DashboardWidget widget={w} readOnly />
+            </div>
           ))}
         </div>
       )}

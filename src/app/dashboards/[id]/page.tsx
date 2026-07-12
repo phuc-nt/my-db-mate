@@ -7,6 +7,9 @@ import { FormModal } from '../../../components/form-modal';
 
 interface DashDetail { id: string; name: string; shareSlug: string | null; widgets: WidgetData[] }
 
+// Layout width per widget size (6-col grid): s=1/3, m=1/2, l=full.
+const SIZE_CLS: Record<string, string> = { s: 'md:col-span-2', m: 'md:col-span-3', l: 'md:col-span-6' };
+
 export default function DashboardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [dash, setDash] = useState<DashDetail | null>(null);
@@ -69,6 +72,23 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
     setRefreshSched(null);
   }
 
+  async function setLayout(widgetId: string, patch: { size?: string; position?: number }) {
+    await fetch(`/api/dashboards/${id}/widgets/${widgetId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) });
+    load();
+  }
+
+  /** Swap the position of two adjacent widgets (indices in the rendered order). */
+  async function swapOrder(a: number, b: number) {
+    if (!dash || b < 0 || b >= dash.widgets.length) return;
+    const wa = dash.widgets[a], wb = dash.widgets[b];
+    // Positions may collide (legacy default 0) — normalize to index-based order.
+    await Promise.all([
+      fetch(`/api/dashboards/${id}/widgets/${wa.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ position: b }) }),
+      fetch(`/api/dashboards/${id}/widgets/${wb.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ position: a }) }),
+    ]);
+    load();
+  }
+
   return (
     <main className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -86,9 +106,19 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
       {dash.widgets.length === 0 ? (
         <p className="text-sm text-neutral-500">No widgets. Pin a result from chat (📌 Pin to dashboard).</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {dash.widgets.map((w) => (
-            <DashboardWidget key={w.id} widget={w} dashboardId={id} onChanged={load} />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+          {dash.widgets.map((w, i) => (
+            <div key={w.id} className={SIZE_CLS[(w as { size?: string }).size ?? 'm'] ?? SIZE_CLS.m}>
+              <div className="mb-1 flex items-center justify-end gap-1 text-[11px] text-neutral-400" data-testid="widget-layout-controls">
+                {(['s', 'm', 'l'] as const).map((sz) => (
+                  <button key={sz} onClick={() => setLayout(w.id, { size: sz })}
+                    className={((w as { size?: string }).size ?? 'm') === sz ? 'font-bold text-blue-600' : 'hover:text-neutral-600'}>{sz.toUpperCase()}</button>
+                ))}
+                <button onClick={() => swapOrder(i, i - 1)} disabled={i === 0} className="disabled:opacity-30" title="Move up">↑</button>
+                <button onClick={() => swapOrder(i, i + 1)} disabled={i === dash.widgets.length - 1} className="disabled:opacity-30" title="Move down">↓</button>
+              </div>
+              <DashboardWidget widget={w} dashboardId={id} onChanged={load} />
+            </div>
           ))}
         </div>
       )}

@@ -41,5 +41,7 @@ export const dashboardWidgets = pgTable('dashboard_widgets', {
   lastResult: jsonb('last_result'),
   lastRefreshedAt: timestamp('last_refreshed_at', { withTimezone: true }),
   position: integer('position').notNull().default(0),
+  /** Layout width: s = 1/3, m = 1/2, l = full row. */
+  size: text('size').notNull().default('m'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -69,6 +69,15 @@ export async function setShare(id: string, enable: boolean): Promise<string | nu
   return slug;
 }
 
+/** Update widget layout (size and/or position). Owner-only surface. */
+export async function updateWidgetLayout(widgetId: string, patch: { size?: string; position?: number }) {
+  const set: Record<string, unknown> = {};
+  if (patch.size && ['s', 'm', 'l'].includes(patch.size)) set.size = patch.size;
+  if (typeof patch.position === 'number') set.position = patch.position;
+  if (Object.keys(set).length === 0) return;
+  await db.update(dashboardWidgets).set(set).where(eq(dashboardWidgets.id, widgetId));
+}
+
 export interface PinInput {
   dashboardId: string;
   connectionId: string;
@@ -171,6 +180,7 @@ export async function getSharedDashboard(slug: string) {
     lastResult: dashboardWidgets.lastResult,
     lastRefreshedAt: dashboardWidgets.lastRefreshedAt,
     position: dashboardWidgets.position,
+    size: dashboardWidgets.size,
   }).from(dashboardWidgets)
     .where(eq(dashboardWidgets.dashboardId, dash.id))
     .orderBy(asc(dashboardWidgets.position), asc(dashboardWidgets.createdAt));

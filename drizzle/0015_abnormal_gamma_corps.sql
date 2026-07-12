@@ -1,0 +1,1 @@
+ALTER TABLE "dashboard_widgets" ADD COLUMN "size" text DEFAULT 'm' NOT NULL;
