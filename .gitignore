@@ -21,6 +21,7 @@ plans/
 docs/uat-ebook-store.md
 docs/uat-full-manual.md
 docs/uat-post-release-additions.md
+docs/uat-trust-loop-analyst-automation.md
 docs/product-idea.md
 
 # Dev/test tooling (real E2E + UAT harness, kept local)
