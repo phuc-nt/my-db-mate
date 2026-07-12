@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 interface Flag { tableName: string; columnName: string; issue: string; detail: string }
 interface Health { flags: Flag[]; profiledColumns: number; totalColumns: number }
+interface MonitorRun { id: string; status: string; detail: string | null; ranAt: string; result: { columns: string[]; rows: unknown[][] } | null }
 
 const ISSUE_LABEL: Record<string, string> = {
   high_null: '⚠ High NULL rate',
@@ -14,6 +15,12 @@ const ISSUE_LABEL: Record<string, string> = {
 
 export default function DataHealthPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [monitorRuns, setMonitorRuns] = useState<MonitorRun[]>([]);
+  useEffect(() => {
+    fetch(`/api/connections/${id}/schedules/runs?mode=monitor`).then((r) => r.json())
+      .then((runs) => setMonitorRuns(Array.isArray(runs) ? runs.slice(0, 3) : []))
+      .catch(() => {});
+  }, [id]);
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -72,6 +79,18 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
             </ul>
           )}
         </>
+      )}
+          {monitorRuns.length > 0 && (
+        <section className="mt-6" data-testid="monitor-findings">
+          <h2 className="mb-2 text-sm font-semibold">🔎 Monitor findings gần nhất</h2>
+          <ul className="space-y-1 text-xs">
+            {monitorRuns.map((r) => (
+              <li key={r.id} className={`rounded border p-2 ${r.result?.rows?.length ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : 'border-neutral-200 dark:border-neutral-800'}`}>
+                <span className="text-neutral-500">{new Date(r.ranAt).toLocaleString()}</span> · {r.detail ?? r.status}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </main>
   );

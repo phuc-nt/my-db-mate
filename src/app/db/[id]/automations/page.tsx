@@ -22,6 +22,16 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
   const [list, setList] = useState<Schedule[]>([]);
   const [msg, setMsg] = useState('');
   const [f, setF] = useState({ name: '', cron: '0 7 * * *', sql: '', webhookUrl: '' });
+  // Monitor mode: watch tables for data drift (snapshot-diff, no LLM).
+  const [formMode, setFormMode] = useState<'sql' | 'monitor'>('sql');
+  const [tables, setTables] = useState<string[]>([]);
+  const [pickedTables, setPickedTables] = useState<Set<string>>(new Set());
+  const [thresholds, setThresholds] = useState({ rowCountPct: '30', nullRatePoints: '10', avgPct: '50' });
+  useEffect(() => {
+    fetch(`/api/connections/${id}/schema`).then((r) => r.json())
+      .then((d) => setTables((d.tables ?? []).map((t: { tableName: string }) => t.tableName)))
+      .catch(() => {});
+  }, [id]);
 
   const load = useCallback(async () => {
     setList(await (await fetch(`/api/connections/${id}/schedules`)).json());
@@ -31,9 +41,13 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setMsg('');
+    const body = formMode === 'monitor'
+      ? { action: 'create', name: f.name, mode: 'monitor', cron: f.cron, webhookUrl: f.webhookUrl || undefined,
+          config: { tables: [...pickedTables], thresholds: { rowCountPct: Number(thresholds.rowCountPct), nullRatePoints: Number(thresholds.nullRatePoints) / 100, avgPct: Number(thresholds.avgPct) } } }
+      : { action: 'create', name: f.name, mode: 'sql', sql: f.sql, cron: f.cron, webhookUrl: f.webhookUrl || undefined };
     const r = await fetch(`/api/connections/${id}/schedules`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'create', name: f.name, mode: 'sql', sql: f.sql, cron: f.cron, webhookUrl: f.webhookUrl || undefined }),
+      body: JSON.stringify(body),
     });
     const d = await r.json();
     if (!r.ok) { setMsg(d.error ?? 'create failed'); return; }
@@ -86,9 +100,41 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
           ))}
           <input className="w-36 rounded border p-1 font-mono text-xs dark:bg-neutral-900" value={f.cron} onChange={(e) => setF({ ...f, cron: e.target.value })} title="cron expression (5 fields)" />
         </div>
-        <textarea className="w-full rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={3} placeholder="SELECT …" value={f.sql} onChange={(e) => setF({ ...f, sql: e.target.value })} />
-        <input className="w-full rounded border p-2 dark:bg-neutral-900" placeholder="Webhook URL (optional — result is POSTed as JSON)" value={f.webhookUrl} onChange={(e) => setF({ ...f, webhookUrl: e.target.value })} />
-        <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={!f.name.trim() || !f.sql.trim() || !f.cron.trim()}>Create schedule</button>
+        <div className="flex gap-1 text-xs">
+          {(['sql', 'monitor'] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setFormMode(m)}
+              className={`rounded px-2 py-1 ${formMode === m ? 'bg-blue-600 text-white' : 'border text-neutral-600 dark:text-neutral-300'}`}>
+              {m === 'sql' ? 'Scheduled SQL' : '🔎 Data monitor'}
+            </button>
+          ))}
+        </div>
+        {formMode === 'sql' && (
+          <textarea className="w-full rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={3} placeholder="SELECT …" value={f.sql} onChange={(e) => setF({ ...f, sql: e.target.value })} />
+        )}
+        {formMode === 'monitor' && (
+          <div className="space-y-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800" data-testid="monitor-config">
+            <div className="font-medium">Watch tables (snapshot-diff mỗi lần chạy, alert khi lệch ngưỡng):</div>
+            <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+              {tables.map((t) => (
+                <label key={t} className="flex items-center gap-1">
+                  <input type="checkbox" checked={pickedTables.has(t)} onChange={() => {
+                    const next = new Set(pickedTables);
+                    if (next.has(t)) next.delete(t); else next.add(t);
+                    setPickedTables(next);
+                  }} /> <span className="font-mono">{t}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label>rows ±<input className="w-14 rounded border p-1 dark:bg-neutral-900" value={thresholds.rowCountPct} onChange={(e) => setThresholds({ ...thresholds, rowCountPct: e.target.value })} />%</label>
+              <label>null +<input className="w-14 rounded border p-1 dark:bg-neutral-900" value={thresholds.nullRatePoints} onChange={(e) => setThresholds({ ...thresholds, nullRatePoints: e.target.value })} />đ%</label>
+              <label>avg ±<input className="w-14 rounded border p-1 dark:bg-neutral-900" value={thresholds.avgPct} onChange={(e) => setThresholds({ ...thresholds, avgPct: e.target.value })} />%</label>
+            </div>
+            <p className="text-neutral-400">Lần chạy đầu chỉ ghi baseline. Diff nhỏ hơn 20 rows tuyệt đối sẽ bỏ qua (chống false-alarm bảng nhỏ).</p>
+          </div>
+        )}
+        <input className="w-full rounded border p-2 dark:bg-neutral-900" placeholder="Webhook URL (optional — result/alert is POSTed as JSON)" value={f.webhookUrl} onChange={(e) => setF({ ...f, webhookUrl: e.target.value })} />
+        <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={!f.name.trim() || !f.cron.trim() || (formMode === 'sql' ? !f.sql.trim() : pickedTables.size === 0)}>Create schedule</button>
       </form>
 
       {msg && <p className="mb-2 text-sm text-amber-600">{msg}</p>}

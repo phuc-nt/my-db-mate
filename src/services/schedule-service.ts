@@ -17,6 +17,7 @@ import { dashboards } from '../db/dashboard-schema';
 import { getConnection } from './connection-service';
 import { getDashboard, runWidget } from './dashboard-service';
 import { getReportLatest, generateReport, listReports } from './report-service';
+import { captureSnapshot, diffSnapshots, latestSnapshot, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';
 import { executeQuery } from './query-executor-service';
 import { runAgentAnswer } from './agent-service';
 
@@ -90,6 +91,7 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     // Artifact modes have their own runners (target-based, not SQL-based).
     if (s.mode === 'dashboard_refresh') { await runDashboardRefreshSchedule(s); return; }
     if (s.mode === 'report_regenerate') { await runReportRegenerateSchedule(s); return; }
+    if (s.mode === 'monitor') { await runMonitorSchedule(s); return; }
 
     const conn = await getConnection(s.connectionId);
     if (!conn) { await record(scheduleId, 'error', 'connection not found'); return; }
@@ -182,6 +184,49 @@ async function runReportRegenerateSchedule(s: ScheduleRow): Promise<void> {
   }
 }
 
+/** Snapshot-diff monitor: capture metrics per configured table, diff vs the
+ *  previous capture, alert past thresholds. First run = baseline only. */
+async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
+  const cfg = (s.config ?? {}) as { tables?: string[]; thresholds?: Partial<MonitorThresholds> };
+  const tables = Array.isArray(cfg.tables) ? cfg.tables.filter((t): t is string => typeof t === 'string') : [];
+  if (tables.length === 0) { await record(s.id, 'error', 'monitor has no tables configured'); return; }
+  const conn = await getConnection(s.connectionId);
+  if (!conn) { await record(s.id, 'error', 'connection not found'); return; }
+  const thresholds: MonitorThresholds = { ...DEFAULT_THRESHOLDS, ...(cfg.thresholds ?? {}) };
+
+  const findings: MonitorFinding[] = [];
+  const errors: string[] = [];
+  let baselines = 0;
+  for (const table of tables) {
+    const cur = await captureSnapshot(s.connectionId, conn.dialect, table);
+    if ('error' in cur) { errors.push(`${table}: ${cur.error}`); continue; }
+    const prev = await latestSnapshot(s.id, table);
+    if (prev) findings.push(...diffSnapshots(table, prev.metrics, cur, thresholds));
+    else baselines++;
+    await storeSnapshot(s.id, s.connectionId, table, cur);
+  }
+  await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
+
+  const summary = findings.length
+    ? `${findings.length} finding(s): ${findings.map((f) => `${f.table}.${f.metric} ${f.before}→${f.after}`).join('; ').slice(0, 500)}`
+    : baselines === tables.length ? 'baseline captured' : 'healthy';
+  const result = { columns: ['table', 'metric', 'before', 'after', 'deltaPct'], rows: findings.map((f) => [f.table, f.metric, f.before, f.after, f.deltaPct]) };
+
+  if (findings.length && s.webhookUrl) {
+    const vet = await vetWebhookUrl(s.webhookUrl);
+    if (!vet.ok) { await record(s.id, 'delivery_failed', `webhook blocked: ${vet.reason}`, findings.length, result); return; }
+    try {
+      const wr = await fetch(s.webhookUrl, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: s.name, connectionId: s.connectionId, findings }),
+        redirect: 'manual',
+      });
+      if (!wr.ok || (wr.status >= 300 && wr.status < 400)) { await record(s.id, 'delivery_failed', `webhook status ${wr.status}`, findings.length, result); return; }
+    } catch (e) { await record(s.id, 'delivery_failed', String(e), findings.length, result); return; }
+  }
+  await record(s.id, errors.length === tables.length ? 'error' : 'ok', [summary, ...errors].join(' | ').slice(0, 900), findings.length, result);
+}
+
 /** (Re)load all enabled schedules into node-cron. Call on boot. */
 export async function loadSchedules(): Promise<void> {
   for (const t of tasks.values()) t.stop();
@@ -202,8 +247,12 @@ export async function createSchedule(input: {
   if (!cron.validate(input.cron)) throw new Error('invalid cron expression');
   if (input.mode === 'sql' && !input.sql?.trim()) throw new Error('sql required for sql mode');
   if (input.mode === 'question' && !input.question?.trim()) throw new Error('question required for question mode');
-  if ((input.mode === 'dashboard_refresh' || input.mode === 'report_regenerate' || input.mode === 'monitor') && !input.targetId && input.mode !== 'monitor') {
+  if ((input.mode === 'dashboard_refresh' || input.mode === 'report_regenerate') && !input.targetId) {
     throw new Error('targetId required for this mode');
+  }
+  if (input.mode === 'monitor') {
+    const tables = (input.config as { tables?: unknown } | undefined)?.tables;
+    if (!Array.isArray(tables) || tables.length === 0) throw new Error('monitor requires config.tables (non-empty)');
   }
   // Cost floor: a scheduled report is one LLM call per tick — refuse sub-hourly
   // crons (a '*' or '*/n' minute field means up to 1,440 calls/day on a typo).
