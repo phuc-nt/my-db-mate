@@ -43,8 +43,8 @@ If what you use Tableau for is mostly *tracking metrics and getting insight dige
 
 | You need | Tableau | My DB Mate |
 |---|---|---|
-| Metric tracking: sparkline + % change | Pulse | ✅ Metrics tab — created 1-click from a chat result |
-| Recurring insight digest (deltas, outliers) | Pulse (AI) | ✅ Scheduled digest → markdown webhook; numbers computed deterministically, the LLM only narrates |
+| Metric tracking: sparkline + % change + goals | Pulse | ✅ Metrics tab — created 1-click from a chat result, with 🎯 on/off-track targets |
+| Recurring insight digest (deltas, outliers, **top drivers by dimension**) | Pulse (AI) | ✅ Scheduled digest → markdown webhook; numbers computed deterministically (including *which slices drove the move*), the LLM only narrates; quiet mode sends only on real changes |
 | Ask your data in natural language | Ask Data / Agent | ✅ Chat + a context layer you grow over time |
 | Dashboards + auto-refresh + read-only share | ✅ | ✅ plus date range (`{{from}}`/`{{to}}`), KPI tiles, stacked bars, multi-series lines |
 | Data anomaly alerts | Alerts | ✅ Data-drift monitor (snapshot diff, explicit thresholds, no opaque ML) |
