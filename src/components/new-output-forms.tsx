@@ -24,10 +24,13 @@ export function NewDashboardForm({ onCreated }: { onCreated: () => void }) {
 
 interface Dash { id: string; name: string }
 interface Widget { id: string; title: string }
+interface Nb { id: string; title: string }
 
 export function NewReportForm({ onCreated }: { onCreated: () => void }) {
   const [dashboards, setDashboards] = useState<Dash[]>([]);
   const [widgetsByDash, setWidgetsByDash] = useState<Record<string, Widget[]>>({});
+  const [notebooks, setNotebooks] = useState<Nb[]>([]);
+  const [pickedNbs, setPickedNbs] = useState<Set<string>>(new Set());
   const [title, setTitle] = useState('');
   const [instruction, setInstruction] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -42,6 +45,7 @@ export function NewReportForm({ onCreated }: { onCreated: () => void }) {
         map[d.id] = detail.widgets ?? [];
       }
       setWidgetsByDash(map);
+      setNotebooks(await (await fetch('/api/notebooks')).json());
     })();
   }, []);
 
@@ -53,8 +57,8 @@ export function NewReportForm({ onCreated }: { onCreated: () => void }) {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || selected.size === 0) return;
-    const sources = [...selected].map((widgetId) => ({ widgetId }));
+    if (!title.trim() || (selected.size === 0 && pickedNbs.size === 0)) return;
+    const sources = [...[...selected].map((widgetId) => ({ widgetId })), ...[...pickedNbs].map((notebookId) => ({ notebookId }))];
     await fetch('/api/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, instruction, sources }) });
     setTitle(''); setInstruction(''); setSelected(new Set());
     onCreated();
@@ -76,7 +80,21 @@ export function NewReportForm({ onCreated }: { onCreated: () => void }) {
           ))}
         </div>
       ))}
-      <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={!title.trim() || selected.size === 0}>Create report</button>
+      {notebooks.length > 0 && (
+        <>
+          <div className="text-xs text-neutral-500">…hoặc/và chọn notebook làm nguồn:</div>
+          {notebooks.map((n) => (
+            <label key={n.id} className="ml-2 flex items-center gap-1">
+              <input type="checkbox" checked={pickedNbs.has(n.id)} onChange={() => {
+                const next = new Set(pickedNbs);
+                if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                setPickedNbs(next);
+              }} /> 📓 {n.title}
+            </label>
+          ))}
+        </>
+      )}
+      <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={!title.trim() || (selected.size === 0 && pickedNbs.size === 0)}>Create report</button>
     </form>
   );
 }

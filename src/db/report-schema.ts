@@ -31,6 +31,8 @@ export const reportSources = pgTable('report_sources', {
     .references(() => reports.id, { onDelete: 'cascade' }),
   widgetId: uuid('widget_id').references(() => dashboardWidgets.id, { onDelete: 'set null' }),
   verifiedQueryId: uuid('verified_query_id').references(() => verifiedQueries.id, { onDelete: 'set null' }),
+  /** Notebook as a report source — prose+numbers from a saved analysis. */
+  notebookId: uuid('notebook_id'),
   position: integer('position').notNull().default(0),
 });
 

@@ -19,5 +19,7 @@ export const notebooks = pgTable('notebooks', {
   /** { [turnId]: { columns, rows } } captured at save time — byte-capped. */
   dataSnapshot: jsonb('data_snapshot').notNull(),
   shareSlug: text('share_slug').unique(),
+  /** Last time the stored results were re-executed (narrative stays as written). */
+  dataRefreshedAt: timestamp('data_refreshed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

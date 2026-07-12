@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { NotebookRenderer, type NotebookSnapshot } from '../../../../components/notebook-renderer';
 
-interface Shared { title: string; markdown: string; dataSnapshot: NotebookSnapshot }
+interface Shared { title: string; markdown: string; dataSnapshot: NotebookSnapshot; dataRefreshedAt?: string | null }
 
 /** Public read-only notebook view — renders the saved markdown + snapshot tables.
  *  No execution, no controls (H1/H2 pattern). */
@@ -28,6 +28,7 @@ export default function SharedNotebookPage({ params }: { params: Promise<{ slug:
         <span className="text-xs text-neutral-400">Shared notebook · read-only</span>
         <button onClick={() => window.print()} className="text-xs text-blue-600">Print / PDF</button>
       </div>
+      {nb.dataRefreshedAt && <p className="mb-3 text-xs text-neutral-400">Data refreshed {new Date(nb.dataRefreshedAt).toLocaleString()} — narrative written for the data at save time.</p>}
       <NotebookRenderer markdown={nb.markdown} snapshot={nb.dataSnapshot} />
     </main>
   );

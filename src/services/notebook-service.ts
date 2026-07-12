@@ -16,9 +16,10 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { connections } from '../db/schema';
+import { extractRefreshPairs } from '../lib/notebook-refresh';
 import { notebooks } from '../db/notebook-schema';
 import { getMessages } from './session-service';
-import { touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
+import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { generateShareSlug } from '../lib/share';
 
 const MAX_TURNS = 30;
@@ -126,7 +127,43 @@ export async function setNotebookShare(id: string, enable: boolean): Promise<str
 /** Public share view — markdown + snapshot only, no execution, no SQL leak beyond
  *  what's already in the markdown (the owner's own queries). */
 export async function getSharedNotebook(slug: string) {
-  const [nb] = await db.select({ title: notebooks.title, markdown: notebooks.markdown, dataSnapshot: notebooks.dataSnapshot })
+  const [nb] = await db.select({ title: notebooks.title, markdown: notebooks.markdown, dataSnapshot: notebooks.dataSnapshot, dataRefreshedAt: notebooks.dataRefreshedAt })
     .from(notebooks).where(and(eq(notebooks.shareSlug, slug)));
   return nb ?? null;
+}
+
+export interface RefreshSummary { refreshed: number; skipped: string[]; omitted: string[] }
+
+/** Re-execute a notebook's queries against current data. Narrative and markdown
+ *  stay untouched (honest: they were written for the old numbers — the UI shows
+ *  a refreshed-at banner). Sensitivity is RE-CHECKED against current flags, so a
+ *  column marked sensitive after save gets omitted on refresh. */
+export async function rerunNotebook(notebookId: string): Promise<RefreshSummary | { error: string }> {
+  const [nb] = await db.select().from(notebooks).where(eq(notebooks.id, notebookId));
+  if (!nb) return { error: 'Notebook not found' };
+  const pairs = extractRefreshPairs(nb.markdown);
+  if (pairs.length === 0) return { error: 'notebook format mismatch — no refreshable queries found' };
+
+  const snapshot = { ...(nb.dataSnapshot as Record<string, { columns: string[]; rows: unknown[][] }>) };
+  const summary: RefreshSummary = { refreshed: 0, skipped: [], omitted: [] };
+  for (const { turnId, sql } of pairs) {
+    if (!(turnId in snapshot)) continue; // was omitted at save time — keep omitted
+    if (await touchesSensitiveColumns(nb.connectionId, sql)) {
+      snapshot[turnId] = { columns: ['(omitted — sensitive)'], rows: [] };
+      summary.omitted.push(turnId);
+      continue;
+    }
+    const res = await executeQuery({ connectionId: nb.connectionId, sql, actor: 'notebook-refresh' });
+    if (res.status === 'ok' && res.result) {
+      snapshot[turnId] = {
+        columns: res.result.columns,
+        rows: res.result.rows.slice(0, MAX_ROWS_PER_RESULT),
+      };
+      summary.refreshed++;
+    } else {
+      summary.skipped.push(`${turnId}: ${res.status === 'needs_confirmation' ? 'needs confirmation' : res.blockedReason ?? res.errorMessage ?? res.status}`);
+    }
+  }
+  await db.update(notebooks).set({ dataSnapshot: snapshot, dataRefreshedAt: new Date() }).where(eq(notebooks.id, notebookId));
+  return summary;
 }

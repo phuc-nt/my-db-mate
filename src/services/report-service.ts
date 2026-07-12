@@ -24,6 +24,7 @@ import { reports, reportSources, reportVersions } from '../db/report-schema';
 import { dashboardWidgets } from '../db/dashboard-schema';
 import { connections } from '../db/schema';
 import { verifiedQueries } from '../db/context-schema';
+import { notebooks } from '../db/notebook-schema';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { validateChartSpec } from './chart-spec-service';
 import { getModel } from './llm-service';
@@ -54,7 +55,7 @@ export async function listReports() {
   return rows.map((r) => ({ ...r, connectionNames: [...(byReport.get(r.id) ?? [])] }));
 }
 
-export async function createReport(title: string, instruction: string | undefined, sources: { widgetId?: string; verifiedQueryId?: string }[]) {
+export async function createReport(title: string, instruction: string | undefined, sources: { widgetId?: string; verifiedQueryId?: string; notebookId?: string }[]) {
   const [report] = await db.insert(reports).values({ title, instruction: instruction ?? null }).returning();
   const capped = sources.slice(0, MAX_SOURCES);
   for (let i = 0; i < capped.length; i++) {
@@ -62,6 +63,7 @@ export async function createReport(title: string, instruction: string | undefine
       reportId: report.id,
       widgetId: capped[i].widgetId ?? null,
       verifiedQueryId: capped[i].verifiedQueryId ?? null,
+      notebookId: capped[i].notebookId ?? null,
       position: i,
     });
   }
@@ -96,6 +98,9 @@ export async function getReportLatest(id: string) {
     } else if (src.verifiedQueryId) {
       const [v] = await db.select({ c: verifiedQueries.connectionId }).from(verifiedQueries).where(eq(verifiedQueries.id, src.verifiedQueryId));
       if (v && !connectionIds.includes(v.c)) connectionIds.push(v.c);
+    } else if (src.notebookId) {
+      const [n] = await db.select({ c: notebooks.connectionId }).from(notebooks).where(eq(notebooks.id, src.notebookId));
+      if (n && !connectionIds.includes(n.c)) connectionIds.push(n.c);
     }
   }
   return { ...report, latest: ver ?? null, sourceCount: srcs.length, connectionIds };
@@ -120,6 +125,8 @@ interface RunSource {
   columns?: string[];
   rows?: unknown[][];
   error?: string;
+  /** Notebook source: pre-rendered analysis markdown (already sensitive-omitted). */
+  notebookText?: string;
 }
 
 /** Resolve each source to its connection/SQL/chart, running deleted ones as errors. */
@@ -135,6 +142,12 @@ async function resolveSources(reportId: string): Promise<RunSource[]> {
       const [v] = await db.select().from(verifiedQueries).where(eq(verifiedQueries.id, s.verifiedQueryId));
       if (!v) { out.push({ sourceId: s.id, title: 'Deleted query', connectionId: null, sql: null, chartSpec: null, error: 'source unavailable (verified query deleted)' }); continue; }
       out.push({ sourceId: s.id, title: v.question, connectionId: v.connectionId, sql: v.sql, chartSpec: null });
+    } else if (s.notebookId) {
+      const [nb] = await db.select().from(notebooks).where(eq(notebooks.id, s.notebookId));
+      if (!nb) { out.push({ sourceId: s.id, title: 'Deleted notebook', connectionId: null, sql: null, chartSpec: null, error: 'source unavailable (notebook deleted)' }); continue; }
+      // Markdown is already sensitive-omitted at save; cap to keep the prompt sane.
+      const text = nb.markdown.length > 30000 ? nb.markdown.slice(0, 30000) + '\n[truncated]' : nb.markdown;
+      out.push({ sourceId: s.id, title: `Notebook: ${nb.title}`, connectionId: nb.connectionId, sql: null, chartSpec: null, notebookText: text });
     } else {
       out.push({ sourceId: s.id, title: 'Empty source', connectionId: null, sql: null, chartSpec: null, error: 'source unavailable (no widget or query)' });
     }
@@ -179,6 +192,7 @@ export async function generateReport(reportId: string): Promise<{ version: numbe
   // Build the compose prompt: one section per source, DB rows delimited + capped (M1).
   const sectionSpecs = sources.map((s, i) => {
     if (s.error) return `### Source ${i + 1} (id ${s.sourceId}): ${s.title}\n[${s.error}]`;
+    if (s.notebookText) return `### Source ${i + 1} (id ${s.sourceId}): ${s.title}\n<data>${s.notebookText}</data>`;
     const rowsForPrompt = (s.rows ?? []).slice(0, PROMPT_ROWS_PER_SOURCE).map((r) => r.map(truncateCell));
     return `### Source ${i + 1} (id ${s.sourceId}): ${s.title}\ncolumns: ${JSON.stringify(s.columns ?? [])}\n<data>${JSON.stringify(rowsForPrompt)}</data>`;
   }).join('\n\n');
