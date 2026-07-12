@@ -11,6 +11,7 @@ import { QueryResultBlock } from '../../../../components/query-result-block';
 import { ChatArtifactChip, type ChatArtifact } from '../../../../components/chat-artifact-chip';
 import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat-workspace-panel';
 import { FormModal } from '../../../../components/form-modal';
+import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -56,6 +57,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Knowledge-Inbox nudge (M2): after a completed turn, surface pending
   // suggestions as a one-per-session chip near the input.
   const [inboxCount, setInboxCount] = useState(0);
+  const [provenance, setProvenance] = useState<Provenance | null>(null);
+  const provenanceMsgIdRef = useRef<string | null>(null);
   const [inboxChipDismissed, setInboxChipDismissed] = useState(false);
   const inboxMsgIdRef = useRef<string | null>(null);
 
@@ -184,11 +187,32 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       .catch(() => {});
   }, [status, messages, connectionId]);
 
+  // Provenance/confidence badge (P2): once per completed turn, ask which curated
+  // context plausibly grounded the answer. Names only, no extra LLM call.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    const lastPart = last.parts[last.parts.length - 1];
+    if (lastPart?.type !== 'text') return;
+    if (provenanceMsgIdRef.current === last.id) return;
+    provenanceMsgIdRef.current = last.id;
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const question = lastUser?.parts.filter((pt) => pt.type === 'text').map((pt) => (pt as { text: string }).text).join(' ') ?? '';
+    if (!question) return;
+    const sqlTexts = artifacts.map((a) => a.executedSql ?? a.sql).filter(Boolean);
+    fetch(`/api/connections/${connectionId}/context-used`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question, sqlTexts }),
+    }).then((r) => r.json()).then(setProvenance).catch(() => {});
+  }, [status, messages, connectionId, artifacts]);
+
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' = 'chat') {
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
     // the turn the user just moved past (covers typed sends AND chip clicks).
     setFollowups([]);
+    setProvenance(null);
     followupAbortRef.current?.abort();
     setFollowLatest(true);
     sendMessage({ text }, { body: { connectionId, sessionId, mode } });
@@ -398,6 +422,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* Follow-up suggestion chips — click to ask next. */}
+        {provenance && !busy && <ContextProvenanceBadge p={provenance} connectionId={connectionId} />}
         {inboxCount > 0 && !inboxChipDismissed && !busy && (
           <div className="mb-1 flex items-center gap-2 text-xs" data-testid="inbox-chip">
             <Link href={`/db/${connectionId}/context`} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 hover:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300">

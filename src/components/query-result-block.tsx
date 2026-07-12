@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CopyButton } from './copy-button';
 import { FormModal, type FormModalField } from './form-modal';
 import { ResultTable } from './result-table';
@@ -50,6 +50,20 @@ export function QueryResultBlock({
   const [confirmRisk, setConfirmRisk] = useState<{ tier: string; reason: string } | undefined>();
   // Which save-action dialog is open (replaces the old chained window.prompt flows).
   const [modal, setModal] = useState<null | 'verified' | 'bookmark' | 'pin' | 'schedule'>(null);
+  // Per-connection SQL visibility default (localStorage — deliberately NOT in
+  // connections.config: the edit form rebuilds config from an allowlist and
+  // would silently drop extra keys). 'expanded' keeps today's behavior.
+  const [sqlShown, setSqlShown] = useState(true);
+  useEffect(() => {
+    setSqlShown(localStorage.getItem(`mdm.sqlDisplay.${connectionId}`) !== 'on-demand');
+  }, [connectionId]);
+  function toggleSqlDefault() {
+    setSqlShown((cur) => {
+      const next = !cur;
+      localStorage.setItem(`mdm.sqlDisplay.${connectionId}`, next ? 'expanded' : 'on-demand');
+      return next;
+    });
+  }
 
   async function rerun(confirmed = false) {
     setBusy(true);
@@ -127,13 +141,20 @@ export function QueryResultBlock({
 
   return (
     <div className="mt-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800">
-      <div className="mb-1 font-medium text-neutral-500">SQL</div>
-      <textarea
-        className="w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900"
-        rows={Math.min(6, sql.split('\n').length + 1)}
-        value={sql}
-        onChange={(e) => setSql(e.target.value)}
-      />
+      <div className="mb-1 flex items-center justify-between font-medium text-neutral-500">
+        <span>SQL</span>
+        <button onClick={toggleSqlDefault} className="text-[11px] text-blue-600 hover:underline" title="Default for this connection" data-testid="sql-visibility-toggle">
+          {sqlShown ? 'Hide SQL by default' : 'Show SQL'}
+        </button>
+      </div>
+      {sqlShown && (
+        <textarea
+          className="w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900"
+          rows={Math.min(6, sql.split('\n').length + 1)}
+          value={sql}
+          onChange={(e) => setSql(e.target.value)}
+        />
+      )}
       <div className="mt-1 flex items-center gap-2">
         <button onClick={() => rerun(false)} disabled={busy} className="rounded bg-neutral-800 px-3 py-1 text-white disabled:opacity-50 dark:bg-neutral-200 dark:text-neutral-900">
           {busy ? 'Running…' : 'Re-run'}
