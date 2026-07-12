@@ -86,7 +86,19 @@ export async function getReportLatest(id: string) {
     .where(eq(reportVersions.reportId, id))
     .orderBy(desc(reportVersions.version)).limit(1);
   const srcs = await db.select().from(reportSources).where(eq(reportSources.reportId, id)).orderBy(asc(reportSources.position));
-  return { ...report, latest: ver ?? null, sourceCount: srcs.length };
+  // Representative connections behind the sources — the schedules API is
+  // connection-scoped, so the UI needs one to file a regenerate schedule under.
+  const connectionIds: string[] = [];
+  for (const src of srcs) {
+    if (src.widgetId) {
+      const [w] = await db.select({ c: dashboardWidgets.connectionId }).from(dashboardWidgets).where(eq(dashboardWidgets.id, src.widgetId));
+      if (w && !connectionIds.includes(w.c)) connectionIds.push(w.c);
+    } else if (src.verifiedQueryId) {
+      const [v] = await db.select({ c: verifiedQueries.connectionId }).from(verifiedQueries).where(eq(verifiedQueries.id, src.verifiedQueryId));
+      if (v && !connectionIds.includes(v.c)) connectionIds.push(v.c);
+    }
+  }
+  return { ...report, latest: ver ?? null, sourceCount: srcs.length, connectionIds };
 }
 
 export async function getSharedReport(slug: string) {

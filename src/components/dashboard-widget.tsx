@@ -8,6 +8,7 @@ import { validateChartSpec } from '../services/chart-spec-service';
 export interface WidgetData {
   id: string;
   title: string;
+  connectionId?: string;
   chartSpec?: unknown;
   lastResult?: { columns: string[]; rows: unknown[][] } | null;
   lastRefreshedAt?: string | null;

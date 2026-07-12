@@ -31,6 +31,10 @@ export const scheduledQueries = pgTable('scheduled_queries', {
   question: text('question'),
   cron: text('cron').notNull(), // node-cron expression
   webhookUrl: text('webhook_url'),
+  /** Target artifact for dashboard_refresh / report_regenerate / monitor modes. */
+  targetId: uuid('target_id'),
+  /** Per-schedule config (e.g. monitor thresholds + table list). */
+  config: jsonb('config').$type<Record<string, unknown>>(),
   isEnabled: boolean('is_enabled').notNull().default(true),
   lastRunAt: timestamp('last_run_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

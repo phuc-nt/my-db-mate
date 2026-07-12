@@ -13,7 +13,10 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { db } from '../db/client';
 import { scheduledQueries, scheduledRuns } from '../db/ecosystem-schema';
+import { dashboards } from '../db/dashboard-schema';
 import { getConnection } from './connection-service';
+import { getDashboard, runWidget } from './dashboard-service';
+import { getReportLatest, generateReport, listReports } from './report-service';
 import { executeQuery } from './query-executor-service';
 import { runAgentAnswer } from './agent-service';
 
@@ -49,6 +52,11 @@ export async function vetWebhookUrl(raw: string): Promise<{ ok: boolean; pinnedI
   try { u = new URL(raw); } catch { return { ok: false, reason: 'invalid URL' }; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return { ok: false, reason: 'protocol not http(s)' };
   const host = u.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  // Explicit per-host:port opt-in for private webhook targets (dev/E2E receivers,
+  // LAN automation like a local n8n). Empty by default; each entry must match
+  // exactly — this is NOT a blanket bypass of the SSRF guard.
+  const allow = (process.env.WEBHOOK_PRIVATE_ALLOWLIST ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (allow.includes(`${host}:${u.port || (u.protocol === 'https:' ? '443' : '80')}`)) return { ok: true };
   if (host === 'localhost') return { ok: false, reason: 'localhost' };
   if (!host.includes('.') && isIP(host) === 0) return { ok: false, reason: 'bare single-label host' };
 
@@ -78,6 +86,11 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   try {
     const [s] = await db.select().from(scheduledQueries).where(eq(scheduledQueries.id, scheduleId));
     if (!s || !s.isEnabled) return;
+
+    // Artifact modes have their own runners (target-based, not SQL-based).
+    if (s.mode === 'dashboard_refresh') { await runDashboardRefreshSchedule(s); return; }
+    if (s.mode === 'report_regenerate') { await runReportRegenerateSchedule(s); return; }
+
     const conn = await getConnection(s.connectionId);
     if (!conn) { await record(scheduleId, 'error', 'connection not found'); return; }
 
@@ -117,6 +130,58 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   }
 }
 
+type ScheduleRow = typeof scheduledQueries.$inferSelect;
+
+/** Refresh every widget of the target dashboard (unattended: medium-risk widgets
+ *  are skipped, never auto-confirmed). Partial success is recorded honestly. */
+async function runDashboardRefreshSchedule(s: ScheduleRow): Promise<void> {
+  if (!s.targetId) { await record(s.id, 'error', 'no target dashboard'); return; }
+  const dash = await getDashboard(s.targetId);
+  if (!dash) { await record(s.id, 'error', 'target dashboard not found'); return; }
+  let ok = 0, skipped = 0, failed = 0;
+  for (const w of dash.widgets) {
+    try {
+      const r = await runWidget(w.id, false);
+      if (r.status === 'ok') ok++;
+      else if (r.status === 'needs_confirmation') skipped++; // unattended — never confirm
+      else failed++;
+    } catch { failed++; }
+  }
+  await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
+  const note = `${ok}/${dash.widgets.length} refreshed${skipped ? `, ${skipped} skipped (needs confirmation)` : ''}${failed ? `, ${failed} failed` : ''}`;
+  await record(s.id, ok > 0 || dash.widgets.length === 0 ? 'ok' : 'error', note);
+}
+
+const REPORT_WEBHOOK_MARKDOWN_CAP = 200_000; // bytes-ish (chars) — keep receivers sane
+
+/** Regenerate the target report (1 LLM call) and deliver the fresh markdown to
+ *  the webhook. generateReport doesn't return content — re-read latest version. */
+async function runReportRegenerateSchedule(s: ScheduleRow): Promise<void> {
+  if (!s.targetId) { await record(s.id, 'error', 'no target report'); return; }
+  const gen = await generateReport(s.targetId);
+  if ('error' in gen) { await record(s.id, 'error', gen.error); return; }
+  await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));
+  if (!s.webhookUrl) { await record(s.id, 'ok', `generated version ${gen.version}`); return; }
+
+  const latest = await getReportLatest(s.targetId);
+  let markdown = String(latest?.latest?.markdown ?? '');
+  if (markdown.length > REPORT_WEBHOOK_MARKDOWN_CAP) markdown = markdown.slice(0, REPORT_WEBHOOK_MARKDOWN_CAP) + '\n\n[truncated]';
+  const vet = await vetWebhookUrl(s.webhookUrl);
+  if (!vet.ok) { await record(s.id, 'delivery_failed', `webhook blocked: ${vet.reason}`); return; }
+  try {
+    const wr = await fetch(s.webhookUrl, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: s.name, reportId: s.targetId, version: gen.version, generatedAt: new Date().toISOString(), markdown }),
+      redirect: 'manual',
+    });
+    if (wr.status >= 300 && wr.status < 400) { await record(s.id, 'delivery_failed', 'webhook redirected (not followed for SSRF safety)'); return; }
+    if (!wr.ok) { await record(s.id, 'delivery_failed', `webhook status ${wr.status}`); return; }
+    await record(s.id, 'ok', `generated version ${gen.version}, delivered`);
+  } catch (e) {
+    await record(s.id, 'delivery_failed', String(e));
+  }
+}
+
 /** (Re)load all enabled schedules into node-cron. Call on boot. */
 export async function loadSchedules(): Promise<void> {
   for (const t of tasks.values()) t.stop();
@@ -131,9 +196,20 @@ export async function loadSchedules(): Promise<void> {
 }
 
 export async function createSchedule(input: {
-  connectionId: string; name: string; mode: 'sql' | 'question'; sql?: string; question?: string; cron: string; webhookUrl?: string;
+  connectionId: string; name: string; mode: 'sql' | 'question' | 'dashboard_refresh' | 'report_regenerate' | 'monitor';
+  sql?: string; question?: string; cron: string; webhookUrl?: string; targetId?: string; config?: Record<string, unknown>;
 }) {
   if (!cron.validate(input.cron)) throw new Error('invalid cron expression');
+  if (input.mode === 'sql' && !input.sql?.trim()) throw new Error('sql required for sql mode');
+  if (input.mode === 'question' && !input.question?.trim()) throw new Error('question required for question mode');
+  if ((input.mode === 'dashboard_refresh' || input.mode === 'report_regenerate' || input.mode === 'monitor') && !input.targetId && input.mode !== 'monitor') {
+    throw new Error('targetId required for this mode');
+  }
+  // Cost floor: a scheduled report is one LLM call per tick — refuse sub-hourly
+  // crons (a '*' or '*/n' minute field means up to 1,440 calls/day on a typo).
+  if (input.mode === 'report_regenerate' && !/^\d+(,\d+)*$/.test(input.cron.trim().split(/\s+/)[0] ?? '')) {
+    throw new Error('report schedules must run hourly or less often (set an exact minute, e.g. "0 7 * * *")');
+  }
   if (input.webhookUrl) {
     const vet = await vetWebhookUrl(input.webhookUrl);
     if (!vet.ok) throw new Error(`webhook URL rejected: ${vet.reason}`);
@@ -144,7 +220,16 @@ export async function createSchedule(input: {
 }
 
 export async function listSchedules(connectionId: string) {
-  return db.select().from(scheduledQueries).where(eq(scheduledQueries.connectionId, connectionId));
+  const rows = await db.select().from(scheduledQueries).where(eq(scheduledQueries.connectionId, connectionId));
+  // Resolve target names for artifact modes so the Automations list is readable.
+  const [dashes, reports] = await Promise.all([
+    db.select().from(dashboards).then((r) => new Map(r.map((d) => [d.id, d.name]))).catch(() => new Map<string, string>()),
+    listReports().then((r) => new Map(r.map((x) => [x.id, x.title]))).catch(() => new Map<string, string>()),
+  ]);
+  return rows.map((r) => ({
+    ...r,
+    targetName: r.targetId ? (dashes.get(r.targetId) ?? reports.get(r.targetId) ?? null) : null,
+  }));
 }
 
 /** Enable/disable a schedule. Reloads the cron registry — node-cron tasks are

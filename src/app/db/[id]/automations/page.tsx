@@ -6,6 +6,7 @@ import Link from 'next/link';
 interface Schedule {
   id: string; name: string; mode: string; sql: string | null; question: string | null;
   cron: string; webhookUrl: string | null; isEnabled: boolean; lastRunAt: string | null;
+  targetId?: string | null; targetName?: string | null;
 }
 
 const CRON_PRESETS = [
@@ -108,7 +109,8 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
               {s.webhookUrl && <span> · → {s.webhookUrl}</span>}
               {s.lastRunAt && <span> · last run {new Date(s.lastRunAt).toLocaleString()}</span>}
             </div>
-            <pre className="mt-1 overflow-x-auto text-xs text-neutral-500">{s.sql ?? s.question}</pre>
+            {(s.sql || s.question) && <pre className="mt-1 overflow-x-auto text-xs text-neutral-500">{s.sql ?? s.question}</pre>}
+            {s.targetName && <p className="mt-1 text-xs text-neutral-500">{s.mode === 'dashboard_refresh' ? '📊 refresh dashboard' : s.mode === 'report_regenerate' ? '📝 regenerate report' : s.mode} · <b>{s.targetName}</b></p>}
           </li>
         ))}
       </ul>

@@ -15,7 +15,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const body = await req.json();
   try {
     if (body.action === 'create') {
-      const row = await createSchedule({ connectionId: id, name: body.name, mode: body.mode, sql: body.sql, question: body.question, cron: body.cron, webhookUrl: body.webhookUrl });
+      const MODES = ['sql', 'question', 'dashboard_refresh', 'report_regenerate', 'monitor'];
+      if (!MODES.includes(body.mode)) return NextResponse.json({ error: 'unknown mode' }, { status: 400 });
+      const row = await createSchedule({ connectionId: id, name: body.name, mode: body.mode, sql: body.sql, question: body.question, cron: body.cron, webhookUrl: body.webhookUrl, targetId: body.targetId, config: body.config });
       return NextResponse.json(row, { status: 201 });
     }
     if (body.action === 'run') { await runSchedule(body.scheduleId); return NextResponse.json({ ok: true }); }
