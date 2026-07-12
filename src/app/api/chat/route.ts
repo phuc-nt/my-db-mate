@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     messages: UIMessage[];
     connectionId: string;
     sessionId?: string;
-    mode?: 'chat' | 'investigate';
+    mode?: 'chat' | 'investigate' | 'investigate-deep';
   };
 
   const conn = await getConnection(connectionId);
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     dialect: conn.dialect,
     messages: await convertToModelMessages(messages),
     sessionId,
-    mode: mode === 'investigate' ? 'investigate' : 'chat',
+    mode: mode === 'investigate' ? 'investigate' : mode === 'investigate-deep' ? 'investigate-deep' : 'chat',
   });
 
   return result.toUIMessageStreamResponse({

@@ -24,11 +24,17 @@ import { detectAnomalies } from './anomaly-service';
 import { getModel } from './llm-service';
 import { renderDateContext } from '../lib/date-context';
 
-export type AgentMode = 'chat' | 'investigate';
+export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
+/** Both investigate tiers share tools/addendum; only budgets differ. Using a
+ *  predicate (not per-site equality checks) so a new tier can't silently get the
+ *  chat-tier tools (red-team H3). */
+const isInvestigative = (mode: AgentMode) => mode !== 'chat';
 
 const MAX_STEPS_CHAT = 8;
 // Investigate mode plans then executes a drill-down series → higher budget (red-team H3).
 const MAX_STEPS_INVESTIGATE = Number(process.env.INVESTIGATE_MAX_STEPS ?? 24);
+const MAX_STEPS_INVESTIGATE_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48);
+const MAX_SQL_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60);
 // Hard cap on run_sql calls per investigation, independent of steps — the real
 // cost ceiling, since the risk gate bounds cost-per-query but not query COUNT (H3).
 const MAX_SQL_PER_INVESTIGATION = Number(process.env.INVESTIGATE_MAX_SQL ?? 30);
@@ -135,8 +141,9 @@ export function buildAgentTools(
       execute: async ({ sql }) => {
         // Hard per-request run_sql cap — the real cost ceiling (H3): the risk gate
         // bounds cost-per-query but not the number of queries the model can fire.
-        if (state.sqlRunCount >= MAX_SQL_PER_INVESTIGATION) {
-          return { stopped: true, reason: `Query budget reached (${MAX_SQL_PER_INVESTIGATION} queries this turn). Conclude with the evidence gathered so far.` };
+        const sqlBudget = mode === 'investigate-deep' ? MAX_SQL_DEEP : MAX_SQL_PER_INVESTIGATION;
+        if (state.sqlRunCount >= sqlBudget) {
+          return { stopped: true, reason: `Query budget reached (${sqlBudget} queries this turn). Conclude with the evidence gathered so far.` };
         }
         const res = await executeQuery({ connectionId, sql, actor, sessionId });
         // A medium-risk query needs human confirmation (P3) and did NOT execute, so
@@ -203,7 +210,7 @@ export function buildAgentTools(
     }),
   };
 
-  if (mode !== 'investigate') return baseTools;
+  if (!isInvestigative(mode)) return baseTools;
 
   // Investigate-only tools. Gated by mode so headless consumers never get a tool
   // that stalls waiting for a human (M5).
@@ -280,7 +287,7 @@ export async function streamAgentAnswer(params: {
 
   const system =
     SYSTEM(schema, dialect) +
-    (mode === 'investigate' ? INVESTIGATE_ADDENDUM(dialect) : '') +
+    (isInvestigative(mode) ? INVESTIGATE_ADDENDUM(dialect) : '') +
     bigTablePolicy(bigTables) +
     (contextBlock ? `\n\n## Curated context for this database\n${contextBlock}` : '');
 
@@ -289,7 +296,7 @@ export async function streamAgentAnswer(params: {
     system,
     messages,
     tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect),
-    stopWhen: stepCountIs(mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
+    stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
   });
 }
 

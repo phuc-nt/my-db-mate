@@ -6,6 +6,11 @@ import Link from 'next/link';
 interface Flag { tableName: string; columnName: string; issue: string; detail: string }
 interface Health { flags: Flag[]; profiledColumns: number; totalColumns: number }
 interface MonitorRun { id: string; status: string; detail: string | null; ranAt: string; result: { columns: string[]; rows: unknown[][] } | null }
+interface SchemaCol { tableName: string; columnName: string; dataType: string }
+interface AnomalyReport { table: string; column: string; total: number; nullRate: number; numeric?: { avg: number; stddev: number; min: string; max: string; outlierCount: number }; note?: string }
+
+// isNumericType isn't exported anywhere — inline check against synced dataType.
+const NUMERIC_RE = /int|numeric|real|float|double|decimal|money/i;
 
 const ISSUE_LABEL: Record<string, string> = {
   high_null: '⚠ High NULL rate',
@@ -16,6 +21,31 @@ const ISSUE_LABEL: Record<string, string> = {
 export default function DataHealthPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [monitorRuns, setMonitorRuns] = useState<MonitorRun[]>([]);
+  const [numericCols, setNumericCols] = useState<SchemaCol[]>([]);
+  const [anomaly, setAnomaly] = useState<AnomalyReport | { error: string } | null>(null);
+  const [anomalyBusy, setAnomalyBusy] = useState('');
+  useEffect(() => {
+    fetch(`/api/connections/${id}/schema`).then((r) => r.json()).then((d) => {
+      const cols: SchemaCol[] = [];
+      for (const t of d.tables ?? []) {
+        for (const c of t.columns ?? []) {
+          if (NUMERIC_RE.test(c.dataType) && !c.isPrimaryKey) cols.push({ tableName: t.tableName, columnName: c.columnName, dataType: c.dataType });
+        }
+      }
+      setNumericCols(cols);
+    }).catch(() => {});
+  }, [id]);
+
+  async function checkAnomalies(table: string, column: string) {
+    setAnomalyBusy(`${table}.${column}`);
+    setAnomaly(null);
+    const r = await fetch(`/api/connections/${id}/anomaly`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ table, column }),
+    });
+    setAnomaly(await r.json());
+    setAnomalyBusy('');
+  }
   useEffect(() => {
     fetch(`/api/connections/${id}/schedules/runs?mode=monitor`).then((r) => r.json())
       .then((runs) => setMonitorRuns(Array.isArray(runs) ? runs.slice(0, 3) : []))
@@ -80,7 +110,34 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
           )}
         </>
       )}
-          {monitorRuns.length > 0 && (
+          {numericCols.length > 0 && (
+        <section className="mt-6" data-testid="anomaly-check">
+          <h2 className="mb-2 text-sm font-semibold">🔬 Check anomalies (không cần chat)</h2>
+          <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto text-xs">
+            {numericCols.map((c) => (
+              <button key={`${c.tableName}.${c.columnName}`} onClick={() => checkAnomalies(c.tableName, c.columnName)}
+                disabled={anomalyBusy !== ''}
+                className="rounded border px-2 py-1 font-mono hover:border-blue-500 disabled:opacity-50">
+                {anomalyBusy === `${c.tableName}.${c.columnName}` ? '…' : `${c.tableName}.${c.columnName}`}
+              </button>
+            ))}
+          </div>
+          {anomaly && 'error' in anomaly && <p className="mt-2 text-xs text-red-600">{anomaly.error}</p>}
+          {anomaly && !('error' in anomaly) && (
+            <div className="mt-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800" data-testid="anomaly-report">
+              <b className="font-mono">{anomaly.table}.{anomaly.column}</b> · {anomaly.total.toLocaleString()} rows · null {Math.round(anomaly.nullRate * 1000) / 10}%
+              {anomaly.numeric && (
+                <> · avg {Math.round(anomaly.numeric.avg * 100) / 100} · σ {Math.round(anomaly.numeric.stddev * 100) / 100} · range [{anomaly.numeric.min} … {anomaly.numeric.max}] · <b>{anomaly.numeric.outlierCount} outliers (±3σ)</b></>
+              )}
+              {anomaly.note && <p className="mt-1 text-neutral-500">{anomaly.note}</p>}
+              <Link className="ml-2 text-blue-600 hover:underline"
+                href={`/db/${id}/chat?q=${encodeURIComponent(`Column ${anomaly.column} in ${anomaly.table}: ${anomaly.numeric?.outlierCount ?? 0} outliers beyond 3 sigma, null rate ${Math.round(anomaly.nullRate * 100)}%. Investigate what these outliers are and whether they are a data problem.`)}`}>
+                Ask agent →</Link>
+            </div>
+          )}
+        </section>
+      )}
+      {monitorRuns.length > 0 && (
         <section className="mt-6" data-testid="monitor-findings">
           <h2 className="mb-2 text-sm font-semibold">🔎 Monitor findings gần nhất</h2>
           <ul className="space-y-1 text-xs">

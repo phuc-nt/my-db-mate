@@ -37,6 +37,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [investigate, setInvestigate] = useState(false);
+  const [deep, setDeep] = useState(false);
   const [sessionId, setSessionId] = useState<string>();
   const [distillMsg, setDistillMsg] = useState('');
   const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite' | 'mssql'>();
@@ -216,7 +217,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   }, [status, messages, connectionId, artifacts]);
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
-  function send(text: string, mode: 'chat' | 'investigate' = 'chat') {
+  function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
     // the turn the user just moved past (covers typed sends AND chip clicks).
     setFollowups([]);
@@ -457,7 +458,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           onSubmit={(e) => {
             e.preventDefault();
             if (!input.trim() || busy) return;
-            send(input, investigate ? 'investigate' : 'chat');
+            send(input, investigate ? (deep ? 'investigate-deep' : 'investigate') : 'chat');
             setInput('');
           }}
         >
@@ -465,6 +466,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <input type="checkbox" checked={investigate} onChange={(e) => setInvestigate(e.target.checked)} />
             Investigate
           </label>
+          {investigate && (
+            <label className="flex items-center gap-1 text-xs text-neutral-500" title="Gấp đôi budget bước/query (~2x cost) cho câu hỏi thật khó" data-testid="deep-toggle">
+              <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
+              Deep <span className="text-[10px] text-amber-600">~2x</span>
+            </label>
+          )}
           <input
             className="flex-1 rounded border p-2 dark:bg-neutral-900"
             placeholder={investigate ? 'e.g. Why did activity drop in Q2?' : 'e.g. How many rows in the largest table?'}
