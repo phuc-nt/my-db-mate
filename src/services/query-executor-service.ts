@@ -14,6 +14,8 @@ import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
 import { shouldAccelerate, planAcceleration } from './accelerator-service';
 import { ensureSnapshot } from './snapshot-cache-service';
+import { ensureIncrementalSnapshot } from './incremental-snapshot-service';
+import { getWatermarkConfig } from './watermark-config-service';
 import { runAcceleratedQuery } from './duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
 import type { QueryResult, Dialect } from './connection-providers/provider-interface';
@@ -22,6 +24,12 @@ import type { QueryResult, Dialect } from './connection-providers/provider-inter
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
 // cost for a self-host, single-user tool.
 const DEFAULT_ACCELERATE_TTL_MS = 60 * 60 * 1000;
+
+// A JOIN's per-table snapshots can each have their own TTL-driven `asOf`. When
+// the spread between the earliest and latest snapshot exceeds this fraction of
+// the TTL, the badge should surface the skew instead of showing one clean
+// "as of {earliest}" timestamp that hides how far apart the tables actually are.
+const SKEW_THRESHOLD_FRACTION = 0.5;
 
 /** Extracts one table's Parquet snapshot and runs the original SQL against
  *  DuckDB views over those snapshots. Returns null (never throws) when the SQL
@@ -41,23 +49,39 @@ async function tryAccelerate(
   try {
     const snapshots = await Promise.all(
       plan.tables.map(async (table) => {
-        const snapshot = await ensureSnapshot(connectionId, provider, `SELECT * FROM ${table}`, ttlMs);
+        const watermarkConfig = await getWatermarkConfig(connectionId, table);
+        const snapshot = watermarkConfig
+          ? await ensureIncrementalSnapshot(connectionId, provider, `SELECT * FROM ${table}`, watermarkConfig.watermarkCol, ttlMs)
+          : await ensureSnapshot(connectionId, provider, `SELECT * FROM ${table}`, ttlMs);
         return { table, snapshot };
       }),
     );
     const tableToSnapshot = new Map(snapshots.map(({ table, snapshot }) => [table, snapshot.path]));
-    const earliestAsOf = snapshots.reduce(
-      (earliest, { snapshot }) => (snapshot.asOf < earliest ? snapshot.asOf : earliest),
-      snapshots[0].snapshot.asOf,
-    );
+    const asOfTimes = snapshots.map(({ snapshot }) => snapshot.asOf.getTime());
+    const earliestAsOf = new Date(Math.min(...asOfTimes));
+    const spreadMs = Math.max(...asOfTimes) - Math.min(...asOfTimes);
+    const skewWarning = plan.tables.length > 1 && spreadMs > ttlMs * SKEW_THRESHOLD_FRACTION
+      ? { spreadMs }
+      : undefined;
 
     const result = await runAcceleratedQuery(finalSql, tableToSnapshot);
-    return { ...result, accelerated: { asOf: earliestAsOf.toISOString() } };
-  } catch {
+    return { ...result, accelerated: { asOf: earliestAsOf.toISOString(), skewWarning } };
+  } catch (e) {
     // DuckDB execution failed (e.g. a construct planAcceleration's whitelist
-    // missed) — fall back rather than surface an accelerator-specific error.
+    // missed) — fall back rather than surface an accelerator-specific error,
+    // but log it distinctly from the "not eligible" early-return above so a
+    // real whitelist gap doesn't fail silently with zero signal.
+    logAccelerationFailure(finalSql, e);
     return null;
   }
+}
+
+/** Plain console logging matches the existing convention elsewhere in this
+ *  codebase (connection-service.ts, schedule-service.ts) — a self-host,
+ *  single-user tool doesn't need a logging service for this. */
+function logAccelerationFailure(sql: string, e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  console.warn('[accelerator] DuckDB execution failed, falling back to live driver:', { sql, error: msg });
 }
 
 /** Largest synced rowCount among tables whose name appears in the SQL (red-team

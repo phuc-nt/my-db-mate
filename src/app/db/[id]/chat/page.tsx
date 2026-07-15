@@ -19,7 +19,7 @@ interface RunSqlPart {
   state?: string;
   toolCallId: string;
   input?: { sql?: string };
-  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string } };
+  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string; skewWarning?: { spreadMs: number } } };
 }
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {

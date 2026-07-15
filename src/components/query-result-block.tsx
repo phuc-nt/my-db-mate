@@ -14,8 +14,10 @@ interface RunResult {
   executedSql?: string;
   lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null;
   /** Present when served from the DuckDB accelerator's Parquet snapshot cache
-   *  instead of the live driver — `asOf` is the snapshot's extraction time (ISO). */
-  accelerated?: { asOf: string };
+   *  instead of the live driver — `asOf` is the snapshot's extraction time (ISO).
+   *  `skewWarning` is present when a JOIN's per-table snapshots were extracted
+   *  more than half the TTL apart. */
+  accelerated?: { asOf: string; skewWarning?: { spreadMs: number } };
 }
 
 /**
@@ -287,6 +289,15 @@ export function QueryResultBlock({
       {result?.accelerated && (
         <p className="mt-1 text-[11px] text-neutral-400" data-testid="accelerated-badge" title="Served from a cached DuckDB/Parquet snapshot instead of the live database">
           ⚡ Accelerated · snapshot as of {new Date(result.accelerated.asOf).toLocaleString()}
+          {result.accelerated.skewWarning && (
+            <span
+              className="ml-1 text-amber-500"
+              data-testid="accelerated-skew-warning"
+              title={`Tables were snapshotted up to ~${Math.round(result.accelerated.skewWarning.spreadMs / 60000)} min apart`}
+            >
+              ⚠ snapshot skew
+            </span>
+          )}
         </p>
       )}
       {result?.lineage && result.lineage.tables.length > 0 && (

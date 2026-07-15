@@ -7,7 +7,9 @@
  *
  * This is the shared foundation for both the DuckDB accelerator (query routing,
  * a later phase) and any future Parquet-export feature — one cache mechanism,
- * multiple consumers.
+ * multiple consumers. Incremental (watermark-based) refresh lives in
+ * `incremental-snapshot-service.ts`, which reuses the row-typing/insert
+ * helpers exported here.
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,10 +17,22 @@ import path from 'node:path';
 import { DuckDBInstance, BIGINT, DOUBLE, BOOLEAN, VARCHAR, type DuckDBType, type DuckDBValue } from '@duckdb/node-api';
 import type { ConnectionProvider } from './connection-providers/provider-interface';
 
-const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
+export const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 
-interface SnapshotMeta {
+// Threshold-triggered compression (Phase 3): row count is known before the
+// COPY TO write (no double-write needed to measure real file size first), so
+// it's the primary trigger — see phase-03-partitioning-compression-threshold.md.
+// Snapshots at/under the threshold keep today's default COPY options unchanged.
+const ROW_COUNT_COMPRESSION_THRESHOLD = 1_000_000;
+const ROW_GROUP_SIZE = 500_000;
+
+export interface SnapshotMeta {
   asOf: string; // ISO timestamp
+  // Present only for incremental snapshots (Phase 2). `watermarkCol` names the
+  // column the delta extract filters on; `lastWatermark` is its highest seen
+  // value (as text — the source column may be TIMESTAMP or numeric).
+  watermarkCol?: string;
+  lastWatermark?: string;
 }
 
 export interface SnapshotResult {
@@ -28,13 +42,13 @@ export interface SnapshotResult {
 
 // In-memory lock so two near-simultaneous calls for the same cache key don't
 // both extract — self-host single-process single-user, no distributed lock needed.
-const inFlight = new Map<string, Promise<SnapshotResult>>();
+export const inFlight = new Map<string, Promise<SnapshotResult>>();
 
-function cacheKeyFor(extractSql: string): string {
+export function cacheKeyFor(extractSql: string): string {
   return createHash('sha256').update(extractSql).digest('hex').slice(0, 16);
 }
 
-function cachePaths(connectionId: string, cacheKey: string) {
+export function cachePaths(connectionId: string, cacheKey: string) {
   const dir = path.join(CACHE_ROOT, connectionId);
   return {
     dir,
@@ -43,7 +57,7 @@ function cachePaths(connectionId: string, cacheKey: string) {
   };
 }
 
-async function readMeta(metaPath: string): Promise<SnapshotMeta | null> {
+export async function readMeta(metaPath: string): Promise<SnapshotMeta | null> {
   try {
     const raw = await readFile(metaPath, 'utf-8');
     return JSON.parse(raw) as SnapshotMeta;
@@ -57,7 +71,7 @@ async function readMeta(metaPath: string): Promise<SnapshotMeta | null> {
  *  VARCHAR (ISO string) with a SQL-side `::TIMESTAMP` cast — the node
  *  binding's typed timestamp params require a wrapper value class, whereas
  *  binding VARCHAR + casting in SQL round-trips a plain JS `Date` losslessly. */
-interface ColumnTypePlan {
+export interface ColumnTypePlan {
   sqlType: string;
   paramType: DuckDBType;
   paramSql: string; // "$N" or "$N::TIMESTAMP"
@@ -84,7 +98,7 @@ function planForValue(value: unknown): ColumnTypePlan | null {
  *  Falls back to VARCHAR when every row has null in that column (safe,
  *  lossless default), and to VARCHAR when a column mixes incompatible types
  *  (e.g. number rows plus string rows) since VARCHAR can hold either. */
-function inferColumnPlans(columns: string[], rows: unknown[][]): ColumnTypePlan[] {
+export function inferColumnPlans(columns: string[], rows: unknown[][]): ColumnTypePlan[] {
   const plans: (ColumnTypePlan | null)[] = columns.map(() => null);
   for (const row of rows) {
     for (let i = 0; i < columns.length; i++) {
@@ -111,6 +125,38 @@ function toDuckDbParam(value: unknown): DuckDBValue {
   return value as DuckDBValue;
 }
 
+/** Inserts `rows` (already columns-matched to `plans`) into an existing,
+ *  already-created DuckDB `snapshot` table on `connection`. Shared by the
+ *  fresh-extract path here and the incremental-append path in
+ *  `incremental-snapshot-service.ts` so both bind rows the same way (same
+ *  type-widen plan, same TIMESTAMP cast handling). */
+export async function insertRows(
+  connection: Awaited<ReturnType<DuckDBInstance['connect']>>,
+  plans: ColumnTypePlan[],
+  rows: unknown[][],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const placeholders = plans.map((p, i) => `$${i + 1}${p.paramSql}`).join(', ');
+  const paramTypes = plans.map((p) => p.paramType);
+  const prepared = await connection.prepare(`INSERT INTO snapshot VALUES (${placeholders})`);
+  for (const row of rows) {
+    prepared.bind(row.map(toDuckDbParam), paramTypes);
+    await prepared.run();
+  }
+}
+
+/** `COPY TO ... (FORMAT PARQUET)` options, threshold-gated on row count.
+ *  Row count is known from the just-fetched result set — no extra COUNT(*)
+ *  round-trip or double-write to measure real file size needed. Exported so
+ *  `incremental-snapshot-service.ts`'s append-and-rewrite path applies the
+ *  same threshold to a table that grows past it via deltas, not only tables
+ *  large enough to cross it on the very first full extract. */
+export function parquetCopyOptions(rowCount: number): string {
+  return rowCount > ROW_COUNT_COMPRESSION_THRESHOLD
+    ? `(FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE ${ROW_GROUP_SIZE})`
+    : '(FORMAT PARQUET)';
+}
+
 async function extractToParquet(provider: ConnectionProvider, extractSql: string, parquetPath: string): Promise<void> {
   const result = await provider.executeReadOnly(extractSql);
   const plans = inferColumnPlans(result.columns, result.rows);
@@ -120,19 +166,10 @@ async function extractToParquet(provider: ConnectionProvider, extractSql: string
   const connection = await instance.connect();
   try {
     await connection.run(`CREATE TABLE snapshot (${columnList})`);
-
-    if (result.rows.length > 0) {
-      const placeholders = plans.map((p, i) => `$${i + 1}${p.paramSql}`).join(', ');
-      const paramTypes = plans.map((p) => p.paramType);
-      const prepared = await connection.prepare(`INSERT INTO snapshot VALUES (${placeholders})`);
-      for (const row of result.rows) {
-        prepared.bind(row.map(toDuckDbParam), paramTypes);
-        await prepared.run();
-      }
-    }
+    await insertRows(connection, plans, result.rows);
 
     const escapedPath = parquetPath.replace(/'/g, "''");
-    await connection.run(`COPY snapshot TO '${escapedPath}' (FORMAT PARQUET)`);
+    await connection.run(`COPY snapshot TO '${escapedPath}' ${parquetCopyOptions(result.rows.length)}`);
   } finally {
     connection.closeSync();
   }

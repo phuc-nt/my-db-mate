@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ResultTable } from '../../../../components/result-table';
+import { IncrementalRefreshControl } from '../../../../components/incremental-refresh-control';
 
 interface Column { columnName: string; dataType: string; isNullable: boolean; isPrimaryKey: boolean }
 interface Table { id: string; tableName: string; rowCount: number | null; columns: Column[] }
@@ -94,6 +95,8 @@ export default function BrowsePage({ params }: { params: Promise<{ id: string }>
                 </ul>
               </div>
             )}
+
+            <IncrementalRefreshControl connectionId={id} tableName={table.tableName} />
 
             <div className="mb-2 flex items-center gap-2">
               <button onClick={() => loadSample(table.tableName)} disabled={loadingSample} className="rounded border px-3 py-1 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-neutral-800">

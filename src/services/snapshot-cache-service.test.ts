@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { ensureSnapshot } from './snapshot-cache-service';
+import { ensureSnapshot, parquetCopyOptions } from './snapshot-cache-service';
 import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
@@ -148,5 +148,16 @@ describe('ensureSnapshot', () => {
     const { rows } = await readParquetRows(snapshot.path);
 
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('parquetCopyOptions (Phase 3: threshold-triggered compression)', () => {
+  it('keeps the default, unqualified FORMAT PARQUET at or below the 1,000,000-row threshold', () => {
+    expect(parquetCopyOptions(0)).toBe('(FORMAT PARQUET)');
+    expect(parquetCopyOptions(1_000_000)).toBe('(FORMAT PARQUET)');
+  });
+
+  it('adds ZSTD compression and a 500,000-row group size once the row count exceeds the threshold', () => {
+    expect(parquetCopyOptions(1_000_001)).toBe('(FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 500000)');
   });
 });

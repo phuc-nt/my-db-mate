@@ -90,4 +90,55 @@ describe('runAcceleratedQuery', () => {
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(result.rows).toEqual([[1, 10.5], [2, 21]]);
   });
+
+  it('joins across three snapshot views', async () => {
+    const ordersPath = await writeParquet({ sql: '' }, 'id BIGINT, customer_id BIGINT, product_id BIGINT', '(1, 10, 100), (2, 20, 200)');
+    cleanupDirs.push(path.dirname(ordersPath));
+    const customersPath = await writeParquet({ sql: '' }, 'id BIGINT, name VARCHAR', "(10, 'Alice'), (20, 'Bob')");
+    cleanupDirs.push(path.dirname(customersPath));
+    const productsPath = await writeParquet({ sql: '' }, 'id BIGINT, title VARCHAR', "(100, 'Widget'), (200, 'Gadget')");
+    cleanupDirs.push(path.dirname(productsPath));
+
+    const result = await runAcceleratedQuery(
+      `SELECT c.name, p.title, o.id AS order_id
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.id
+       JOIN products p ON o.product_id = p.id
+       ORDER BY o.id`,
+      new Map([
+        ['orders', ordersPath],
+        ['customers', customersPath],
+        ['products', productsPath],
+      ]),
+    );
+
+    expect(result.columns).toEqual(['name', 'title', 'order_id']);
+    expect(result.rows).toEqual([
+      ['Alice', 'Widget', 1],
+      ['Bob', 'Gadget', 2],
+    ]);
+  });
+
+  it('executes a self-join (aliased same-table JOIN) against a single snapshot view', async () => {
+    const employeesPath = await writeParquet(
+      { sql: '' },
+      'id BIGINT, name VARCHAR, manager_id BIGINT',
+      "(1, 'Alice', NULL), (2, 'Bob', 1), (3, 'Carol', 1)",
+    );
+    cleanupDirs.push(path.dirname(employeesPath));
+
+    const result = await runAcceleratedQuery(
+      `SELECT e.name AS employee, m.name AS manager
+       FROM employees e
+       JOIN employees m ON e.manager_id = m.id
+       ORDER BY e.id`,
+      new Map([['employees', employeesPath]]),
+    );
+
+    expect(result.columns).toEqual(['employee', 'manager']);
+    expect(result.rows).toEqual([
+      ['Bob', 'Alice'],
+      ['Carol', 'Alice'],
+    ]);
+  });
 });

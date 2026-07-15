@@ -141,6 +141,13 @@
       "when": 1784072920944,
       "tag": "0019_stormy_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784089014166,
+      "tag": "0020_accelerate_watermark_configs",
+      "breakpoints": true
     }
   ]
 }

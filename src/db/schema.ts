@@ -14,6 +14,7 @@ import {
   timestamp,
   jsonb,
   bigint,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 /** A registered target database. `kind` selects the ConnectionProvider; `config`
@@ -43,6 +44,26 @@ export const connections = pgTable('connections', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Per-table incremental-refresh watermark config for the accelerator (opt-in,
+ *  requires explicit user confirmation in the UI — never auto-enabled). When a
+ *  row exists for a (connectionId, tableName) pair, `tryAccelerate` extracts
+ *  only rows newer than `lastWatermark` instead of a full re-extract. */
+export const accelerateWatermarkConfigs = pgTable('accelerate_watermark_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectionId: uuid('connection_id')
+    .notNull()
+    .references(() => connections.id, { onDelete: 'cascade' }),
+  tableName: text('table_name').notNull(),
+  watermarkCol: text('watermark_col').notNull(),
+  // Last-seen watermark value as text (column may be TIMESTAMP or numeric in
+  // the source DB) — compared/formatted back into the delta SQL by the caller.
+  lastWatermark: text('last_watermark'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  uniqueTable: unique('accelerate_watermark_configs_connection_table_unique').on(t.connectionId, t.tableName),
+}));
 
 /** One row per table in a synced target schema. */
 export const schemaTables = pgTable('schema_tables', {

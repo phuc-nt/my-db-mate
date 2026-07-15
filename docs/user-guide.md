@@ -72,6 +72,8 @@ Mở `/connections`, bấm thêm connection:
    - **"Failed: …"** → sai thông tin, báo lỗi sạch (không lộ stack).
 5. (Tuỳ chọn) **Connect via SSH tunnel** — DB nằm sau bastion host: tick ô này, điền SSH host/port/user + private key (PEM) hoặc password. Mọi kết nối + query đi qua tunnel; TLS tới DB vẫn verify theo hostname thật. Key được mã hoá khi lưu như password DB.
 6. (Tuỳ chọn) **Enable query accelerator** — nếu DB bạn có bảng lớn, tick ô này để tăng tốc độ query nặng. Hệ thống sẽ cache bảng thành Parquet file và chạy query trên snapshot (thay vì DB trực tiếp), giảm tải. Điền TTL cache (mặc định 1 giờ) — kết quả sẽ ghi nhãn "⚡ Accelerated · snapshot …" để bạn biết data cũ bao lâu. Chỉ áp dụng cho simple SELECT (không CTE, không function lạ); query phức tạp tự chạy bình thường.
+   - **Nếu JOIN nhiều bảng**, mỗi bảng được cache riêng theo thời gian. Khi snapshot của các bảng chênh lệch hơn nửa TTL (ví dụ >30 phút nếu TTL = 1 giờ), badge ⚡ sẽ hiện cảnh báo "snapshot cách nhau ~Xmin" thay vì ẩn chênh lệch.
+   - **Tải từng phần (incremental refresh)**: trên tab **Schema**, chọn một bảng, tìm mục "Incremental refresh" — hệ thống sẽ gợi ý một cột timestamp (`created_at`, `updated_at`, `modified_at`, v.v.) nếu tìm thấy. Nếu chọn "Confirm", mỗi lần TTL hết chỉ cập nhật dòng mới (thay vì tải lại toàn bộ bảng) — giảm tải đáng kể với bảng lớn. Bạn có thể bật/tắt riêng từng bảng, không liên quan đến cài đặt accelerator chung của connection.
 7. Bấm **Add & sync** — app quét schema (bảng/cột/khoá/row count) và lưu lại.
 
 Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh section: **💬 Chat · 🗂 Schema · 📚 Context · ⏰ Automations** (link cũ Chat/Browse/Context tự chuyển hướng). Nav trên cùng gọn còn: **Connections · Library · ⚙ Settings**.

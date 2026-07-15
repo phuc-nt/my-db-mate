@@ -38,8 +38,11 @@ export interface QueryResult {
   rowCount: number;
   /** Present when this result was served from the DuckDB accelerator's Parquet
    *  snapshot cache instead of the live driver — `asOf` is the snapshot's
-   *  extraction time (ISO), so the UI can show staleness (Phase 3 badge). */
-  accelerated?: { asOf: string };
+   *  extraction time (ISO), so the UI can show staleness (Phase 3 badge).
+   *  `skewWarning` is present for a multi-table JOIN whose per-table snapshots
+   *  were extracted more than half the TTL apart — surfaces that the tables
+   *  weren't all snapshotted at (approximately) the same moment. */
+  accelerated?: { asOf: string; skewWarning?: { spreadMs: number } };
 }
 
 /** Result of probing whether the connection can write (RT-F2). */
