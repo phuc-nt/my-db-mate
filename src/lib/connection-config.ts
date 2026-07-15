@@ -4,7 +4,7 @@
  * connection string (postgres://… / mysql://…) into the same shape — the
  * paste-a-URL flow every DB client (DBeaver, TablePlus) offers.
  */
-export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql';
+export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql' | 'bigquery';
 
 /** TLS posture for a TCP connection.
  *  - 'disable'      — plaintext (local/LAN).
@@ -15,22 +15,23 @@ export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql';
  *                     system CA store unless a CA PEM is provided on the config. */
 export type SslMode = 'disable' | 'require' | 'verify-full';
 
-export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite'>, number> = {
+export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite' | 'bigquery'>, number> = {
   postgres: 5432,
   mysql: 3306,
   mssql: 1433,
 };
 
 /** The stored kind for an engine. SQLite is a file; SQL Server has its own driver;
- *  PG/MySQL share the TCP driver. */
-export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' | 'mssql-driver' {
+ *  BigQuery is HTTP-based (no host/port); PG/MySQL share the TCP driver. */
+export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' | 'mssql-driver' | 'bigquery-driver' {
   if (engine === 'sqlite') return 'sqlite-file';
   if (engine === 'mssql') return 'mssql-driver';
+  if (engine === 'bigquery') return 'bigquery-driver';
   return 'tcp-driver';
 }
 
 export interface ParsedConnection {
-  engine: Exclude<Engine, 'sqlite'>;
+  engine: Exclude<Engine, 'sqlite' | 'bigquery'>;
   host: string;
   port: number;
   database: string;
@@ -52,7 +53,7 @@ export interface ParsedConnection {
 export function parseConnectionString(raw: string): ParsedConnection {
   const url = new URL(raw.trim());
   const scheme = url.protocol.replace(':', '').toLowerCase();
-  const engine: Exclude<Engine, 'sqlite'> =
+  const engine: Exclude<Engine, 'sqlite' | 'bigquery'> =
     scheme.startsWith('postgres') ? 'postgres' :
     scheme === 'mysql' || scheme === 'mysql2' ? 'mysql' :
     scheme === 'mssql' || scheme === 'sqlserver' ? 'mssql' :

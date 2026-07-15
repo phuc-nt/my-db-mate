@@ -12,7 +12,7 @@
  */
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
-import type { ConnectionProvider, Dialect } from './connection-providers/provider-interface';
+import { assertNotBigQuery, type ConnectionProvider, type Dialect } from './connection-providers/provider-interface';
 import { PARSER_DIALECT, normalizeSqlForDedup } from './safety/safety-service';
 
 export interface JoinEdge {
@@ -223,6 +223,9 @@ const MYSQL_TRUNCATED = /\.\.\.\s*$/; // performance_schema digest tail marker
  *  Direct executeReadOnly (bounded app-internal read) — the source queries are
  *  plain SELECTs and are not blocked by the safety layer. */
 export async function fetchQueryLog(provider: ConnectionProvider): Promise<QueryLogResult> {
+  if (provider.dialect === 'bigquery') {
+    assertNotBigQuery(provider, 'Query-history mining');
+  }
   if (provider.dialect === 'postgres') {
     try {
       const res = await provider.executeReadOnly(

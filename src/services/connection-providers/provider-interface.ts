@@ -102,3 +102,39 @@ export interface ExplainEstimate {
    *  inline fallback. Untrusted for remote (D1) → render escaped, text-only. */
   raw?: string;
 }
+
+/** Thrown by `assertNotBigQuery` — a typed marker so callers (API routes, the
+ *  chat agent) can distinguish "feature not supported for this dialect" from a
+ *  generic failure and surface a clear message instead of a raw 500/crash. */
+export class BigQueryNotSupportedError extends Error {
+  constructor(featureName: string) {
+    super(`${featureName} is not yet supported for BigQuery connections.`);
+    this.name = 'BigQueryNotSupportedError';
+  }
+}
+
+/** Guard for internal/unattended features (profiling, anomaly detection,
+ *  accelerator snapshots, query-history mining) that assume a cheap, unmetered
+ *  OLTP-style backing store and run frequently on a schedule or cache tick.
+ *  Running them against BigQuery would rack up dry-run+real-query costs on
+ *  every internal maintenance tick — out of scope for v1 (plan decision,
+ *  260715-2034-bigquery-connector-cost-safety/phase-06). Fail closed with a
+ *  clear, typed error rather than silently no-op'ing or crashing. */
+export function assertNotBigQuery(provider: Pick<ConnectionProvider, 'dialect'>, featureName: string): void {
+  if (provider.dialect === 'bigquery') throw new BigQueryNotSupportedError(featureName);
+}
+
+/** Thrown by `executeQuery()` when a BigQuery-dialect call arrives without a
+ *  `bigqueryCostConfirmationToken`. Deliberately a distinct type/param from the
+ *  OLTP `skipRiskGate`/`confirmed` flags — those exist for row-count/performance
+ *  risk tiers and must never double as a real-money cost confirmation, or a
+ *  caller that sets them for an OLTP reason would silently bypass BigQuery's
+ *  cost gate too (260715-2034-bigquery-connector-cost-safety/phase-06). Callers
+ *  without a way to obtain a token (MCP, scheduled jobs, the chat agent, etc.)
+ *  get a clean rejection instead of an unguarded execution. */
+export class BigQueryConfirmationRequiredError extends Error {
+  constructor() {
+    super('BigQuery execution requires the interactive cost-confirmation flow, not yet available here.');
+    this.name = 'BigQueryConfirmationRequiredError';
+  }
+}

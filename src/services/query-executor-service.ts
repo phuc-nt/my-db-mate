@@ -1,8 +1,14 @@
 /**
  * The single choke point for running SQL against a target DB:
  *   validate (safety-service) → execute (provider, read-only) → audit (query_runs).
- * Every path (chat, MCP later) MUST go through here so nothing bypasses safety
- * or audit. `actor` is threaded from P1 (default 'owner') for P4 identity (RT-F6).
+ * Every OLTP path (chat, MCP, schedules, etc.) MUST go through here so nothing
+ * bypasses safety or audit. For BigQuery specifically, this is also the sole
+ * enforcement point for the cost gate (`bigqueryCostConfirmationToken` below) —
+ * but it is NOT the only place BigQuery execution can be blocked: Group A
+ * services (profiling, anomaly detection, accelerator snapshots, query-history
+ * mining) bypass this file entirely via direct `provider.executeReadOnly()`
+ * calls and carry their own `assertNotBigQuery()` guard instead
+ * (260715-2034-bigquery-connector-cost-safety/phase-06).
  */
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
@@ -19,7 +25,7 @@ import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-se
 import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
-import type { QueryResult, Dialect } from './connection-providers/provider-interface';
+import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
@@ -177,8 +183,27 @@ export async function executeQuery(params: {
    *  without re-validation (metrics, monitors). Never set from user/agent
    *  FREE-FORM SQL — validateSql still applies either way. */
   skipRiskGate?: boolean;
+  /** BigQuery-only: proof the caller already ran the dry-run estimate + got
+   *  explicit user confirmation of the real-money cost (Phase 3/4 flow in
+   *  `execute/route.ts`). Deliberately separate from `confirmed`/`skipRiskGate`
+   *  — those gate OLTP row-count/performance risk tiers, and a caller setting
+   *  them for an OLTP reason must never also skip the BigQuery cost gate.
+   *  Callers with no way to obtain one (MCP, scheduled jobs, dashboards, etc.)
+   *  get a clean `BigQueryConfirmationRequiredError` instead of executing. */
+  bigqueryCostConfirmationToken?: boolean;
+  /** BigQuery-only: set ONLY by an interactive caller (`execute/route.ts`) that
+   *  can show the returned `needs_cost_confirmation` estimate to a human and
+   *  re-call with `bigqueryCostConfirmationToken: true` once approved. Every
+   *  other caller (MCP, scheduled jobs, dashboards, notebooks, etc.) has no
+   *  human to show an estimate to, so omitting this turns the same "no token
+   *  yet" state into an immediate `BigQueryConfirmationRequiredError` instead
+   *  of a silently-unactionable `needs_cost_confirmation` response. */
+  allowCostEstimatePreview?: boolean;
 }): Promise<ExecuteResult> {
-  const { connectionId, sql, sessionId, actor = 'owner', confirmed = false, skipRiskGate = false } = params;
+  const {
+    connectionId, sql, sessionId, actor = 'owner', confirmed = false, skipRiskGate = false,
+    bigqueryCostConfirmationToken = false, allowCostEstimatePreview = false,
+  } = params;
   const conn = await getConnection(connectionId);
   if (!conn) return { status: 'error', errorMessage: 'Connection not found' };
 
@@ -208,7 +233,8 @@ export async function executeQuery(params: {
     // ever produce a generic "could not estimate" escalation, never a real cost
     // figure. Fail closed: no execution proceeds when the estimate can't be obtained.
     if (provider instanceof BigQueryConnectionProvider) {
-      if (!skipRiskGate && !confirmed) {
+      if (!bigqueryCostConfirmationToken) {
+        if (!allowCostEstimatePreview) throw new BigQueryConfirmationRequiredError();
         let estimate;
         try {
           estimate = await provider.estimateCost(finalSql);

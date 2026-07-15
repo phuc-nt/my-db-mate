@@ -19,7 +19,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { getProvider } from './connection-service';
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import { assertNotBigQuery, type ConnectionProvider } from './connection-providers/provider-interface';
 
 const OUTLIER_Z = 3;
 
@@ -66,6 +66,7 @@ export async function detectAnomalies(connectionId: string, table: string, colum
   const { column: col, dataType } = await assertKnownColumn(connectionId, table, column);
   const provider = await getProvider(connectionId);
   try {
+    assertNotBigQuery(provider, 'Anomaly detection');
     const t = ident(provider, table);
     const c = ident(provider, col);
 

@@ -13,6 +13,7 @@ import { evalQueries, evalRuns, evalResults } from '../db/intelligence-schema';
 import { getConnection, getProvider } from './connection-service';
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from './query-executor-service';
+import { assertNotBigQuery } from './connection-providers/provider-interface';
 
 export async function addEvalQuery(input: { connectionId: string; question: string; goldSql: string; complexity?: string }) {
   const [row] = await db.insert(evalQueries).values(input).returning();
@@ -59,6 +60,7 @@ export async function runEval(connectionId: string) {
   let structMatches = 0;
 
   try {
+    assertNotBigQuery(provider, 'Eval harness');
     for (const g of golds) {
       // Gold result (executed directly, trusted).
       const goldRes = await provider.executeReadOnly(g.goldSql);

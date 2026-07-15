@@ -5,13 +5,17 @@ import Link from 'next/link';
 import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
 import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
 
-interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown> }
+interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; bigqueryMaxBytesPerQuery?: number }
+
+const BQ_DEFAULT_MAX_BYTES = 1_073_741_824; // 1 GiB ≈ $0.006/query at $6.25/TiB on-demand pricing.
 
 const BLANK = {
   name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '',
   ssl: 'disable' as SslMode, sslCa: '', options: '',
   // SSH tunnel (optional). authMethod 'key' → sshSecret is a PEM private key; 'password' → a password.
   sshOn: false, sshHost: '', sshPort: '22', sshUser: '', sshAuthMethod: 'key' as 'key' | 'password', sshSecret: '',
+  // BigQuery (write-only service-account JSON, same "blank keeps current" pattern as password/SSH key).
+  bqProjectId: '', bqServiceAccountJson: '', bqMaxBytesPerQuery: String(BQ_DEFAULT_MAX_BYTES),
 };
 
 export default function ConnectionsPage() {
@@ -28,7 +32,7 @@ export default function ConnectionsPage() {
 
   /** Switching engine sets the conventional default port (like DBeaver). */
   function setEngine(engine: Engine) {
-    setForm((f) => ({ ...f, engine, port: engine === 'sqlite' ? '' : String(DEFAULT_PORT[engine]) }));
+    setForm((f) => ({ ...f, engine, port: engine === 'sqlite' || engine === 'bigquery' ? '' : String(DEFAULT_PORT[engine]) }));
   }
 
   /** Picking a provider preset pre-fills engine/port/SSL and shows its note.
@@ -54,6 +58,13 @@ export default function ConnectionsPage() {
 
   function buildBody() {
     const kind = kindForEngine(form.engine);
+    if (form.engine === 'bigquery') {
+      return {
+        name: form.name, kind, dialect: form.engine, config: { projectId: form.bqProjectId.trim() },
+        ...(form.bqServiceAccountJson.trim() ? { bigqueryServiceAccountJson: form.bqServiceAccountJson.trim() } : {}),
+        bigqueryMaxBytesPerQuery: Number(form.bqMaxBytesPerQuery) || BQ_DEFAULT_MAX_BYTES,
+      };
+    }
     const ssh = form.sshOn && form.sshHost.trim()
       ? { sshHost: form.sshHost.trim(), sshPort: Number(form.sshPort) || 22, sshUser: form.sshUser.trim(), sshAuthMethod: form.sshAuthMethod }
       : {};
@@ -120,6 +131,9 @@ export default function ConnectionsPage() {
       sshUser: String(cfg.sshUser ?? ''),
       sshAuthMethod: (cfg.sshAuthMethod === 'password' ? 'password' : 'key') as 'key' | 'password',
       sshSecret: '', // never pre-filled; blank keeps the existing key
+      bqProjectId: String(cfg.projectId ?? ''),
+      bqServiceAccountJson: '', // never pre-filled; blank keeps the existing service-account JSON
+      bqMaxBytesPerQuery: String(c.bigqueryMaxBytesPerQuery ?? BQ_DEFAULT_MAX_BYTES),
     });
     setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
@@ -144,6 +158,7 @@ export default function ConnectionsPage() {
   }
 
   const isSqlite = form.engine === 'sqlite';
+  const isBigQuery = form.engine === 'bigquery';
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -157,16 +172,16 @@ export default function ConnectionsPage() {
 
         {/* Engine picker */}
         <div className="mb-3 flex gap-2">
-          {(['postgres', 'mysql', 'sqlite', 'mssql'] as Engine[]).map((e) => (
+          {(['postgres', 'mysql', 'sqlite', 'mssql', 'bigquery'] as Engine[]).map((e) => (
             <button key={e} onClick={() => setEngine(e)} disabled={!!editingId}
               className={`rounded border px-3 py-1.5 text-sm capitalize disabled:opacity-50 ${form.engine === e ? 'border-blue-600 bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300' : ''}`}>
-              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : e === 'sqlite' ? '📄 SQLite' : '🟦 SQL Server'}
+              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : e === 'sqlite' ? '📄 SQLite' : e === 'mssql' ? '🟦 SQL Server' : '🔷 BigQuery'}
             </button>
           ))}
         </div>
 
         {/* Provider preset (TCP only) — fills engine/port/SSL, then everything stays editable. */}
-        {!isSqlite && !editingId && (
+        {!isSqlite && !isBigQuery && !editingId && (
           <select defaultValue="generic" onChange={(e) => applyPreset(e.target.value)}
             className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900">
             <option value="generic">Provider preset (optional)…</option>
@@ -178,7 +193,7 @@ export default function ConnectionsPage() {
         {presetNote && <p className="mb-2 text-xs text-neutral-500">{presetNote}</p>}
 
         {/* Connection-string paste (TCP only) */}
-        {!isSqlite && !editingId && (
+        {!isSqlite && !isBigQuery && !editingId && (
           <input className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900"
             placeholder="Paste connection string (postgres://user:pass@host:5432/db?sslmode=require) — optional"
             onChange={(e) => pasteUrl(e.target.value)} />
@@ -188,6 +203,24 @@ export default function ConnectionsPage() {
           <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           {isSqlite ? (
             <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="Absolute path to .db" value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} />
+          ) : isBigQuery ? (
+            <>
+              <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="GCP project ID" value={form.bqProjectId} onChange={(e) => setForm({ ...form, bqProjectId: e.target.value })} />
+              <textarea className="col-span-2 rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={6}
+                placeholder={editingId ? 'Service-account JSON key — blank keeps the current one' : 'Service-account JSON key (paste the full downloaded file contents)'}
+                value={form.bqServiceAccountJson} onChange={(e) => setForm({ ...form, bqServiceAccountJson: e.target.value })} />
+              <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                Max bytes billed per query
+                <input className="w-40 rounded border p-1.5 text-sm dark:bg-neutral-900" type="number" min={1}
+                  value={form.bqMaxBytesPerQuery} onChange={(e) => setForm({ ...form, bqMaxBytesPerQuery: e.target.value })} />
+                <span className="text-xs text-neutral-500">
+                  ({(Number(form.bqMaxBytesPerQuery) / 1024 ** 3).toFixed(2)} GiB — BigQuery rejects any query needing more, before billing anything)
+                </span>
+              </label>
+              <p className="col-span-2 text-xs text-neutral-500">
+                Grant the service account only <code>roles/bigquery.dataViewer</code> + <code>roles/bigquery.jobUser</code> (no write role). Every query is dry-run estimated and confirmed before it runs.
+              </p>
+            </>
           ) : (
             <>
               <input className="rounded border p-2 dark:bg-neutral-900" placeholder="Host" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
@@ -244,7 +277,7 @@ export default function ConnectionsPage() {
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          {!isSqlite && <button onClick={test} disabled={busy || !form.host} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Test connection</button>}
+          {!isSqlite && <button onClick={test} disabled={busy || (isBigQuery ? !form.bqProjectId : !form.host)} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Test connection</button>}
           <button onClick={save} disabled={busy || !form.name} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
             {busy ? 'Working…' : editingId ? 'Save & re-sync' : 'Add & sync schema'}
           </button>

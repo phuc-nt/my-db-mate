@@ -59,6 +59,11 @@ export function QueryResultBlock({
   const [lastExecutedSql, setLastExecutedSql] = useState(initialResult?.executedSql);
   const [saveMsg, setSaveMsg] = useState('');
   const [confirmRisk, setConfirmRisk] = useState<{ tier: string; reason: string } | undefined>();
+  // BigQuery-only: dry-run cost estimate awaiting confirmation before a real
+  // (billed) run. Deliberately a separate state from confirmRisk — this is a
+  // dollar estimate with its own maximumBytesBilled backstop, not an OLTP
+  // risk-tier judgment, and must not be conflated with that flow's UI/copy.
+  const [costConfirm, setCostConfirm] = useState<{ estimatedBytes: number; estimatedCostUsd: number; reliable: boolean } | undefined>();
   // Which save-action dialog is open (replaces the old chained window.prompt flows).
   const [modal, setModal] = useState<null | 'verified' | 'bookmark' | 'pin' | 'schedule' | 'metric'>(null);
   // Per-connection SQL visibility default (localStorage — deliberately NOT in
@@ -96,6 +101,7 @@ export function QueryResultBlock({
     setError(undefined);
     setSaveMsg('');
     setConfirmRisk(undefined);
+    setCostConfirm(undefined);
     try {
       const res = await fetch(`/api/connections/${connectionId}/execute`, {
         method: 'POST',
@@ -104,6 +110,7 @@ export function QueryResultBlock({
       });
       const data = await res.json();
       if (data.status === 'blocked') { setBlocked(data.reason); setResult(undefined); }
+      else if (data.status === 'needs_cost_confirmation') { setCostConfirm(data.costEstimate); setResult(undefined); }
       else if (data.status === 'needs_confirmation') {
         setConfirmRisk(data.risk);
         setResult(undefined);
@@ -282,6 +289,19 @@ export function QueryResultBlock({
           )}
           <button onClick={() => { setAlternative(null); rerun(true, chosenSql === 'alternative' && alternative ? alternative.sql : undefined); }}
             disabled={busy} className="mt-1 rounded bg-amber-600 px-3 py-1 text-white">Confirm & run {alternative ? 'selected' : 'anyway'}</button>
+        </div>
+      )}
+      {costConfirm && (
+        <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="cost-confirm">
+          <div>
+            💰 Estimated {(costConfirm.estimatedBytes / 1024 ** 3).toFixed(2)} GB scanned ≈ ${costConfirm.estimatedCostUsd.toFixed(4)}
+          </div>
+          {!costConfirm.reliable && (
+            <div className="mt-0.5 text-red-700 dark:text-red-400" data-testid="cost-confirm-unreliable">
+              ⚠ This estimate is unreliable (BigQuery reported 0 bytes for a non-trivial query). The actual cost may differ — the configured max-bytes-billed cap is still enforced as a hard backstop.
+            </div>
+          )}
+          <button onClick={() => rerun(true)} disabled={busy} className="mt-1 rounded bg-amber-600 px-3 py-1 text-white">Confirm & run</button>
         </div>
       )}
       {blocked && <p className="mt-1 text-amber-600">Blocked: {blocked}</p>}

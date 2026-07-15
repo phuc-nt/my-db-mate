@@ -10,7 +10,7 @@ import { columnProfiles } from '../db/intelligence-schema';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { getProvider } from './connection-service';
 import { capRows } from './safety/safety-service';
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import { assertNotBigQuery, type ConnectionProvider } from './connection-providers/provider-interface';
 
 const DISTINCT_CAP = 50;
 
@@ -42,6 +42,7 @@ export async function profileColumn(connectionId: string, tableName: string, col
   ({ tableName, columnName } = await assertKnownColumn(connectionId, tableName, columnName));
   const provider = await getProvider(connectionId);
   try {
+    assertNotBigQuery(provider, 'Column profiling');
     const t = ident(provider, tableName);
     const c = ident(provider, columnName);
 

@@ -12,7 +12,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (typeof sql !== 'string' || !sql.trim()) {
     return NextResponse.json({ error: 'sql required' }, { status: 400 });
   }
-  const res = await executeQuery({ connectionId: id, sql, sessionId, actor: 'owner', confirmed: Boolean(confirmed) });
+  // `confirmed` from the client covers both flows (OLTP medium-risk re-run, and
+  // BigQuery cost-estimate re-run after the user approves the dollar figure) —
+  // executeQuery() itself keeps these as separate params so an OLTP-only
+  // confirmation can never double as BigQuery cost approval; this is the one
+  // caller that legitimately has both after a user click.
+  const res = await executeQuery({
+    connectionId: id,
+    sql,
+    sessionId,
+    actor: 'owner',
+    confirmed: Boolean(confirmed),
+    bigqueryCostConfirmationToken: Boolean(confirmed),
+    allowCostEstimatePreview: true,
+  });
   if (res.status === 'blocked') return NextResponse.json({ status: 'blocked', reason: res.blockedReason }, { status: 200 });
   if (res.status === 'needs_confirmation') return NextResponse.json({ status: 'needs_confirmation', risk: res.risk, executedSql: res.executedSql }, { status: 200 });
   // Phase 4 wires the UI confirm flow for this; until then, surfacing it as its

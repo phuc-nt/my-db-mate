@@ -7,6 +7,7 @@ import { buildProvider, type ConnectionRow } from '../../../../../../../services
 import { ensureSnapshot } from '../../../../../../../services/accelerator/snapshot-cache-service';
 import { ensureIncrementalSnapshot } from '../../../../../../../services/accelerator/incremental-snapshot-service';
 import { getWatermarkConfig } from '../../../../../../../services/accelerator/watermark-config-service';
+import { assertNotBigQuery } from '../../../../../../../services/connection-providers/provider-interface';
 
 export const runtime = 'nodejs';
 
@@ -37,6 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const provider = buildProvider(conn as unknown as ConnectionRow);
   try {
+    assertNotBigQuery(provider, 'Accelerator snapshots');
     const table = EXTRACT_SQL_TABLE.exec(row.sql)?.[1];
     const watermarkConfig = table ? await getWatermarkConfig(id, table) : null;
     if (watermarkConfig) {
