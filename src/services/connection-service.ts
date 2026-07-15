@@ -8,17 +8,22 @@ import { connections } from '../db/schema';
 import { encryptSecret } from './crypto/credential-cipher';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { closeTunnel } from './connection-providers/ssh-tunnel-manager';
+import { sanitizeBigQueryConnError } from './connection-providers/bigquery-provider';
 import type { ConnectionProvider } from './connection-providers/provider-interface';
 
 export interface CreateConnectionInput {
   name: string;
-  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http' | 'mssql-driver';
-  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
+  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http' | 'mssql-driver' | 'bigquery-driver';
+  dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'bigquery';
   config: Record<string, unknown>;
   /** Plaintext secret (password/token); encrypted before storage. */
   secret?: string;
   /** Plaintext SSH private key or password when connecting via a bastion. */
   sshSecret?: string;
+  /** Plaintext BigQuery service-account JSON (stringified); encrypted before storage. */
+  bigqueryServiceAccountJson?: string;
+  /** Hard cap for BigQuery's `maximumBytesBilled`. Falls back to the schema default (1 GiB) when unset. */
+  bigqueryMaxBytesPerQuery?: number;
   /** DuckDB accelerator opt-in (Phase 2). Off by default. */
   accelerateEnabled?: boolean;
   accelerateTtlMs?: number | null;
@@ -38,17 +43,28 @@ function sanitizeConnError(e: unknown, usesSsh: boolean): string {
 /** Connect + probe write privilege WITHOUT saving — powers the "Test connection"
  *  button and the create/update flows. Returns whether it connected and whether the
  *  DB user is read-only (RT-F2). */
-export async function testConnectionConfig(input: { kind: CreateConnectionInput['kind']; dialect: CreateConnectionInput['dialect']; config: Record<string, unknown>; secret?: string; sshSecret?: string }): Promise<{ ok: boolean; isReadOnly: boolean; detail: string }> {
+export async function testConnectionConfig(input: { kind: CreateConnectionInput['kind']; dialect: CreateConnectionInput['dialect']; config: Record<string, unknown>; secret?: string; sshSecret?: string; bigqueryServiceAccountJson?: string; bigqueryMaxBytesPerQuery?: number }): Promise<{ ok: boolean; isReadOnly: boolean; detail: string }> {
   const secretEncrypted = input.secret ? encryptSecret(input.secret) : null;
   const sshSecretEncrypted = input.sshSecret ? encryptSecret(input.sshSecret) : null;
-  const provider = buildProvider({ kind: input.kind, dialect: input.dialect, config: input.config, secretEncrypted, sshSecretEncrypted });
+  const bigqueryServiceAccountJsonEncrypted = input.bigqueryServiceAccountJson ? encryptSecret(input.bigqueryServiceAccountJson) : null;
+  const provider = buildProvider({
+    kind: input.kind,
+    dialect: input.dialect,
+    config: input.config,
+    secretEncrypted,
+    sshSecretEncrypted,
+    bigqueryServiceAccountJsonEncrypted,
+    bigqueryMaxBytesPerQuery: input.bigqueryMaxBytesPerQuery ?? 1_073_741_824,
+  });
   const usesSsh = Boolean(input.config.sshHost);
+  const isBigQuery = input.kind === 'bigquery-driver';
   try {
     await provider.testConnection();
     const probe = await provider.probeWritePrivilege();
     return { ok: true, isReadOnly: probe.isReadOnly, detail: probe.detail };
   } catch (e) {
-    return { ok: false, isReadOnly: false, detail: sanitizeConnError(e, usesSsh) };
+    const detail = isBigQuery ? sanitizeBigQueryConnError(e) : sanitizeConnError(e, usesSsh);
+    return { ok: false, isReadOnly: false, detail };
   } finally {
     await provider.close();
     // A test-connection tunnel is keyed by an ephemeral id — tear it down so it
@@ -60,6 +76,7 @@ export async function testConnectionConfig(input: { kind: CreateConnectionInput[
 export async function createConnection(input: CreateConnectionInput) {
   const secretEncrypted = input.secret ? encryptSecret(input.secret) : null;
   const sshSecretEncrypted = input.sshSecret ? encryptSecret(input.sshSecret) : null;
+  const bigqueryServiceAccountJsonEncrypted = input.bigqueryServiceAccountJson ? encryptSecret(input.bigqueryServiceAccountJson) : null;
 
   // Probe read-only before saving so we can persist the verified flag (RT-F2).
   const probe = await testConnectionConfig(input);
@@ -77,6 +94,8 @@ export async function createConnection(input: CreateConnectionInput) {
       isReadOnlyVerified: probe.isReadOnly,
       accelerateEnabled: input.accelerateEnabled ?? false,
       accelerateTtlMs: input.accelerateTtlMs ?? null,
+      bigqueryServiceAccountJsonEncrypted,
+      ...(input.bigqueryMaxBytesPerQuery ? { bigqueryMaxBytesPerQuery: input.bigqueryMaxBytesPerQuery } : {}),
     })
     .returning();
   return row;
@@ -84,12 +103,16 @@ export async function createConnection(input: CreateConnectionInput) {
 
 /** Update a connection's config/secret in place (edit instead of delete+recreate).
  *  Re-probes read-only. A blank secret keeps the existing one. */
-export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }) {
+export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string; bigqueryServiceAccountJson?: string; bigqueryMaxBytesPerQuery?: number; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }) {
   const existing = await getConnection(id);
   if (!existing) throw new Error('Connection not found');
 
   const secretEncrypted = input.secret ? encryptSecret(input.secret) : existing.secretEncrypted;
   const sshSecretEncrypted = input.sshSecret ? encryptSecret(input.sshSecret) : existing.sshSecretEncrypted;
+  const bigqueryServiceAccountJsonEncrypted = input.bigqueryServiceAccountJson
+    ? encryptSecret(input.bigqueryServiceAccountJson)
+    : existing.bigqueryServiceAccountJsonEncrypted;
+  const bigqueryMaxBytesPerQuery = input.bigqueryMaxBytesPerQuery ?? existing.bigqueryMaxBytesPerQuery;
   const config = input.config ?? (existing.config as Record<string, unknown>);
   const dialect = input.dialect ?? (existing.dialect as CreateConnectionInput['dialect']);
 
@@ -98,11 +121,22 @@ export async function updateConnection(id: string, input: { name?: string; confi
   await closeTunnel(id).catch(() => {});
 
   // Re-probe with the new settings.
-  const provider = buildProvider({ id, kind: existing.kind, dialect, config, secretEncrypted, sshSecretEncrypted });
+  const provider = buildProvider({
+    id,
+    kind: existing.kind,
+    dialect,
+    config,
+    secretEncrypted,
+    sshSecretEncrypted,
+    bigqueryServiceAccountJsonEncrypted,
+    bigqueryMaxBytesPerQuery,
+  });
   let isReadOnlyVerified = false;
   try {
     await provider.testConnection();
     isReadOnlyVerified = (await provider.probeWritePrivilege()).isReadOnly;
+  } catch (e) {
+    throw new Error(existing.kind === 'bigquery-driver' ? sanitizeBigQueryConnError(e) : (e instanceof Error ? e.message : String(e)));
   } finally {
     await provider.close();
   }
@@ -117,6 +151,8 @@ export async function updateConnection(id: string, input: { name?: string; confi
       isReadOnlyVerified,
       accelerateEnabled: input.accelerateEnabled ?? existing.accelerateEnabled,
       accelerateTtlMs: input.accelerateTtlMs !== undefined ? input.accelerateTtlMs : existing.accelerateTtlMs,
+      bigqueryServiceAccountJsonEncrypted,
+      bigqueryMaxBytesPerQuery,
     })
     .where(eq(connections.id, id))
     .returning();

@@ -41,6 +41,16 @@ export const connections = pgTable('connections', {
   // Snapshot cache TTL in ms for this connection's accelerator. Nullable —
   // falls back to a app-wide default when unset.
   accelerateTtlMs: integer('accelerate_ttl_ms'),
+  // BigQuery service-account JSON key, encrypted (AES-256-GCM, same mechanism as
+  // secretEncrypted). Null for non-BigQuery connections.
+  bigqueryServiceAccountJsonEncrypted: text('bigquery_service_account_json_encrypted'),
+  // Hard cap passed as BigQuery's `maximumBytesBilled` job config — BigQuery itself
+  // rejects the job (zero charge) if the query would bill more than this. bigint
+  // (not integer): Postgres int4 caps at 2,147,483,647 and the 1 GiB default
+  // (1,073,741,824) already sits at 50% of that ceiling. notNull with a default so
+  // "missing cap" is a schema-level impossibility, never something executeReadOnly()
+  // must defensively handle.
+  bigqueryMaxBytesPerQuery: bigint('bigquery_max_bytes_per_query', { mode: 'number' }).notNull().default(1_073_741_824),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

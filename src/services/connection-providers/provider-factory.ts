@@ -4,6 +4,7 @@ import { SqliteFileProvider } from './sqlite-file-provider';
 import { TcpDriverProvider } from './tcp-driver-provider';
 import { MssqlDriverProvider } from './mssql-driver-provider';
 import { RemoteHttpProvider } from './remote-http-provider';
+import { BigQueryConnectionProvider } from './bigquery-provider';
 import { decryptSecret } from '../crypto/credential-cipher';
 
 export interface ConnectionRow {
@@ -13,6 +14,8 @@ export interface ConnectionRow {
   config: Record<string, unknown>;
   secretEncrypted: string | null;
   sshSecretEncrypted?: string | null;
+  bigqueryServiceAccountJsonEncrypted?: string | null;
+  bigqueryMaxBytesPerQuery?: number | null;
 }
 
 /** Build the SSH tunnel config from the row, when the connection uses one.
@@ -75,6 +78,24 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
         accountId: String(row.config.accountId),
         databaseId: String(row.config.databaseId),
         apiToken,
+      });
+    }
+
+    case 'bigquery-driver': {
+      if (!row.bigqueryServiceAccountJsonEncrypted) {
+        throw new Error('BigQuery connection is missing its service-account credentials');
+      }
+      const credentials = JSON.parse(decryptSecret(row.bigqueryServiceAccountJsonEncrypted)) as Record<string, unknown>;
+      // Schema column is notNull with a default — a null/undefined here means the
+      // row predates the column or was read through a code path that dropped it.
+      // Fail closed rather than let executeReadOnly() run uncapped.
+      if (!row.bigqueryMaxBytesPerQuery) {
+        throw new Error('BigQuery connection is missing its maximumBytesBilled cap');
+      }
+      return new BigQueryConnectionProvider({
+        projectId: String(row.config.projectId),
+        credentials,
+        maximumBytesBilled: row.bigqueryMaxBytesPerQuery,
       });
     }
 

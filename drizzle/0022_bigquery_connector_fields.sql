@@ -1,0 +1,2 @@
+ALTER TABLE "connections" ADD COLUMN "bigquery_service_account_json_encrypted" text;--> statement-breakpoint
+ALTER TABLE "connections" ADD COLUMN "bigquery_max_bytes_per_query" bigint DEFAULT 1073741824 NOT NULL;

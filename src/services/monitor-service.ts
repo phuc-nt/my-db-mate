@@ -22,7 +22,7 @@ const MAX_COLS = 10;
 
 const quote = (dialect: string, name: string) => {
   const safe = name.replace(/[^A-Za-z0-9_]/g, '');
-  return dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
+  return dialect === 'mysql' || dialect === 'bigquery' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
 };
 
 /** Capture metrics for ONE table (allow-listed against synced schema). */

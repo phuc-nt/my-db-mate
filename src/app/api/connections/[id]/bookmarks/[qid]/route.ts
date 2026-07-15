@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { deleteBookmark, listBookmarks } from '../../../../../../services/context-service';
 import { executeQuery } from '../../../../../../services/query-executor-service';
+import { toJsonSafe } from '../../../../../../lib/json-safe';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +15,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (res.status === 'blocked') return NextResponse.json({ status: 'blocked', reason: res.blockedReason });
   if (res.status === 'needs_confirmation') return NextResponse.json({ status: 'needs_confirmation', risk: res.risk, executedSql: res.executedSql });
   if (res.status === 'error') return NextResponse.json({ status: 'error', error: res.errorMessage });
-  return NextResponse.json({ status: 'ok', ...res.result });
+  return NextResponse.json({ status: 'ok', ...toJsonSafe(res.result) });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; qid: string }> }) {

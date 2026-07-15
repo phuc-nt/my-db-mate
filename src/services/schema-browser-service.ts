@@ -29,7 +29,7 @@ export async function sampleRows(connectionId: string, table: string): Promise<S
   const provider = await getProvider(connectionId);
   const dialect = provider.dialect;
   const safe = t.tableName.replace(/[^A-Za-z0-9_]/g, '');
-  const quoted = dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
+  const quoted = dialect === 'mysql' || dialect === 'bigquery' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
   await provider.close(); // executeQuery opens its own provider
 
   const res = await executeQuery({

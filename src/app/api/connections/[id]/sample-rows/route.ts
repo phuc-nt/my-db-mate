@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sampleRows } from '../../../../../services/schema-browser-service';
+import { toJsonSafe } from '../../../../../lib/json-safe';
 
 export const runtime = 'nodejs';
 
@@ -13,5 +14,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   const res = await sampleRows(id, table);
   if (res.status !== 'ok') return NextResponse.json({ error: res.message }, { status: 200 });
-  return NextResponse.json({ columns: res.columns, rows: res.rows });
+  return NextResponse.json({ columns: res.columns, rows: toJsonSafe(res.rows) });
 }

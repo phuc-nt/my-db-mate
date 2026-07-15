@@ -34,6 +34,10 @@ export const PARSER_DIALECT: Record<Dialect, string> = {
   mysql: 'mysql',
   sqlite: 'sqlite',
   mssql: 'transactsql',
+  // Unused at runtime — BigQuery connections never call validateSql() (Phase 3 of
+  // the BigQuery connector plan owns its own cost-safety path). Verified node-sql-parser
+  // 5.4.0 does accept 'bigquery' as a `database` option value, for if this ever changes.
+  bigquery: 'bigquery',
 };
 
 /** Canonical SQL form for dedup comparison — collapse whitespace, trim, lowercase,

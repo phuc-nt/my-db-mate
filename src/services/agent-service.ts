@@ -126,7 +126,7 @@ export function buildAgentTools(
       execute: async ({ table }) => {
         // Route through the safety layer like any other query.
         const safe = table.replace(/[^A-Za-z0-9_]/g, '');
-        const quoted = dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
+        const quoted = dialect === 'mysql' || dialect === 'bigquery' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
         // App-generated, bounded (5 rows) → skip the risk EXPLAIN (M2 hot-path).
         const res = await executeQuery({ connectionId, sql: capRows(`SELECT * FROM ${quoted}`, 5, dialect), actor, sessionId, skipRiskGate: true });
         if (res.status !== 'ok') return { error: res.blockedReason ?? res.errorMessage };

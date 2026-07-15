@@ -69,6 +69,10 @@ export const FUNCTION_DENYLIST: Record<Dialect, string[]> = {
     'reconfigure',
     'waitfor', // WAITFOR DELAY/TIME — the T-SQL analogue of pg_sleep
   ],
+  // BigQuery connections never call validateSql() — cost-safety (dry-run estimate +
+  // maximumBytesBilled) is a dedicated mechanism, not the OLTP denylist/row-cap screen
+  // (see Phase 3 of the BigQuery connector plan). Empty, not a real per-dialect list.
+  bigquery: [],
 };
 
 /**
@@ -107,4 +111,6 @@ export const PHRASE_DENYLIST: Record<Dialect, RegExp[]> = {
     // GO batch separator — not valid inside a single statement, block defensively.
     /(^|\n)\s*go\s*($|\n)/i,
   ],
+  // See FUNCTION_DENYLIST.bigquery above — BigQuery never reaches this screen.
+  bigquery: [],
 };

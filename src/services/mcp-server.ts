@@ -18,6 +18,7 @@ import { executeQuery } from './query-executor-service';
 import { getSchemaSummary } from './schema-sync-service';
 import { getRelevantContext } from './context-service';
 import { getConnection } from './connection-service';
+import { toJsonSafe } from '../lib/json-safe';
 
 export async function startMcpServer() {
   const token = process.env.MDM_API_KEY;
@@ -74,7 +75,7 @@ export async function startMcpServer() {
 
 function sqlResult(res: { status: string; result?: { columns: string[]; rows: unknown[][] }; errorMessage?: string; blockedReason?: string }) {
   if (res.status === 'ok' && res.result) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ columns: res.result.columns, rows: res.result.rows }, null, 2) }] };
+    return { content: [{ type: 'text' as const, text: JSON.stringify(toJsonSafe({ columns: res.result.columns, rows: res.result.rows }), null, 2) }] };
   }
   return { content: [{ type: 'text' as const, text: `ERROR: ${res.errorMessage ?? res.blockedReason}` }], isError: true };
 }

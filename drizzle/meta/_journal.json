@@ -155,6 +155,13 @@
       "when": 1784099942538,
       "tag": "0021_accelerate_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784126530440,
+      "tag": "0022_bigquery_connector_fields",
+      "breakpoints": true
     }
   ]
 }

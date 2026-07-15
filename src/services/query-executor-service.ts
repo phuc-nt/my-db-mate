@@ -10,6 +10,7 @@ import { queryRuns, schemaTables } from '../db/schema';
 import { columnAnnotations } from '../db/context-schema';
 import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
+import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from './connection-providers/bigquery-provider';
 import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
 import { shouldAccelerate, planAcceleration } from './accelerator/accelerator-service';
@@ -146,13 +147,17 @@ export async function connectionHasSensitiveColumns(connectionId: string): Promi
 }
 
 export interface ExecuteResult {
-  status: 'ok' | 'blocked' | 'error' | 'needs_confirmation';
+  status: 'ok' | 'blocked' | 'error' | 'needs_confirmation' | 'needs_cost_confirmation';
   result?: QueryResult;
   blockedReason?: string;
   errorMessage?: string;
   executedSql?: string;
   /** Present when status='needs_confirmation' (P3 risk tier). */
   risk?: { tier: 'medium' | 'high'; score: number; reason: string };
+  /** Present when status='needs_cost_confirmation' — BigQuery-only, dollar-denominated
+   *  dry-run estimate (Phase 3). Distinct from `risk`: this is real-money cost, not a
+   *  row-count/performance guess, and gates on its own confirm step. */
+  costEstimate?: { estimatedBytes: number; estimatedCostUsd: number; reliable: boolean };
   /** AST-derived read lineage (tables/filters/grouping) — null when unparsable. */
   lineage?: import('../lib/sql-lineage').SqlLineage | null;
 }
@@ -197,6 +202,50 @@ export async function executeQuery(params: {
   const provider = buildProvider(conn as unknown as ConnectionRow);
   const started = Date.now();
   try {
+    // BigQuery cost gate (Phase 3): dollar-denominated dry-run estimate, entirely
+    // separate from assessRisk()'s row-based needs_confirmation flow — BigQuery's
+    // explainQuery() always throws, so routing it through assessRisk() would only
+    // ever produce a generic "could not estimate" escalation, never a real cost
+    // figure. Fail closed: no execution proceeds when the estimate can't be obtained.
+    if (provider instanceof BigQueryConnectionProvider) {
+      if (!skipRiskGate && !confirmed) {
+        let estimate;
+        try {
+          estimate = await provider.estimateCost(finalSql);
+        } catch (e) {
+          const msg = e instanceof EstimateFailedError ? e.message : (e instanceof Error ? e.message : String(e));
+          await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: `cost estimate failed: ${msg}` });
+          return { status: 'error', errorMessage: `Could not estimate cost — query not run: ${msg}`, executedSql: finalSql };
+        }
+        return {
+          status: 'needs_cost_confirmation',
+          executedSql: finalSql,
+          costEstimate: estimate,
+        };
+      }
+
+      let result: QueryResult;
+      try {
+        result = await provider.executeReadOnly(finalSql);
+      } catch (e) {
+        if (e instanceof MaximumBytesBilledExceededError) {
+          await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: e.message });
+          return { status: 'blocked', blockedReason: e.message };
+        }
+        throw e;
+      }
+      await audit({
+        connectionId,
+        sessionId,
+        actor,
+        sql: finalSql,
+        status: 'ok',
+        rowCount: result.rowCount,
+        durationMs: Date.now() - started,
+      });
+      return { status: 'ok', result, executedSql: finalSql, lineage: extractLineage(finalSql, conn.dialect) };
+    }
+
     // Risk gate (P3): estimate blast radius and require confirmation for medium,
     // block high. Performance guard only — not a security control. Skipped for
     // app-generated bounded queries to avoid a per-query EXPLAIN (M2).
