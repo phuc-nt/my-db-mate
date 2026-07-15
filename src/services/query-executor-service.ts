@@ -12,11 +12,11 @@ import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
-import { shouldAccelerate, planAcceleration } from './accelerator-service';
-import { ensureSnapshot } from './snapshot-cache-service';
-import { ensureIncrementalSnapshot } from './incremental-snapshot-service';
-import { getWatermarkConfig } from './watermark-config-service';
-import { runAcceleratedQuery } from './duckdb-executor-service';
+import { shouldAccelerate, planAcceleration } from './accelerator/accelerator-service';
+import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from './accelerator/snapshot-cache-service';
+import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-service';
+import { getWatermarkConfig } from './accelerator/watermark-config-service';
+import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
 import type { QueryResult, Dialect } from './connection-providers/provider-interface';
 
@@ -71,17 +71,37 @@ async function tryAccelerate(
     // missed) — fall back rather than surface an accelerator-specific error,
     // but log it distinctly from the "not eligible" early-return above so a
     // real whitelist gap doesn't fail silently with zero signal.
-    logAccelerationFailure(finalSql, e);
+    await logAccelerationFailure(connectionId, plan.tables, finalSql, e);
     return null;
   }
 }
 
 /** Plain console logging matches the existing convention elsewhere in this
  *  codebase (connection-service.ts, schedule-service.ts) — a self-host,
- *  single-user tool doesn't need a logging service for this. */
-function logAccelerationFailure(sql: string, e: unknown) {
+ *  single-user tool doesn't need a logging service for this. Also marks each
+ *  involved table's snapshot row `status='failed'` so the accelerator UI
+ *  surfaces a query-time DuckDB failure, not only an extraction failure.
+ *  Cache key must match whichever variant (plain vs watermark-suffixed)
+ *  `ensureSnapshot`/`ensureIncrementalSnapshot` actually used for that table
+ *  (see the selection at the `shouldAccelerate` call site above), otherwise
+ *  this writes a status row under a key nothing else ever reads. */
+async function logAccelerationFailure(connectionId: string, tables: string[], sql: string, e: unknown) {
   const msg = e instanceof Error ? e.message : String(e);
   console.warn('[accelerator] DuckDB execution failed, falling back to live driver:', { sql, error: msg });
+  await Promise.all(
+    tables.map(async (table) => {
+      const extractSql = `SELECT * FROM ${table}`;
+      const watermarkConfig = await getWatermarkConfig(connectionId, table);
+      const keySource = watermarkConfig ? `${extractSql}::watermark::${watermarkConfig.watermarkCol}` : extractSql;
+      await upsertSnapshotStatus({
+        connectionId,
+        cacheKey: cacheKeyFor(keySource),
+        sql: extractSql,
+        status: 'failed',
+        lastError: msg,
+      });
+    }),
+  );
 }
 
 /** Largest synced rowCount among tables whose name appears in the SQL (red-team

@@ -16,7 +16,7 @@ const ITEMS = [
   { seg: 'automations', label: '⏰ Automations' },
 ];
 
-export function WorkspaceRail({ id }: { id: string }) {
+export function WorkspaceRail({ id, accelerateEnabled }: { id: string; accelerateEnabled: boolean }) {
   const pathname = usePathname();
   // Pending Knowledge-Inbox count. Client-side on purpose: a server layout would
   // not re-render on child navigation, so a server-fetched badge goes stale.
@@ -27,6 +27,9 @@ export function WorkspaceRail({ id }: { id: string }) {
       .then((d) => setContextBadge(Array.isArray(d) ? d.length : 0))
       .catch(() => {});
   }, [id, pathname]);
+  const acceleratorHref = `/db/${id}/accelerator`;
+  const acceleratorActive = pathname === acceleratorHref || pathname.startsWith(acceleratorHref + '/');
+
   return (
     <div className="flex items-center gap-1 overflow-x-auto">
       {ITEMS.map((it) => {
@@ -42,6 +45,12 @@ export function WorkspaceRail({ id }: { id: string }) {
           </Link>
         );
       })}
+      {/* Always visible (not gated on accelerateEnabled) so a connection that hasn't
+       *  turned it on yet still has a way to discover and enable it. */}
+      <Link href={acceleratorHref}
+        className={`whitespace-nowrap rounded px-2 py-1 text-xs ${acceleratorActive ? 'bg-blue-600 text-white' : accelerateEnabled ? 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800' : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800'}`}>
+        ⚡ Accelerator{!accelerateEnabled && <span className="ml-1 text-[10px]">off</span>}
+      </Link>
     </div>
   );
 }

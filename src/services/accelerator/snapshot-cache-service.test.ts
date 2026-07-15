@@ -1,11 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
+import { and, eq } from 'drizzle-orm';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { ensureSnapshot, parquetCopyOptions } from './snapshot-cache-service';
-import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
+import { db } from '../../db/client';
+import { accelerateSnapshots, connections } from '../../db/schema';
+import { cacheKeyFor, ensureSnapshot, parquetCopyOptions } from './snapshot-cache-service';
+import type { ConnectionProvider, QueryResult } from '../connection-providers/provider-interface';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
+
+async function createFixtureConnection() {
+  const [row] = await db
+    .insert(connections)
+    .values({
+      name: 'snapshot-cache-status-test',
+      kind: 'sqlite-file',
+      dialect: 'sqlite',
+      config: { path: '/tmp/unused-for-this-test.sqlite' },
+      secretEncrypted: null,
+      isReadOnlyVerified: true,
+      accelerateEnabled: true,
+      accelerateTtlMs: 60_000,
+    })
+    .returning();
+  return row;
+}
 
 function fakeProvider(result: QueryResult): ConnectionProvider {
   return {
@@ -69,6 +89,17 @@ describe('ensureSnapshot', () => {
     await ensureSnapshot(connectionId, provider, 'SELECT id FROM t', 1);
 
     expect(provider.executeReadOnly).toHaveBeenCalledTimes(2);
+  });
+
+  it('ttlMs=0 forces a re-extract even when the existing cache is still fresh (Phase 3 manual refresh)', async () => {
+    const result: QueryResult = { columns: ['id'], rows: [[1n]], rowCount: 1 };
+    const provider = fakeProvider(result);
+
+    const first = await ensureSnapshot(connectionId, provider, 'SELECT id FROM t', 60_000);
+    const second = await ensureSnapshot(connectionId, provider, 'SELECT id FROM t', 0);
+
+    expect(provider.executeReadOnly).toHaveBeenCalledTimes(2);
+    expect(second.asOf.getTime()).toBeGreaterThanOrEqual(first.asOf.getTime());
   });
 
   it('preserves numeric, text, and timestamp types through the Parquet round-trip', async () => {
@@ -148,6 +179,84 @@ describe('ensureSnapshot', () => {
     const { rows } = await readParquetRows(snapshot.path);
 
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('ensureSnapshot — accelerateSnapshots status persistence', () => {
+  let conn: Awaited<ReturnType<typeof createFixtureConnection>>;
+
+  beforeEach(async () => {
+    conn = await createFixtureConnection();
+    await rm(path.join(CACHE_ROOT, conn.id), { recursive: true, force: true });
+  });
+
+  afterEach(async () => {
+    await db.delete(accelerateSnapshots).where(eq(accelerateSnapshots.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+    await rm(path.join(CACHE_ROOT, conn.id), { recursive: true, force: true });
+  });
+
+  it('writes a ready row with asOf and sizeBytes after a successful extract', async () => {
+    const sql = 'SELECT id, name FROM t';
+    const provider = fakeProvider({ columns: ['id', 'name'], rows: [[1n, 'a']], rowCount: 1 });
+
+    await ensureSnapshot(conn.id, provider, sql, 60_000);
+
+    const [row] = await db
+      .select()
+      .from(accelerateSnapshots)
+      .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKeyFor(sql))));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('ready');
+    expect(row.asOf).not.toBeNull();
+    expect(row.sizeBytes).not.toBeNull();
+    expect(row.lastError).toBeNull();
+  });
+
+  it('writes a failed row with lastError when extraction throws, without throwing itself from the status write', async () => {
+    const sql = 'SELECT id FROM broken_table';
+    const provider: ConnectionProvider = {
+      dialect: 'postgres',
+      testConnection: vi.fn(),
+      probeWritePrivilege: vi.fn(),
+      introspectSchema: vi.fn(),
+      executeReadOnly: vi.fn().mockRejectedValue(new Error('boom')),
+      explainQuery: vi.fn(),
+      close: vi.fn(),
+    } as unknown as ConnectionProvider;
+
+    await expect(ensureSnapshot(conn.id, provider, sql, 60_000)).rejects.toThrow('boom');
+
+    const [row] = await db
+      .select()
+      .from(accelerateSnapshots)
+      .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKeyFor(sql))));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('failed');
+    expect(row.lastError).toContain('boom');
+  });
+
+  it('does not break extraction when the status upsert itself fails (best-effort, non-throwing)', async () => {
+    const sql = 'SELECT id, name FROM t';
+    const provider = fakeProvider({ columns: ['id', 'name'], rows: [[1n, 'a']], rowCount: 1 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const insertSpy = vi.spyOn(db, 'insert').mockImplementation(() => {
+      throw new Error('db unavailable');
+    });
+
+    try {
+      const result = await ensureSnapshot(conn.id, provider, sql, 60_000);
+      expect(result.path).toBeTruthy();
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[accelerator] failed to persist snapshot status (non-fatal):',
+        expect.any(String),
+      );
+    } finally {
+      insertSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });
 

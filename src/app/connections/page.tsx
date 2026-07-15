@@ -5,15 +5,13 @@ import Link from 'next/link';
 import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
 import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
 
-interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }
+interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown> }
 
 const BLANK = {
   name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '',
   ssl: 'disable' as SslMode, sslCa: '', options: '',
   // SSH tunnel (optional). authMethod 'key' → sshSecret is a PEM private key; 'password' → a password.
   sshOn: false, sshHost: '', sshPort: '22', sshUser: '', sshAuthMethod: 'key' as 'key' | 'password', sshSecret: '',
-  // DuckDB accelerator (optional, opt-in per connection). Off by default.
-  accelerateEnabled: false, accelerateTtlMs: '60',
 };
 
 export default function ConnectionsPage() {
@@ -72,8 +70,6 @@ export default function ConnectionsPage() {
       name: form.name, kind, dialect: form.engine, config,
       secret: form.engine === 'sqlite' ? undefined : form.secret,
       ...(form.sshOn && form.sshSecret ? { sshSecret: form.sshSecret } : {}),
-      accelerateEnabled: form.accelerateEnabled,
-      accelerateTtlMs: form.accelerateEnabled && form.accelerateTtlMs.trim() ? Math.round(Number(form.accelerateTtlMs) * 60_000) : null,
     };
   }
 
@@ -124,8 +120,6 @@ export default function ConnectionsPage() {
       sshUser: String(cfg.sshUser ?? ''),
       sshAuthMethod: (cfg.sshAuthMethod === 'password' ? 'password' : 'key') as 'key' | 'password',
       sshSecret: '', // never pre-filled; blank keeps the existing key
-      accelerateEnabled: Boolean(c.accelerateEnabled),
-      accelerateTtlMs: String(Math.round((c.accelerateTtlMs ?? 60 * 60_000) / 60_000)),
     });
     setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
@@ -247,17 +241,6 @@ export default function ConnectionsPage() {
               )}
             </>
           )}
-          <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-            <input type="checkbox" checked={form.accelerateEnabled} onChange={(e) => setForm({ ...form, accelerateEnabled: e.target.checked })} />
-            Enable query accelerator (routes heavy queries through a cached DuckDB/Parquet snapshot)
-          </label>
-          {form.accelerateEnabled && (
-            <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-              Snapshot cache TTL (minutes)
-              <input className="w-24 rounded border p-1.5 text-sm dark:bg-neutral-900" placeholder="60"
-                value={form.accelerateTtlMs} onChange={(e) => setForm({ ...form, accelerateTtlMs: e.target.value })} />
-            </label>
-          )}
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -284,6 +267,7 @@ export default function ConnectionsPage() {
               <Link href={`/db/${c.id}/chat`} className="rounded bg-neutral-800 px-3 py-1 text-sm text-white dark:bg-neutral-200 dark:text-neutral-900">Chat</Link>
               <Link href={`/db/${c.id}/schema`} className="rounded border px-3 py-1 text-sm">Browse</Link>
               <Link href={`/db/${c.id}/context`} className="rounded border px-3 py-1 text-sm">Context</Link>
+              <Link href={`/db/${c.id}/accelerator`} className="rounded border px-3 py-1 text-sm">⚡ Accelerator</Link>
               <button onClick={() => editConn(c)} className="rounded border px-3 py-1 text-sm">Edit</button>
               <button onClick={() => remove(c.id)} className="rounded border px-3 py-1 text-sm">Delete</button>
             </div>

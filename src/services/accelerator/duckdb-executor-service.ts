@@ -6,7 +6,7 @@
  * approach was chosen over rewriting table refs to `read_parquet(...)` inline.
  */
 import { DuckDBInstance } from '@duckdb/node-api';
-import type { QueryResult } from './connection-providers/provider-interface';
+import type { QueryResult } from '../connection-providers/provider-interface';
 
 /** Quote a possibly schema-qualified identifier for DuckDB DDL — each dotted
  *  part quoted separately so `schema.table` becomes `"schema"."table"`. */

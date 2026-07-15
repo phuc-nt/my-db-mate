@@ -13,7 +13,8 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { DuckDBInstance, DOUBLE, VARCHAR } from '@duckdb/node-api';
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import type { ConnectionProvider } from '../connection-providers/provider-interface';
+import { stat } from 'node:fs/promises';
 import {
   cacheKeyFor,
   cachePaths,
@@ -22,6 +23,7 @@ import {
   insertRows,
   parquetCopyOptions,
   readMeta,
+  upsertSnapshotStatus,
   type SnapshotMeta,
   type SnapshotResult,
 } from './snapshot-cache-service';
@@ -226,31 +228,50 @@ export async function ensureIncrementalSnapshot(
     await mkdir(dir, { recursive: true });
 
     if (!meta || meta.lastWatermark === undefined) {
-      const result = await provider.executeReadOnly(baseExtractSql);
-      const plans = inferColumnPlans(result.columns, result.rows);
-      const columnList = result.columns.map((c, i) => `"${c.replace(/"/g, '""')}" ${plans[i].sqlType}`).join(', ');
-
-      const instance = await DuckDBInstance.create(':memory:');
-      const connection = await instance.connect();
+      await upsertSnapshotStatus({ connectionId, cacheKey, sql: baseExtractSql, status: 'extracting' });
       try {
-        await connection.run(`CREATE TABLE snapshot (${columnList})`);
-        await insertRows(connection, plans, result.rows);
-        const escapedPath = parquetPath.replace(/'/g, "''");
-        await connection.run(`COPY snapshot TO '${escapedPath}' ${parquetCopyOptions(result.rows.length)}`);
-      } finally {
-        connection.closeSync();
-      }
+        const result = await provider.executeReadOnly(baseExtractSql);
+        const plans = inferColumnPlans(result.columns, result.rows);
+        const columnList = result.columns.map((c, i) => `"${c.replace(/"/g, '""')}" ${plans[i].sqlType}`).join(', ');
 
-      const watermarkColIndex = result.columns.indexOf(watermarkCol);
-      const seededWatermark = watermarkColIndex === -1 ? null : maxWatermark(result.rows, watermarkColIndex);
-      const asOf = new Date();
-      const newMeta: SnapshotMeta = { asOf: asOf.toISOString(), watermarkCol, lastWatermark: seededWatermark ?? undefined };
-      await writeFile(metaPath, JSON.stringify(newMeta), 'utf-8');
-      return { path: parquetPath, asOf };
+        const instance = await DuckDBInstance.create(':memory:');
+        const connection = await instance.connect();
+        try {
+          await connection.run(`CREATE TABLE snapshot (${columnList})`);
+          await insertRows(connection, plans, result.rows);
+          const escapedPath = parquetPath.replace(/'/g, "''");
+          await connection.run(`COPY snapshot TO '${escapedPath}' ${parquetCopyOptions(result.rows.length)}`);
+        } finally {
+          connection.closeSync();
+        }
+
+        const watermarkColIndex = result.columns.indexOf(watermarkCol);
+        const seededWatermark = watermarkColIndex === -1 ? null : maxWatermark(result.rows, watermarkColIndex);
+        const asOf = new Date();
+        const newMeta: SnapshotMeta = { asOf: asOf.toISOString(), watermarkCol, lastWatermark: seededWatermark ?? undefined };
+        await writeFile(metaPath, JSON.stringify(newMeta), 'utf-8');
+        const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+        await upsertSnapshotStatus({ connectionId, cacheKey, sql: baseExtractSql, asOf, sizeBytes, status: 'ready' });
+        return { path: parquetPath, asOf };
+      } catch (e) {
+        await upsertSnapshotStatus({
+          connectionId,
+          cacheKey,
+          sql: baseExtractSql,
+          status: 'failed',
+          lastError: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      }
     }
 
     const asOf = new Date(meta.asOf);
     if (Date.now() - asOf.getTime() < ttlMs) {
+      // Correct a stale `failed` status row (e.g. from a query-time DuckDB
+      // error after this snapshot's own extract succeeded) now that the
+      // cache is confirmed healthy — otherwise it can show failed forever.
+      const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+      await upsertSnapshotStatus({ connectionId, cacheKey, sql: baseExtractSql, asOf, sizeBytes, status: 'ready' });
       return { path: parquetPath, asOf };
     }
 
@@ -261,26 +282,42 @@ export async function ensureIncrementalSnapshot(
     // updated. Falling back to a floor value below any real watermark makes
     // such a row appear in the very next delta once it is populated.
     const deltaSql = `SELECT * FROM (${baseExtractSql}) __base WHERE COALESCE("${watermarkCol}", ${watermarkFloor(meta.lastWatermark)}) > ${watermarkLiteral(meta.lastWatermark)}`;
-    const delta = await provider.executeReadOnly(deltaSql);
 
-    const newAsOf = new Date();
-    if (delta.rows.length === 0) {
-      const refreshedMeta: SnapshotMeta = { ...meta, asOf: newAsOf.toISOString() };
-      await writeFile(metaPath, JSON.stringify(refreshedMeta), 'utf-8');
+    try {
+      const delta = await provider.executeReadOnly(deltaSql);
+
+      const newAsOf = new Date();
+      if (delta.rows.length === 0) {
+        const refreshedMeta: SnapshotMeta = { ...meta, asOf: newAsOf.toISOString() };
+        await writeFile(metaPath, JSON.stringify(refreshedMeta), 'utf-8');
+        const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+        await upsertSnapshotStatus({ connectionId, cacheKey, sql: baseExtractSql, asOf: newAsOf, sizeBytes, status: 'ready' });
+        return { path: parquetPath, asOf: newAsOf };
+      }
+
+      await appendToParquet(parquetPath, delta.columns, delta.rows);
+
+      const watermarkColIndex = delta.columns.indexOf(watermarkCol);
+      const newMax = watermarkColIndex === -1 ? null : maxWatermark(delta.rows, watermarkColIndex);
+      const updatedMeta: SnapshotMeta = {
+        asOf: newAsOf.toISOString(),
+        watermarkCol,
+        lastWatermark: newMax ?? meta.lastWatermark,
+      };
+      await writeFile(metaPath, JSON.stringify(updatedMeta), 'utf-8');
+      const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+      await upsertSnapshotStatus({ connectionId, cacheKey, sql: baseExtractSql, asOf: newAsOf, sizeBytes, status: 'ready' });
       return { path: parquetPath, asOf: newAsOf };
+    } catch (e) {
+      await upsertSnapshotStatus({
+        connectionId,
+        cacheKey,
+        sql: baseExtractSql,
+        status: 'failed',
+        lastError: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     }
-
-    await appendToParquet(parquetPath, delta.columns, delta.rows);
-
-    const watermarkColIndex = delta.columns.indexOf(watermarkCol);
-    const newMax = watermarkColIndex === -1 ? null : maxWatermark(delta.rows, watermarkColIndex);
-    const updatedMeta: SnapshotMeta = {
-      asOf: newAsOf.toISOString(),
-      watermarkCol,
-      lastWatermark: newMax ?? meta.lastWatermark,
-    };
-    await writeFile(metaPath, JSON.stringify(updatedMeta), 'utf-8');
-    return { path: parquetPath, asOf: newAsOf };
   })();
 
   inFlight.set(lockKey, task);

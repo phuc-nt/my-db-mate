@@ -148,6 +148,13 @@
       "when": 1784089014166,
       "tag": "0020_accelerate_watermark_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784099942538,
+      "tag": "0021_accelerate_snapshots",
+      "breakpoints": true
     }
   ]
 }

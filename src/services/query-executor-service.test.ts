@@ -8,11 +8,11 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
-import { connections, queryRuns } from '../db/schema';
+import { accelerateSnapshots, connections, queryRuns } from '../db/schema';
 import { executeQuery } from './query-executor-service';
-import { cacheKeyFor } from './snapshot-cache-service';
+import { cacheKeyFor } from './accelerator/snapshot-cache-service';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 const DB_PATH = path.join(process.cwd(), '.cache', 'query-executor-parity-test.sqlite');
@@ -147,7 +147,16 @@ describe('executeQuery accelerator parity', () => {
         '[accelerator] DuckDB execution failed, falling back to live driver:',
         expect.objectContaining({ sql: expect.stringContaining(sql), error: expect.any(String) }),
       );
+
+      const cacheKey = cacheKeyFor('SELECT * FROM orders');
+      const [statusRow] = await db
+        .select()
+        .from(accelerateSnapshots)
+        .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKey)));
+      expect(statusRow).toBeDefined();
+      expect(statusRow.status).toBe('failed');
     } finally {
+      await db.delete(accelerateSnapshots).where(eq(accelerateSnapshots.connectionId, conn.id));
       warnSpy.mockRestore();
       await rm(path.join(CACHE_ROOT, conn.id), { recursive: true, force: true });
       await db.delete(queryRuns).where(eq(queryRuns.connectionId, conn.id));

@@ -5,8 +5,8 @@
  * auto-creates a config from `detectWatermarkColumn`'s suggestion.
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { accelerateWatermarkConfigs } from '../db/schema';
+import { db } from '../../db/client';
+import { accelerateWatermarkConfigs } from '../../db/schema';
 
 // Same identifier allowlist as schema-browser-service.ts's `safe` column-name
 // guard — `watermarkCol` is spliced directly into a WHERE clause identifier

@@ -65,6 +65,28 @@ export const accelerateWatermarkConfigs = pgTable('accelerate_watermark_configs'
   uniqueTable: unique('accelerate_watermark_configs_connection_table_unique').on(t.connectionId, t.tableName),
 }));
 
+/** Queryable index of accelerator snapshot status, keyed by the same
+ *  `(connectionId, cacheKey)` the filesystem cache uses (see
+ *  `snapshot-cache-service.ts`'s `cacheKeyFor`). The `.meta.json` + Parquet
+ *  file on disk remain the source of truth DuckDB reads from — this table is
+ *  UI-facing only, upserted in place (no history) alongside every write to
+ *  that filesystem cache, including failures. */
+export const accelerateSnapshots = pgTable('accelerate_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectionId: uuid('connection_id')
+    .notNull()
+    .references(() => connections.id, { onDelete: 'cascade' }),
+  cacheKey: text('cache_key').notNull(),
+  sql: text('sql').notNull(),
+  asOf: timestamp('as_of', { withTimezone: true }),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }),
+  status: text('status').notNull(), // 'ready' | 'extracting' | 'failed'
+  lastError: text('last_error'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  uniqueKey: unique('accelerate_snapshots_connection_cachekey_unique').on(t.connectionId, t.cacheKey),
+}));
+
 /** One row per table in a synced target schema. */
 export const schemaTables = pgTable('schema_tables', {
   id: uuid('id').primaryKey().defaultRandom(),

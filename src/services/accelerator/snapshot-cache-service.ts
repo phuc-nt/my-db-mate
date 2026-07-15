@@ -12,10 +12,12 @@
  * helpers exported here.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DuckDBInstance, BIGINT, DOUBLE, BOOLEAN, VARCHAR, type DuckDBType, type DuckDBValue } from '@duckdb/node-api';
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import { db } from '../../db/client';
+import { accelerateSnapshots } from '../../db/schema';
+import type { ConnectionProvider } from '../connection-providers/provider-interface';
 
 export const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 
@@ -157,6 +159,48 @@ export function parquetCopyOptions(rowCount: number): string {
     : '(FORMAT PARQUET)';
 }
 
+/** Best-effort upsert into `accelerateSnapshots` — the app DB is a queryable
+ *  status index for the UI, never the source of truth for query execution
+ *  (that stays `.meta.json` + the Parquet file). A DB write failure here must
+ *  not break the accelerator, so callers never await-and-throw this. */
+export async function upsertSnapshotStatus(row: {
+  connectionId: string;
+  cacheKey: string;
+  sql: string;
+  asOf?: Date | null;
+  sizeBytes?: number | null;
+  status: 'ready' | 'extracting' | 'failed';
+  lastError?: string | null;
+}): Promise<void> {
+  try {
+    await db
+      .insert(accelerateSnapshots)
+      .values({
+        connectionId: row.connectionId,
+        cacheKey: row.cacheKey,
+        sql: row.sql,
+        asOf: row.asOf ?? null,
+        sizeBytes: row.sizeBytes ?? null,
+        status: row.status,
+        lastError: row.lastError ?? null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [accelerateSnapshots.connectionId, accelerateSnapshots.cacheKey],
+        set: {
+          sql: row.sql,
+          asOf: row.asOf ?? null,
+          sizeBytes: row.sizeBytes ?? null,
+          status: row.status,
+          lastError: row.lastError ?? null,
+          updatedAt: new Date(),
+        },
+      });
+  } catch (e) {
+    console.warn('[accelerator] failed to persist snapshot status (non-fatal):', e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function extractToParquet(provider: ConnectionProvider, extractSql: string, parquetPath: string): Promise<void> {
   const result = await provider.executeReadOnly(extractSql);
   const plans = inferColumnPlans(result.columns, result.rows);
@@ -201,14 +245,33 @@ export async function ensureSnapshot(
     if (meta) {
       const asOf = new Date(meta.asOf);
       if (Date.now() - asOf.getTime() < ttlMs) {
+        // Correct a stale `failed` status row (e.g. from a query-time DuckDB
+        // error after this snapshot's own extract succeeded) now that the
+        // cache is confirmed healthy — otherwise it can show failed forever.
+        const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+        await upsertSnapshotStatus({ connectionId, cacheKey, sql: extractSql, asOf, sizeBytes, status: 'ready' });
         return { path: parquetPath, asOf };
       }
     }
 
     await mkdir(dir, { recursive: true });
-    await extractToParquet(provider, extractSql, parquetPath);
+    await upsertSnapshotStatus({ connectionId, cacheKey, sql: extractSql, status: 'extracting' });
+    try {
+      await extractToParquet(provider, extractSql, parquetPath);
+    } catch (e) {
+      await upsertSnapshotStatus({
+        connectionId,
+        cacheKey,
+        sql: extractSql,
+        status: 'failed',
+        lastError: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
+    }
     const asOf = new Date();
     await writeFile(metaPath, JSON.stringify({ asOf: asOf.toISOString() } satisfies SnapshotMeta), 'utf-8');
+    const sizeBytes = await stat(parquetPath).then((s) => s.size).catch(() => null);
+    await upsertSnapshotStatus({ connectionId, cacheKey, sql: extractSql, asOf, sizeBytes, status: 'ready' });
     return { path: parquetPath, asOf };
   })();
 

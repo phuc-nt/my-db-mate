@@ -1,11 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
+import { and, eq } from 'drizzle-orm';
 import { DuckDBInstance } from '@duckdb/node-api';
+import { db } from '../../db/client';
+import { accelerateSnapshots, connections } from '../../db/schema';
+import { cacheKeyFor } from './snapshot-cache-service';
 import { ensureIncrementalSnapshot } from './incremental-snapshot-service';
-import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
+import type { ConnectionProvider, QueryResult } from '../connection-providers/provider-interface';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
+
+async function createFixtureConnection() {
+  const [row] = await db
+    .insert(connections)
+    .values({
+      name: 'incremental-snapshot-status-test',
+      kind: 'sqlite-file',
+      dialect: 'sqlite',
+      config: { path: '/tmp/unused-for-this-test.sqlite' },
+      secretEncrypted: null,
+      isReadOnlyVerified: true,
+      accelerateEnabled: true,
+      accelerateTtlMs: 60_000,
+    })
+    .returning();
+  return row;
+}
 
 function sequencedProvider(results: QueryResult[]): ConnectionProvider {
   const executeReadOnly = vi.fn();
@@ -123,6 +144,20 @@ describe('ensureIncrementalSnapshot', () => {
     expect(provider.executeReadOnly).toHaveBeenCalledTimes(1);
   });
 
+  it('ttlMs=0 forces a delta fetch and append even when the existing snapshot is still fresh (Phase 3 manual refresh)', async () => {
+    const provider = sequencedProvider([
+      { columns: ['id', 'updated_at'], rows: [[1n, new Date('2026-01-01T00:00:00.000Z')]], rowCount: 1 },
+      { columns: ['id', 'updated_at'], rows: [[2n, new Date('2026-01-02T00:00:00.000Z')]], rowCount: 1 },
+    ]);
+
+    await ensureIncrementalSnapshot(connectionId, provider, 'SELECT * FROM t', 'updated_at', 60_000);
+    const second = await ensureIncrementalSnapshot(connectionId, provider, 'SELECT * FROM t', 'updated_at', 0);
+    const rows = await readParquetRows(second.path);
+
+    expect(provider.executeReadOnly).toHaveBeenCalledTimes(2);
+    expect(rows).toHaveLength(2);
+  });
+
   it('rejects a watermark column that is not a plain identifier, before ever touching the provider', async () => {
     const provider = sequencedProvider([]);
 
@@ -234,5 +269,93 @@ describe('ensureIncrementalSnapshot', () => {
     const second = await ensureIncrementalSnapshot(connectionId, provider, 'SELECT * FROM t', 'id', 1);
     const rows = await readParquetRows(second.path);
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe('ensureIncrementalSnapshot — accelerateSnapshots status persistence', () => {
+  let conn: Awaited<ReturnType<typeof createFixtureConnection>>;
+
+  beforeEach(async () => {
+    conn = await createFixtureConnection();
+    await rm(path.join(CACHE_ROOT, conn.id), { recursive: true, force: true });
+  });
+
+  afterEach(async () => {
+    await db.delete(accelerateSnapshots).where(eq(accelerateSnapshots.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+    await rm(path.join(CACHE_ROOT, conn.id), { recursive: true, force: true });
+  });
+
+  it('writes a ready row after the initial full-seed extract', async () => {
+    const sql = 'SELECT * FROM t';
+    const provider = sequencedProvider([
+      { columns: ['id', 'updated_at'], rows: [[1n, new Date('2026-01-01T00:00:00.000Z')]], rowCount: 1 },
+    ]);
+
+    await ensureIncrementalSnapshot(conn.id, provider, sql, 'updated_at', 60_000);
+
+    const cacheKey = cacheKeyFor(`${sql}::watermark::updated_at`);
+    const [row] = await db
+      .select()
+      .from(accelerateSnapshots)
+      .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKey)));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('ready');
+  });
+
+  it('writes a ready row again after a delta append advances the watermark', async () => {
+    const sql = 'SELECT * FROM t';
+    const provider = sequencedProvider([
+      { columns: ['id', 'updated_at'], rows: [[1n, new Date('2026-01-01T00:00:00.000Z')]], rowCount: 1 },
+      { columns: ['id', 'updated_at'], rows: [[2n, new Date('2026-01-02T00:00:00.000Z')]], rowCount: 1 },
+    ]);
+
+    await ensureIncrementalSnapshot(conn.id, provider, sql, 'updated_at', 1);
+    await new Promise((r) => setTimeout(r, 10));
+    await ensureIncrementalSnapshot(conn.id, provider, sql, 'updated_at', 1);
+
+    const cacheKey = cacheKeyFor(`${sql}::watermark::updated_at`);
+    const [row] = await db
+      .select()
+      .from(accelerateSnapshots)
+      .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKey)));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('ready');
+  });
+
+  it('writes a failed row when the delta fetch throws', async () => {
+    const sql = 'SELECT * FROM t';
+    const executeReadOnly = vi.fn();
+    executeReadOnly.mockResolvedValueOnce({
+      columns: ['id', 'updated_at'],
+      rows: [[1n, new Date('2026-01-01T00:00:00.000Z')]],
+      rowCount: 1,
+    });
+    executeReadOnly.mockRejectedValueOnce(new Error('delta fetch boom'));
+    const provider = {
+      dialect: 'postgres',
+      testConnection: vi.fn(),
+      probeWritePrivilege: vi.fn(),
+      introspectSchema: vi.fn(),
+      executeReadOnly,
+      explainQuery: vi.fn(),
+      close: vi.fn(),
+    } as unknown as ConnectionProvider;
+
+    await ensureIncrementalSnapshot(conn.id, provider, sql, 'updated_at', 1);
+    await new Promise((r) => setTimeout(r, 10));
+    await expect(ensureIncrementalSnapshot(conn.id, provider, sql, 'updated_at', 1)).rejects.toThrow('delta fetch boom');
+
+    const cacheKey = cacheKeyFor(`${sql}::watermark::updated_at`);
+    const [row] = await db
+      .select()
+      .from(accelerateSnapshots)
+      .where(and(eq(accelerateSnapshots.connectionId, conn.id), eq(accelerateSnapshots.cacheKey, cacheKey)));
+
+    expect(row).toBeDefined();
+    expect(row.status).toBe('failed');
+    expect(row.lastError).toContain('delta fetch boom');
   });
 });

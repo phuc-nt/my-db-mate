@@ -22,7 +22,7 @@ export default async function WorkspaceLayout({ children, params }: {
           <span className="max-w-[200px] truncate font-medium" title={conn.name}>{conn.name}</span>
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{conn.dialect}</span>
           {conn.isReadOnlyVerified && <span className="whitespace-nowrap text-xs text-green-600">read-only ✓</span>}
-          <WorkspaceRail id={id} />
+          <WorkspaceRail id={id} accelerateEnabled={Boolean(conn.accelerateEnabled)} />
           <Link href="/connections" className="ml-auto whitespace-nowrap text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100">switch db →</Link>
         </div>
       </div>
