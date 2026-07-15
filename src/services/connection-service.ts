@@ -19,6 +19,9 @@ export interface CreateConnectionInput {
   secret?: string;
   /** Plaintext SSH private key or password when connecting via a bastion. */
   sshSecret?: string;
+  /** DuckDB accelerator opt-in (Phase 2). Off by default. */
+  accelerateEnabled?: boolean;
+  accelerateTtlMs?: number | null;
 }
 
 /** ssh2 auth errors can carry key paths / material — surface a generic message to
@@ -72,6 +75,8 @@ export async function createConnection(input: CreateConnectionInput) {
       secretEncrypted,
       sshSecretEncrypted,
       isReadOnlyVerified: probe.isReadOnly,
+      accelerateEnabled: input.accelerateEnabled ?? false,
+      accelerateTtlMs: input.accelerateTtlMs ?? null,
     })
     .returning();
   return row;
@@ -79,7 +84,7 @@ export async function createConnection(input: CreateConnectionInput) {
 
 /** Update a connection's config/secret in place (edit instead of delete+recreate).
  *  Re-probes read-only. A blank secret keeps the existing one. */
-export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string }) {
+export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }) {
   const existing = await getConnection(id);
   if (!existing) throw new Error('Connection not found');
 
@@ -103,7 +108,16 @@ export async function updateConnection(id: string, input: { name?: string; confi
   }
 
   const [row] = await db.update(connections)
-    .set({ name: input.name ?? existing.name, config, dialect, secretEncrypted, sshSecretEncrypted, isReadOnlyVerified })
+    .set({
+      name: input.name ?? existing.name,
+      config,
+      dialect,
+      secretEncrypted,
+      sshSecretEncrypted,
+      isReadOnlyVerified,
+      accelerateEnabled: input.accelerateEnabled ?? existing.accelerateEnabled,
+      accelerateTtlMs: input.accelerateTtlMs !== undefined ? input.accelerateTtlMs : existing.accelerateTtlMs,
+    })
     .where(eq(connections.id, id))
     .returning();
   return row;

@@ -71,7 +71,8 @@ Mở `/connections`, bấm thêm connection:
    - **"⚠ Connected but the DB user can WRITE"** → user DB có quyền ghi. Vẫn dùng được (app chặn ghi ở tầng ứng dụng), nhưng nên cấp user chỉ-đọc.
    - **"Failed: …"** → sai thông tin, báo lỗi sạch (không lộ stack).
 5. (Tuỳ chọn) **Connect via SSH tunnel** — DB nằm sau bastion host: tick ô này, điền SSH host/port/user + private key (PEM) hoặc password. Mọi kết nối + query đi qua tunnel; TLS tới DB vẫn verify theo hostname thật. Key được mã hoá khi lưu như password DB.
-6. Bấm **Add & sync** — app quét schema (bảng/cột/khoá/row count) và lưu lại.
+6. (Tuỳ chọn) **Enable query accelerator** — nếu DB bạn có bảng lớn, tick ô này để tăng tốc độ query nặng. Hệ thống sẽ cache bảng thành Parquet file và chạy query trên snapshot (thay vì DB trực tiếp), giảm tải. Điền TTL cache (mặc định 1 giờ) — kết quả sẽ ghi nhãn "⚡ Accelerated · snapshot …" để bạn biết data cũ bao lâu. Chỉ áp dụng cho simple SELECT (không CTE, không function lạ); query phức tạp tự chạy bình thường.
+7. Bấm **Add & sync** — app quét schema (bảng/cột/khoá/row count) và lưu lại.
 
 Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh section: **💬 Chat · 🗂 Schema · 📚 Context · ⏰ Automations** (link cũ Chat/Browse/Context tự chuyển hướng). Nav trên cùng gọn còn: **Connections · Library · ⚙ Settings**.
 

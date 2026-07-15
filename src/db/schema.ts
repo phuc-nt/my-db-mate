@@ -33,6 +33,13 @@ export const connections = pgTable('connections', {
   sshSecretEncrypted: text('ssh_secret_encrypted'),
   // Result of the write-privilege probe at test-connection time (RT-F2).
   isReadOnlyVerified: boolean('is_read_only_verified').notNull().default(false),
+  // DuckDB accelerator opt-in (per-connection): route heavy queries through a
+  // cached Parquet snapshot instead of the live driver. Off by default — this
+  // must not change behavior on connections that haven't opted in.
+  accelerateEnabled: boolean('accelerate_enabled').notNull().default(false),
+  // Snapshot cache TTL in ms for this connection's accelerator. Nullable —
+  // falls back to a app-wide default when unset.
+  accelerateTtlMs: integer('accelerate_ttl_ms'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -20,6 +20,9 @@ export interface ChatArtifact {
   /** The user question that led to this query (teach-flow context). */
   question?: string;
   lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null;
+  /** Present when served from the DuckDB accelerator's Parquet snapshot cache
+   *  instead of the live driver — `asOf` is the snapshot's extraction time (ISO). */
+  accelerated?: { asOf: string };
 }
 
 export function ChatArtifactChip({ artifact, active, onClick }: {
@@ -42,6 +45,7 @@ export function ChatArtifactChip({ artifact, active, onClick }: {
       className={`mt-1 flex items-center gap-2 rounded border px-2 py-1 text-xs ${active ? 'border-blue-500 bg-blue-50 dark:bg-blue-950' : 'border-neutral-300 hover:border-neutral-400 dark:border-neutral-700'}`}>
       <span className="font-medium">Q{artifact.index}</span>
       <span className={status.cls}>{status.icon} {status.text}</span>
+      {artifact.accelerated && <span className="text-neutral-400" title={`Accelerated · snapshot as of ${new Date(artifact.accelerated.asOf).toLocaleString()}`}>⚡</span>}
       <span className="text-neutral-500">view →</span>
     </button>
   );

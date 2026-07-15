@@ -12,8 +12,53 @@ import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
+import { shouldAccelerate, planAcceleration } from './accelerator-service';
+import { ensureSnapshot } from './snapshot-cache-service';
+import { runAcceleratedQuery } from './duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
 import type { QueryResult, Dialect } from './connection-providers/provider-interface';
+
+// Fallback snapshot TTL when a connection has the accelerator enabled but no
+// explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
+// cost for a self-host, single-user tool.
+const DEFAULT_ACCELERATE_TTL_MS = 60 * 60 * 1000;
+
+/** Extracts one table's Parquet snapshot and runs the original SQL against
+ *  DuckDB views over those snapshots. Returns null (never throws) when the SQL
+ *  can't be safely accelerated or the DuckDB path itself fails — callers must
+ *  fall back to `provider.executeReadOnly()`, since it is always safer to
+ *  serve a live, unaccelerated result than to risk a wrong accelerated one. */
+async function tryAccelerate(
+  connectionId: string,
+  provider: import('./connection-providers/provider-interface').ConnectionProvider,
+  finalSql: string,
+  dialect: Dialect,
+  ttlMs: number,
+): Promise<QueryResult | null> {
+  const plan = planAcceleration(finalSql, dialect);
+  if ('error' in plan) return null;
+
+  try {
+    const snapshots = await Promise.all(
+      plan.tables.map(async (table) => {
+        const snapshot = await ensureSnapshot(connectionId, provider, `SELECT * FROM ${table}`, ttlMs);
+        return { table, snapshot };
+      }),
+    );
+    const tableToSnapshot = new Map(snapshots.map(({ table, snapshot }) => [table, snapshot.path]));
+    const earliestAsOf = snapshots.reduce(
+      (earliest, { snapshot }) => (snapshot.asOf < earliest ? snapshot.asOf : earliest),
+      snapshots[0].snapshot.asOf,
+    );
+
+    const result = await runAcceleratedQuery(finalSql, tableToSnapshot);
+    return { ...result, accelerated: { asOf: earliestAsOf.toISOString() } };
+  } catch {
+    // DuckDB execution failed (e.g. a construct planAcceleration's whitelist
+    // missed) — fall back rather than surface an accelerator-specific error.
+    return null;
+  }
+}
 
 /** Largest synced rowCount among tables whose name appears in the SQL (red-team
  *  C3). Lets the risk scorer escalate a SQLite full scan on a big table, where
@@ -111,10 +156,11 @@ export async function executeQuery(params: {
     // Risk gate (P3): estimate blast radius and require confirmation for medium,
     // block high. Performance guard only — not a security control. Skipped for
     // app-generated bounded queries to avoid a per-query EXPLAIN (M2).
+    let risk: Awaited<ReturnType<typeof assessRisk>> | undefined;
     if (!skipRiskGate) {
     const sensitive = await touchesSensitiveColumns(connectionId, finalSql);
     const maxTableRows = await maxReferencedTableRows(connectionId, finalSql);
-    const risk = await assessRisk(provider, finalSql, { sensitiveColumnsTouched: sensitive, maxTableRows });
+    risk = await assessRisk(provider, finalSql, { sensitiveColumnsTouched: sensitive, maxTableRows });
     if (risk.tier === 'high') {
       await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: `high risk: ${risk.reason}` });
       return { status: 'blocked', blockedReason: `High-risk query blocked: ${risk.reason}. (Approval workflow arrives in P4.)` };
@@ -124,7 +170,17 @@ export async function executeQuery(params: {
     }
     }
 
-    const result = await provider.executeReadOnly(finalSql);
+    // Accelerator (Phase 2): only ever considered when the risk gate actually
+    // ran (skipRiskGate=false) and the connection opted in AND the query is
+    // expensive enough to be worth it. `tryAccelerate` itself falls back to
+    // null (never throws) for anything it can't safely handle, so the
+    // `?? await provider.executeReadOnly(...)` below is the single fallback
+    // path — same result shape either way.
+    const connRow = conn as unknown as { accelerateEnabled?: boolean; accelerateTtlMs?: number | null };
+    const result =
+      (risk && shouldAccelerate({ accelerateEnabled: connRow.accelerateEnabled === true }, risk)
+        ? await tryAccelerate(connectionId, provider, finalSql, conn.dialect as Dialect, connRow.accelerateTtlMs ?? DEFAULT_ACCELERATE_TTL_MS)
+        : null) ?? (await provider.executeReadOnly(finalSql));
     await audit({
       connectionId,
       sessionId,

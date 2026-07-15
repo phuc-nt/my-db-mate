@@ -71,7 +71,7 @@ export function ChatWorkspacePanel({ artifacts, selected, onSelect, unseen, conn
                 dialect={dialect}
                 sessionId={sessionId}
                 initialSql={a.executedSql ?? a.sql}
-                initialResult={ok ? { columns: a.columns!, rows: a.rows ?? [], executedSql: a.executedSql, lineage: a.lineage } : undefined}
+                initialResult={ok ? { columns: a.columns!, rows: a.rows ?? [], executedSql: a.executedSql, lineage: a.lineage, accelerated: a.accelerated } : undefined}
                 initialBlockedReason={a.blocked ? a.blockedReason : undefined}
                 initialError={a.error}
                 onConfirmedRun={(info) => onConfirmedRun?.(`Q${a.index}`, info)}

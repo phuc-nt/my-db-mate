@@ -13,6 +13,9 @@ interface RunResult {
   rows: unknown[][];
   executedSql?: string;
   lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null;
+  /** Present when served from the DuckDB accelerator's Parquet snapshot cache
+   *  instead of the live driver — `asOf` is the snapshot's extraction time (ISO). */
+  accelerated?: { asOf: string };
 }
 
 /**
@@ -113,7 +116,7 @@ export function QueryResultBlock({
       }
       else if (data.status === 'error') { setError(data.error); setResult(undefined); }
       else {
-        setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql, lineage: data.lineage });
+        setResult({ columns: data.columns, rows: data.rows, executedSql: data.executedSql, lineage: data.lineage, accelerated: data.accelerated });
         setLastExecutedSql(data.executedSql);
         if (feedbackIdRef.current) setTeachFixReady(true);
         if (confirmed) onConfirmedRun?.({ sql: data.executedSql ?? runSql, columns: data.columns, rows: data.rows });
@@ -281,6 +284,11 @@ export function QueryResultBlock({
       )}
       {blocked && <p className="mt-1 text-amber-600">Blocked: {blocked}</p>}
       {error && <p className="mt-1 text-red-600">Error: {error}</p>}
+      {result?.accelerated && (
+        <p className="mt-1 text-[11px] text-neutral-400" data-testid="accelerated-badge" title="Served from a cached DuckDB/Parquet snapshot instead of the live database">
+          ⚡ Accelerated · snapshot as of {new Date(result.accelerated.asOf).toLocaleString()}
+        </p>
+      )}
       {result?.lineage && result.lineage.tables.length > 0 && (
         <p className="mt-1 text-[11px] text-neutral-400" data-testid="lineage-line">
           from {result.lineage.tables.join(', ')}

@@ -34,6 +34,9 @@ scripts/probe-embedding.ts
 # Cloud-DB simulation for UAT (SSL Postgres + MySQL in Docker) — local only
 cloud-test/
 
+# DuckDB accelerator Parquet snapshot cache — local only, regenerated on demand
+.cache/
+
 # Agent tooling
 .claude/
 AGENTS.md

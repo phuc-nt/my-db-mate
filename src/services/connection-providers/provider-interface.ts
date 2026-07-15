@@ -36,6 +36,10 @@ export interface QueryResult {
   columns: string[];
   rows: unknown[][];
   rowCount: number;
+  /** Present when this result was served from the DuckDB accelerator's Parquet
+   *  snapshot cache instead of the live driver — `asOf` is the snapshot's
+   *  extraction time (ISO), so the UI can show staleness (Phase 3 badge). */
+  accelerated?: { asOf: string };
 }
 
 /** Result of probing whether the connection can write (RT-F2). */
