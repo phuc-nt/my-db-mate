@@ -13,7 +13,14 @@ import {
   manualRelationships,
   verifiedQueries,
 } from '../db/context-schema';
+import { metrics } from '../db/metric-schema';
 import { embed } from './embedding-service';
+
+// Cosine-distance floors (pgvector `<=>` ∈ [0,2]) — an item is only injected into the
+// prompt when it is genuinely close to the question. A wrongly-injected governed metric
+// or unrelated "verified pattern" is worse than none. Tuned against the eval fixture.
+const METRIC_DISTANCE_FLOOR = 0.35;
+const VERIFIED_DISTANCE_FLOOR = 0.6;
 
 // ---------- Annotations ----------
 export async function upsertTableAnnotation(input: {
@@ -112,6 +119,7 @@ export interface RelevantContext {
   glossaryHits: { term: string; definition: string; sqlMapping: string | null }[];
   manualRelationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
   verifiedExamples: { question: string; sql: string }[];
+  metrics: { name: string; description: string | null; sql: string; dimensions: string[] | null }[];
 }
 
 /** Pull the context relevant to a question for one connection. */
@@ -149,14 +157,33 @@ export async function getRelevantContext(question: string, connectionId: string)
   const glossMap = new Map<string, { term: string; definition: string; sqlMapping: string | null }>();
   for (const g of [...keywordHits, ...vectorGloss]) glossMap.set(g.term, { term: g.term, definition: g.definition, sqlMapping: g.sqlMapping });
 
-  // Verified queries: vector top-5 (excluding disabled AND personal bookmarks —
-  // a bookmark is a quick-run saved query, not a few-shot example, A4).
+  // Verified queries: vector top-5 within the distance floor (excluding disabled AND
+  // personal bookmarks — a bookmark is a quick-run saved query, not a few-shot example,
+  // A4). The floor keeps an unrelated example from being injected as a "verified pattern".
   const verified = await db
     .select({ question: verifiedQueries.question, sql: verifiedQueries.sql })
     .from(verifiedQueries)
-    .where(and(eq(verifiedQueries.connectionId, connectionId), eq(verifiedQueries.isDisabled, false), eq(verifiedQueries.isBookmark, false)))
+    .where(and(
+      eq(verifiedQueries.connectionId, connectionId),
+      eq(verifiedQueries.isDisabled, false),
+      eq(verifiedQueries.isBookmark, false),
+      sql`(${verifiedQueries.embedding} <=> ${vecLiteral}::vector) <= ${VERIFIED_DISTANCE_FLOOR}`,
+    ))
     .orderBy(sql`${verifiedQueries.embedding} <=> ${vecLiteral}::vector`)
     .limit(5);
+
+  // Governed metrics: vector top-3 within the distance floor, per connection. A metric
+  // with no embedding yet (pre-backfill) is skipped by the IS NOT NULL guard, not crashed.
+  const metricRows = await db
+    .select({ name: metrics.name, description: metrics.description, sql: metrics.sql, dimensions: metrics.dimensions })
+    .from(metrics)
+    .where(and(
+      eq(metrics.connectionId, connectionId),
+      sql`${metrics.embedding} IS NOT NULL`,
+      sql`(${metrics.embedding} <=> ${vecLiteral}::vector) <= ${METRIC_DISTANCE_FLOOR}`,
+    ))
+    .orderBy(sql`${metrics.embedding} <=> ${vecLiteral}::vector`)
+    .limit(3);
 
   return {
     tableAnnotations: tAnn.map((t) => ({ tableName: t.tableName, description: t.description, businessAlias: t.businessAlias, isDeprecated: t.isDeprecated })),
@@ -164,6 +191,7 @@ export async function getRelevantContext(question: string, connectionId: string)
     glossaryHits: [...glossMap.values()],
     manualRelationships: rels.map((r) => ({ fromTable: r.fromTable, fromColumn: r.fromColumn, toTable: r.toTable, toColumn: r.toColumn })),
     verifiedExamples: verified,
+    metrics: metricRows,
   };
 }
 
@@ -191,6 +219,12 @@ export function renderContextForPrompt(ctx: RelevantContext): string {
   if (ctx.verifiedExamples.length) {
     parts.push('Verified example queries (follow these patterns):\n' + ctx.verifiedExamples.map((v) =>
       `Q: ${v.question}\nSQL: ${v.sql}`).join('\n\n'));
+  }
+  if (ctx.metrics.length) {
+    parts.push('Governed metrics (authoritative definitions — when the question matches one, use or adapt its SQL, do NOT invent a different aggregation):\n' +
+      ctx.metrics.map((m) =>
+        `- ${m.name}${m.description ? `: ${m.description}` : ''}\n  SQL: ${m.sql}${m.dimensions?.length ? `\n  dimensions: ${m.dimensions.join(', ')}` : ''}`,
+      ).join('\n'));
   }
   return parts.join('\n\n');
 }

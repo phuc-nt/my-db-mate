@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, timestamp, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
 import { connections } from './schema';
+import { vector384 } from './vector-type';
 
 /** A tracked metric: owner-defined SQL returning exactly (time_bucket, numeric value).
  *  Shape is validated by a trial run at create/update time; after that runMetric may
@@ -20,5 +21,9 @@ export const metrics = pgTable('metrics', {
   target: doublePrecision('target'),
   /** ≤3 column names the digest slices by for top-driver breakdowns. */
   dimensions: jsonb('dimensions').$type<string[]>(),
+  /** Embedding of name+description (384-dim, same model as glossary/verified-queries),
+   *  so a chat question can retrieve this metric's governed definition for the
+   *  text-to-SQL prompt. Nullable — existing rows null until re-saved/backfilled. */
+  embedding: vector384('embedding'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

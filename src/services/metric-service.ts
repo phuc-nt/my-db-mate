@@ -1,12 +1,27 @@
 /** Metric CRUD + execution. Create/update run the SQL through the full choke
  *  point (risk gate included) and validate the (time, value) shape; only after
  *  that does runMetric earn skipRiskGate (app-validated stored SQL). */
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import { metrics } from '../db/metric-schema';
 import { executeQuery, touchesSensitiveColumns } from './query-executor-service';
 import { getConnection } from './connection-service';
+import { embed } from './embedding-service';
 import { rewriteWithDimension } from '../lib/sql-dimension-rewrite';
+
+/** Embedding text for a metric — name + description, so a chat question retrieves the
+ *  governed definition by semantic similarity (mirrors glossary/verified-query embedding). */
+function metricEmbeddingText(name: string, description?: string | null): string {
+  return description?.trim() ? `${name}\n${description.trim()}` : name;
+}
+
+/** Drop the internal `embedding` vector from a metric row before it crosses the API
+ *  boundary — it's a 384-float retrieval artifact, never client-facing (would leak an
+ *  internal field and bloat every /metrics response by ~5-8 KB per metric). */
+function stripEmbedding<T extends { embedding?: unknown }>(row: T): Omit<T, 'embedding'> {
+  const { embedding: _embedding, ...rest } = row;
+  return rest;
+}
 import { computeDelta, computeDrivers, parseSeries, validateMetricShape, type DriverBreakdown, type MetricPoint, type MetricDirection, type TimeGrain } from '../lib/metric-math';
 
 export interface MetricInput {
@@ -105,26 +120,30 @@ export async function createMetric(connectionId: string, input: MetricInput) {
     const dv = await validateDimensions(connectionId, input.sql.trim(), dims);
     if (!dv.ok) return { error: dv.error };
   }
+  const description = input.description?.trim() || null;
+  const embedding = await embed(metricEmbeddingText(name, description));
   const [row] = await db.insert(metrics).values({
     connectionId,
     name,
-    description: input.description?.trim() || null,
+    description,
     sql: input.sql.trim(),
     timeGrain: input.timeGrain ?? 'month',
     direction: input.direction ?? 'up_good',
     target: target?.ok ? target.value : null,
     dimensions: dims ?? null,
+    embedding,
   }).returning();
-  return { metric: row };
+  return { metric: stripEmbedding(row) };
 }
 
 export async function listMetrics(connectionId: string) {
-  return db.select().from(metrics).where(eq(metrics.connectionId, connectionId)).orderBy(metrics.createdAt);
+  const rows = await db.select().from(metrics).where(eq(metrics.connectionId, connectionId)).orderBy(metrics.createdAt);
+  return rows.map(stripEmbedding);
 }
 
 export async function getMetric(metricId: string) {
   const rows = await db.select().from(metrics).where(eq(metrics.id, metricId)).limit(1);
-  return rows[0] ?? null;
+  return rows[0] ? stripEmbedding(rows[0]) : null;
 }
 
 /** connectionId is intentionally not updatable: validated SQL must never be
@@ -132,6 +151,8 @@ export async function getMetric(metricId: string) {
 export async function updateMetric(metricId: string, patch: Partial<MetricInput>) {
   const existing = await getMetric(metricId);
   if (!existing) return { error: 'not found' };
+  // A blank name would make embed() run on an empty string (or throw) — reject like create does.
+  if (patch.name !== undefined && !patch.name.trim()) return { error: 'name required' };
   if (patch.timeGrain && !GRAINS.has(patch.timeGrain)) return { error: 'invalid timeGrain' };
   if (patch.direction && !DIRECTIONS.has(patch.direction)) return { error: 'invalid direction' };
   const target = parseTarget(patch.target);
@@ -150,6 +171,11 @@ export async function updateMetric(metricId: string, patch: Partial<MetricInput>
     const dv = await validateDimensions(existing.connectionId, effectiveSql, effectiveDims);
     if (!dv.ok) return { error: dv.error };
   }
+  // Re-embed when name or description changes so retrieval reflects the new wording.
+  const newName = patch.name !== undefined ? patch.name.trim() : existing.name;
+  const newDescription = patch.description !== undefined ? (patch.description?.trim() || null) : existing.description;
+  const embeddingChanged = patch.name !== undefined || patch.description !== undefined;
+  const embedding = embeddingChanged ? await embed(metricEmbeddingText(newName, newDescription)) : undefined;
   const [row] = await db.update(metrics).set({
     ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
     ...(patch.description !== undefined ? { description: patch.description?.trim() || null } : {}),
@@ -158,12 +184,25 @@ export async function updateMetric(metricId: string, patch: Partial<MetricInput>
     ...(patch.direction !== undefined ? { direction: patch.direction } : {}),
     ...(target !== undefined ? { target: target.value } : {}),
     ...(dims !== undefined ? { dimensions: dims } : {}),
+    ...(embedding !== undefined ? { embedding } : {}),
   }).where(eq(metrics.id, metricId)).returning();
-  return { metric: row };
+  return { metric: stripEmbedding(row) };
 }
 
 export async function deleteMetric(metricId: string) {
   await db.delete(metrics).where(eq(metrics.id, metricId));
+}
+
+/** One-off backfill: generate embeddings for metrics created before the embedding
+ *  column existed (embedding IS NULL). Idempotent — only touches null-embedding rows.
+ *  Returns the count backfilled. */
+export async function backfillMetricEmbeddings(): Promise<number> {
+  const rows = await db.select().from(metrics).where(isNull(metrics.embedding));
+  for (const m of rows) {
+    const embedding = await embed(metricEmbeddingText(m.name, m.description));
+    await db.update(metrics).set({ embedding }).where(eq(metrics.id, m.id));
+  }
+  return rows.length;
 }
 
 export interface MetricRun {
