@@ -279,7 +279,18 @@ export async function streamAgentAnswer(params: {
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-  const question = typeof lastUser?.content === 'string' ? lastUser.content : '';
+  // `convertToModelMessages` (called by the chat route) produces array-shaped
+  // `content` (e.g. `[{type:'text', text}]`) for UIMessage-sourced turns, not a plain
+  // string — a bare `typeof === 'string'` check silently dropped every real chat
+  // question (question resolved to '', so getRelevantContext ran with no input and NO
+  // curated context — glossary, verified queries, governed metrics — ever reached
+  // production chat). Non-streaming callers (runAgentAnswer, MCP, eval) that pass a
+  // plain string still work as before.
+  const question = typeof lastUser?.content === 'string'
+    ? lastUser.content
+    : Array.isArray(lastUser?.content)
+      ? lastUser.content.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map((p) => p.text).join(' ')
+      : '';
   // Prune the schema to the question for large DBs (full summary for small ones).
   const schema = question ? await getPrunedSchemaSummary(connectionId, question) : await getSchemaSummary(connectionId);
   const contextBlock = question ? renderContextForPrompt(await getRelevantContext(question, connectionId)) : '';
