@@ -191,10 +191,15 @@ describe('Group A services refuse BigQuery connections cleanly (Phase 6)', () =>
     expect(createQueryJobMock).not.toHaveBeenCalled();
   });
 
-  it('detectAnomalies returns a graceful note (not a crash) and never calls executeReadOnly', async () => {
+  it('detectAnomalies on BigQuery routes through the budget path (no longer a hard Group-A block) and never crashes', async () => {
+    // Phase 3 (anomaly depth): anomaly is no longer a Group-A executeReadOnly caller — it
+    // goes through executeQuery({backgroundBudgeted:true}), so BigQuery is budgeted/offline
+    // rather than hard-blocked. Without a budget token in this mock the queries don't return
+    // ok, so it degrades to a graceful note — the point is it does NOT throw and does NOT
+    // report the old "not yet supported" guard message.
     const report = await detectAnomalies(conn.id, 'orders', 'amount');
-    expect(report.note).toMatch(/not yet supported for BigQuery/);
-    expect(createQueryJobMock).not.toHaveBeenCalled();
+    expect(report).toBeDefined();
+    expect(report.note).not.toMatch(/not yet supported for BigQuery/);
   });
 
   it('fetchQueryLog reports unavailable for BigQuery without calling executeReadOnly', async () => {

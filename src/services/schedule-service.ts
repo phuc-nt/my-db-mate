@@ -17,7 +17,7 @@ import { dashboards } from '../db/dashboard-schema';
 import { getConnection } from './connection-service';
 import { getDashboard, runWidget } from './dashboard-service';
 import { getReportLatest, generateReport, listReports } from './report-service';
-import { captureSnapshot, diffSnapshots, latestSnapshot, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';
+import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';
 import { executeQuery } from './query-executor-service';
 import { runAgentAnswer } from './agent-service';
 import { generateText } from 'ai';
@@ -205,9 +205,19 @@ async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
   for (const table of tables) {
     const cur = await captureSnapshot(s.connectionId, conn.dialect, table);
     if ('error' in cur) { errors.push(`${table}: ${cur.error}`); continue; }
-    const prev = await latestSnapshot(s.id, table);
-    if (prev) findings.push(...diffSnapshots(table, prev.metrics, cur, thresholds));
-    else baselines++;
+    // Judge the new capture against the rolling baseline of prior snapshots (robust MAD;
+    // cold-starts to the legacy vs-previous threshold diff when history is short).
+    const history = await historySnapshots(s.id, table);
+    if (history.length > 0) {
+      findings.push(...diffAgainstBaseline(table, history, cur, thresholds));
+    } else {
+      // No snapshot within the baseline window. Don't silently re-baseline if an OLDER
+      // prior exists (e.g. a monitor whose cadence exceeds the retention window) — fall
+      // back to the exact legacy vs-previous threshold diff so behavior is unchanged.
+      const prev = await latestSnapshot(s.id, table);
+      if (prev) findings.push(...diffSnapshots(table, prev.metrics, cur, thresholds));
+      else baselines++;
+    }
     await storeSnapshot(s.id, s.connectionId, table, cur);
   }
   await db.update(scheduledQueries).set({ lastRunAt: new Date() }).where(eq(scheduledQueries.id, s.id));

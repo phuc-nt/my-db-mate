@@ -6,7 +6,7 @@
  */
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
-import { schemaTables, schemaColumns, schemaForeignKeys } from '../db/schema';
+import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
 
 const PRUNE_THRESHOLD = 200;
@@ -59,6 +59,12 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   const wantedTableIds = tableNames.map((n) => byName.get(n)?.id).filter((id): id is string => !!id);
   if (wantedTableIds.length === 0) return '';
 
+  // BigQuery requires dataset-qualified refs; present `dataset.table` so the model
+  // writes valid run_sql. Bare name for other dialects (default-schema resolution).
+  const [conn] = await db.select({ dialect: connections.dialect }).from(connections)
+    .where(eq(connections.id, connectionId));
+  const qualify = conn?.dialect === 'bigquery';
+
   // Batch-fetch ALL columns for the wanted tables in one query (was N+1 — one
   // query per table inside the loop, on the agent hot path).
   const allCols = await db.select().from(schemaColumns).where(inArray(schemaColumns.tableId, wantedTableIds));
@@ -76,7 +82,8 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
     const cols = colsByTableId.get(t.id) ?? [];
     const colStr = cols.slice().sort((a, b) => a.ordinalPosition - b.ordinalPosition)
       .map((c) => `${c.columnName} ${c.dataType}${c.isPrimaryKey ? ' PK' : ''}`).join(', ');
-    lines.push(`${name}(${colStr})`);
+    const label = qualify && t.schemaName ? `${t.schemaName}.${name}` : name;
+    lines.push(`${label}(${colStr})`);
   }
   return lines.join('\n');
 }

@@ -190,6 +190,13 @@
       "when": 1784174679777,
       "tag": "0026_sudden_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784205900218,
+      "tag": "0027_mysterious_zarek",
+      "breakpoints": true
     }
   ]
 }

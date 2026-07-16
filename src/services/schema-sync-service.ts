@@ -4,7 +4,7 @@
  */
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
-import { schemaTables, schemaColumns, schemaForeignKeys } from '../db/schema';
+import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { getProvider } from './connection-service';
 
 export async function syncSchema(connectionId: string) {
@@ -77,6 +77,13 @@ export async function getSchemaSummary(connectionId: string): Promise<string> {
     .from(schemaForeignKeys)
     .where(eq(schemaForeignKeys.connectionId, connectionId));
 
+  // BigQuery requires table refs qualified with their dataset; present names to the
+  // model as `dataset.table` so the SQL it writes for run_sql is valid. Other dialects
+  // resolve a bare name against the default schema, so keep the bare form for them.
+  const [conn] = await db.select({ dialect: connections.dialect }).from(connections)
+    .where(eq(connections.id, connectionId));
+  const qualify = conn?.dialect === 'bigquery';
+
   const lines: string[] = [];
   for (const t of tables) {
     const cols = await db
@@ -87,7 +94,8 @@ export async function getSchemaSummary(connectionId: string): Promise<string> {
       .sort((a, b) => a.ordinalPosition - b.ordinalPosition)
       .map((c) => `${c.columnName} ${c.dataType}${c.isPrimaryKey ? ' PK' : ''}`)
       .join(', ');
-    lines.push(`${t.tableName}(${colStr})`);
+    const name = qualify && t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
+    lines.push(`${name}(${colStr})`);
   }
   for (const fk of fks) {
     lines.push(`FK: ${fk.fromTable}.${fk.fromColumn} -> ${fk.toTable}.${fk.toColumn}`);
