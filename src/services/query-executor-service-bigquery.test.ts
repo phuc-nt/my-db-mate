@@ -292,6 +292,17 @@ describe('BigQuery daily byte-budget (Phase 2)', () => {
     expect(createQueryJobMock).not.toHaveBeenCalled();
   });
 
+  it('metric save-time validation shape (confirmed + backgroundBudgeted) DOES reach the budget path — regression for metric-create-on-BQ 400', async () => {
+    // metric-service validateMetricSql/validateDimensions call executeQuery with
+    // confirmed:true AND backgroundBudgeted:true. Without backgroundBudgeted this
+    // combo hit BigQueryConfirmationRequiredError and 400'd every metric create on BQ.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate(String(1 * 1024 * 1024)); // fits budget
+    mockRealRun({ totalBytesBilled: '1048576' });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', confirmed: true, backgroundBudgeted: true });
+    expect(res.status).toBe('ok'); // reaches budget path + runs, NOT a confirmation-required error
+  });
+
   it('reservation refund on maximumBytesBilled reject: reserved bytes returned to 0', async () => {
     // Setup: generous budget, small estimate that fits
     await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));

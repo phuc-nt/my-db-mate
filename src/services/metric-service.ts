@@ -37,7 +37,10 @@ async function validateDimensions(connectionId: string, sql: string, dims: strin
     if (await touchesSensitiveColumns(connectionId, rw.sql)) {
       return { ok: false, error: `dimension "${dim}" is marked sensitive — not allowed on metrics` };
     }
-    const res = await executeQuery({ connectionId, sql: rw.sql, actor: 'metric-validate', confirmed: true });
+    // backgroundBudgeted so BigQuery save-time validation runs through the daily-budget
+    // gate (like runMetric) — `confirmed` alone is an OLTP flag and never bypasses the
+    // BigQuery cost gate, which would otherwise 400 every metric create/update on BQ.
+    const res = await executeQuery({ connectionId, sql: rw.sql, actor: 'metric-validate', confirmed: true, backgroundBudgeted: true });
     if (res.status !== 'ok' || !res.result) {
       return { ok: false, error: `dimension "${dim}": ${res.blockedReason ?? res.errorMessage ?? 'driver query failed'}` };
     }
@@ -76,7 +79,9 @@ async function validateMetricSql(connectionId: string, sql: string): Promise<{ o
   if (await touchesSensitiveColumns(connectionId, sql)) {
     return { ok: false, error: 'Metric SQL touches sensitive columns — not allowed on metric cards' };
   }
-  const res = await executeQuery({ connectionId, sql, actor: 'metric-validate', confirmed: true });
+  // backgroundBudgeted so BigQuery save-time validation runs through the daily-budget
+  // gate (see validateDimensions) rather than hitting the interactive cost-confirm gate.
+  const res = await executeQuery({ connectionId, sql, actor: 'metric-validate', confirmed: true, backgroundBudgeted: true });
   if (res.status === 'blocked') return { ok: false, error: `Blocked: ${res.blockedReason}` };
   if (res.status === 'error') return { ok: false, error: res.errorMessage ?? 'query failed' };
   if (res.status !== 'ok' || !res.result) return { ok: false, error: 'query did not complete' };

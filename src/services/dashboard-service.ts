@@ -155,7 +155,7 @@ export async function deleteWidget(id: string) {
 }
 
 export type RefreshResult =
-  | { status: 'ok'; columns: string[]; rows: unknown[][]; refreshedAt: string }
+  | { status: 'ok'; columns: string[]; rows: unknown[][]; refreshedAt: string; acceleratedAsOf?: string }
   | { status: 'blocked' | 'error' | 'needs_confirmation'; message: string; risk?: { tier: string; score: number; reason: string } };
 
 /**
@@ -194,7 +194,9 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
       .set({ lastResult: { columns: res.result!.columns, rows }, lastRefreshedAt: refreshedAt })
       .where(eq(dashboardWidgets.id, widgetId));
   }
-  return { status: 'ok', columns: res.result!.columns, rows, refreshedAt: refreshedAt.toISOString() };
+  // Surface snapshot staleness for BigQuery offline mode (and any accelerated result)
+  // so the widget can badge "as of <extraction time>" rather than implying live data.
+  return { status: 'ok', columns: res.result!.columns, rows, refreshedAt: refreshedAt.toISOString(), acceleratedAsOf: res.result!.accelerated?.asOf };
 }
 
 /**

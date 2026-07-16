@@ -42,6 +42,9 @@ export function DashboardWidget({
   const [msg, setMsg] = useState('');
   const [confirm, setConfirm] = useState<{ reason: string } | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Snapshot extraction time when this refresh was served from a cached snapshot
+  // (BigQuery offline mode / DuckDB accelerator) rather than live — badges staleness.
+  const [acceleratedAsOf, setAcceleratedAsOf] = useState<string | undefined>();
 
   const result = overrideResult ?? widget.lastResult;
   const validSpec = validateChartSpec(widget.chartSpec); // M2: validate on read
@@ -57,7 +60,7 @@ export function DashboardWidget({
     if (d.status === 'needs_confirmation') setConfirm({ reason: d.risk?.reason ?? 'medium risk' });
     else if (d.status !== 'ok') setMsg(d.message ?? 'error');
     setBusy(false);
-    if (d.status === 'ok') onChanged?.();
+    if (d.status === 'ok') { setAcceleratedAsOf(d.acceleratedAsOf); onChanged?.(); }
   }
 
   async function remove() {
@@ -109,6 +112,11 @@ export function DashboardWidget({
         <p className="mt-1 text-[10px] text-amber-600" data-testid="range-transient-note">Custom range view — not saved (share keeps the default range)</p>
       ) : widget.lastRefreshedAt && (
         <p className="mt-1 text-[10px] text-neutral-400">Last refreshed {new Date(widget.lastRefreshedAt).toLocaleString()}</p>
+      )}
+      {acceleratedAsOf && (
+        <p className="mt-1 text-[10px] text-neutral-400" data-testid="widget-accelerated-badge" title="Served from a cached snapshot (BigQuery offline mode / accelerator), not live data">
+          ⚡ Cached snapshot · as of {new Date(acceleratedAsOf).toLocaleString()}
+        </p>
       )}
     </div>
   );
