@@ -250,11 +250,27 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
       throw new Error(sanitizeBigQueryConnError(e));
     }
     const [metadata] = await job.getMetadata();
-    const fields = (metadata.statistics?.query as { schema?: { fields?: { name: string }[] } } | undefined)?.schema?.fields
+    const queryStats = metadata.statistics?.query as
+      | { schema?: { fields?: { name: string }[] }; totalBytesBilled?: string | number }
+      | undefined;
+    const fields = queryStats?.schema?.fields
       ?? (rows.length > 0 ? Object.keys(rows[0] as Record<string, unknown>).map((name) => ({ name })) : []);
     const columns = fields.map((f) => f.name);
     const rowArrays = rows.map((r: Record<string, unknown>) => columns.map((c) => normalizeCell(r[c])));
-    return { columns, rows: rowArrays, rowCount: rowArrays.length };
+    // Surface the REAL billed bytes for the daily-budget tally. `totalBytesBilled`
+    // (billed) is distinct from the dry-run estimate's `totalBytesProcessed`. Cache-hit
+    // jobs legitimately report 0; a genuinely absent/unparseable field yields undefined,
+    // which the budget layer treats as the per-query cap (never 0) to stay fail-closed.
+    const rawBilled = queryStats?.totalBytesBilled;
+    // Treat null/undefined/'' all as "absent" → undefined → the budget layer applies
+    // the per-query cap sentinel. Only a real numeric 0 (cache-hit) records as 0.
+    const bytesBilled = rawBilled == null || rawBilled === '' ? undefined : Number(rawBilled);
+    return {
+      columns,
+      rows: rowArrays,
+      rowCount: rowArrays.length,
+      ...(bytesBilled != null && Number.isFinite(bytesBilled) ? { bytesBilled } : {}),
+    };
   }
 
   async explainQuery(_sql: string): Promise<never> {

@@ -43,6 +43,12 @@ export interface QueryResult {
    *  were extracted more than half the TTL apart — surfaces that the tables
    *  weren't all snapshotted at (approximately) the same moment. */
   accelerated?: { asOf: string; skewWarning?: { spreadMs: number } };
+  /** BigQuery-only: the REAL bytes billed by this job (from job metadata's
+   *  `statistics.query.totalBytesBilled`), used to accumulate the per-connection
+   *  daily byte budget. Distinct from the dry-run estimate's `totalBytesProcessed`.
+   *  `undefined` when the figure can't be read; callers accumulating the budget
+   *  MUST treat undefined as the per-query cap (pessimistic), never as 0. */
+  bytesBilled?: number;
 }
 
 /** Result of probing whether the connection can write (RT-F2). */

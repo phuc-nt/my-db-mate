@@ -51,6 +51,18 @@ export const connections = pgTable('connections', {
   // "missing cap" is a schema-level impossibility, never something executeReadOnly()
   // must defensively handle.
   bigqueryMaxBytesPerQuery: bigint('bigquery_max_bytes_per_query', { mode: 'number' }).notNull().default(1_073_741_824),
+  // Per-connection DAILY byte budget for BigQuery background analytics (dashboards/
+  // metrics/reports refreshing unattended). An additional cost layer ON TOP of the
+  // per-query maximumBytesBilled cap — a background run is admitted only if the day's
+  // committed + reserved bytes + this query's estimate stay under this budget.
+  // notNull with a default (10× the per-query cap ≈ 10 GiB/day ≈ $0.06/day) so
+  // "missing budget" is a schema-level impossibility → fail-closed by construction.
+  bigqueryDailyBytesBudget: bigint('bigquery_daily_bytes_budget', { mode: 'number' }).notNull().default(10_737_418_240),
+  // BigQuery offline mode (Mode 2): when on, background analytics (dashboards/metrics/
+  // reports) for this connection serve from a DuckDB-over-BigQuery snapshot (one bounded
+  // budgeted extract, then $0 reads until TTL) instead of querying BigQuery live each
+  // refresh. Explicit opt-in — off by default; data is cached (staleness surfaced).
+  bigqueryOfflineMode: boolean('bigquery_offline_mode').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -172,5 +184,32 @@ export const queryRuns = pgTable('query_runs', {
   blockedReason: text('blocked_reason'),
   rowCount: integer('row_count'),
   durationMs: bigint('duration_ms', { mode: 'number' }),
+  // BigQuery-only: real bytes billed by this run, accumulated into the per-connection
+  // daily budget tally. Nullable — non-BigQuery runs (and blocked/errored runs) have no
+  // billed figure. For a SUCCESSFUL BigQuery run whose billed figure can't be read from
+  // job metadata, this holds the per-query cap sentinel (pessimistic over-count), never
+  // null/0, so the daily tally can never silently undercount and bypass the budget.
+  bytesBilled: bigint('bytes_billed', { mode: 'number' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Per-connection, per-UTC-day BigQuery byte-budget ledger (reserve-then-reconcile).
+ *  `reserved` = in-flight estimates for admitted-but-not-yet-settled background runs;
+ *  `committed` = settled real billed bytes for the day. Admission is an atomic
+ *  conditional UPDATE (`reserved + committed + estimate <= budget`), so concurrent
+ *  background refreshes cannot collectively overspend WITHOUT holding a DB lock across
+ *  the multi-second BigQuery job (Red Team #2). One row per (connectionId, utcDay). */
+export const bqBudgetLedger = pgTable(
+  'bq_budget_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id, { onDelete: 'cascade' }),
+    utcDay: text('utc_day').notNull(), // 'YYYY-MM-DD' (UTC), matches defaultDateRange's convention
+    reservedBytes: bigint('reserved_bytes', { mode: 'number' }).notNull().default(0),
+    committedBytes: bigint('committed_bytes', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('bq_budget_ledger_conn_day').on(t.connectionId, t.utcDay)],
+);

@@ -26,6 +26,7 @@ import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
+import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget } from './bigquery-daily-budget-service';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
@@ -199,10 +200,24 @@ export async function executeQuery(params: {
    *  yet" state into an immediate `BigQueryConfirmationRequiredError` instead
    *  of a silently-unactionable `needs_cost_confirmation` response. */
   allowCostEstimatePreview?: boolean;
+  /** BigQuery-only: set by background analytics entry points (dashboard/metric/report
+   *  refresh) that have NO human to confirm a cost, but SHOULD run unattended within
+   *  the connection's daily byte budget. Deliberately separate from
+   *  `bigqueryCostConfirmationToken`/`allowCostEstimatePreview`/`confirmed`/`skipRiskGate`
+   *  — an OLTP-motivated flag can never reach this path, and this path can never be
+   *  reached without an explicit background caller opting in. On a BigQuery connection:
+   *  dry-run estimate → reserve against the daily budget → run (or block) → reconcile. */
+  backgroundBudgeted?: boolean;
+  /** BigQuery-only: set by the DuckDB-over-BigQuery extract service to prevent
+   *  infinite recursion when fetching rows for a snapshot extract. When true,
+   *  skips the offline-mode check even if `bigqueryOfflineMode` is set on the
+   *  connection. Callers MUST NOT set this directly. */
+  _bypassOfflineMode?: boolean;
 }): Promise<ExecuteResult> {
   const {
     connectionId, sql, sessionId, actor = 'owner', confirmed = false, skipRiskGate = false,
     bigqueryCostConfirmationToken = false, allowCostEstimatePreview = false,
+    backgroundBudgeted = false, _bypassOfflineMode = false,
   } = params;
   const conn = await getConnection(connectionId);
   if (!conn) return { status: 'error', errorMessage: 'Connection not found' };
@@ -233,8 +248,73 @@ export async function executeQuery(params: {
     // ever produce a generic "could not estimate" escalation, never a real cost
     // figure. Fail closed: no execution proceeds when the estimate can't be obtained.
     if (provider instanceof BigQueryConnectionProvider) {
-      if (!bigqueryCostConfirmationToken) {
-        if (!allowCostEstimatePreview) throw new BigQueryConfirmationRequiredError();
+      // Per-query hard cap (schema notNull+default → always present). Doubles as the
+      // pessimistic sentinel when a successful run's real billed figure is unreadable.
+      const bqCap = (conn as unknown as { bigqueryMaxBytesPerQuery?: number }).bigqueryMaxBytesPerQuery ?? 0;
+
+      /** Run the real BigQuery job + audit its billed bytes. Shared by the interactive
+       *  confirm-token path and the background-budget path. `onBilled` lets the budget
+       *  path reconcile the reservation with the real billed figure. Fail-open guard
+       *  (Red Team #3): a successful run with an unreadable billed figure records the
+       *  per-query cap sentinel, never null/0, so the daily tally can't undercount. */
+      const runBigQueryReal = async (
+        onBilled?: (billed: number) => Promise<void>,
+      ): Promise<ExecuteResult> => {
+        let result: QueryResult;
+        try {
+          result = await provider.executeReadOnly(finalSql);
+        } catch (e) {
+          if (e instanceof MaximumBytesBilledExceededError) {
+            await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: e.message });
+            return { status: 'blocked', blockedReason: e.message };
+          }
+          throw e;
+        }
+        const billed = result.bytesBilled ?? bqCap;
+        if (onBilled) await onBilled(billed);
+        await audit({
+          connectionId, sessionId, actor, sql: finalSql, status: 'ok',
+          rowCount: result.rowCount, durationMs: Date.now() - started, bytesBilled: billed,
+        });
+        return { status: 'ok', result, executedSql: finalSql, lineage: extractLineage(finalSql, conn.dialect) };
+      };
+
+      // Path 1 — interactive confirm token: the human already approved the cost.
+      if (bigqueryCostConfirmationToken) {
+        return await runBigQueryReal();
+      }
+
+      // Path 2 — background budgeted (dashboards/metrics/reports, no human present):
+      // dry-run estimate → reserve against the daily budget → run → reconcile/refund.
+      // Deliberately unreachable via the OLTP confirmed/skipRiskGate flags.
+      if (backgroundBudgeted) {
+        // Offline mode (Mode 2): serve from a DuckDB-over-BigQuery snapshot instead of
+        // querying BigQuery live. The extract itself still goes through THIS budget path
+        // (the extract service calls executeQuery with backgroundBudgeted), so there is
+        // no un-budgeted BigQuery job. Dynamic import avoids a circular dependency
+        // (the extract service imports executeQuery). Cache-valid reads cost $0.
+        // _bypassOfflineMode prevents infinite recursion when the extract service's
+        // fetchRows callback calls executeQuery internally.
+        const offlineMode = !_bypassOfflineMode && (conn as unknown as { bigqueryOfflineMode?: boolean }).bigqueryOfflineMode === true;
+        if (offlineMode) {
+          const { extractBigQueryToDuckDB, BigQueryExtractBlockedError } = await import('./accelerator/bigquery-duckdb-extract-service');
+          try {
+            const { result, asOf } = await extractBigQueryToDuckDB(connectionId, finalSql);
+            return {
+              status: 'ok',
+              result: { ...result, accelerated: { asOf: asOf.toISOString() } },
+              executedSql: finalSql,
+              lineage: extractLineage(finalSql, conn.dialect),
+            };
+          } catch (e) {
+            // A blocked extract (budget/cap refused the job) is a clean blocked status,
+            // typed via BigQueryExtractBlockedError — not regex-matched on the message.
+            if (e instanceof BigQueryExtractBlockedError) {
+              return { status: 'blocked', blockedReason: e.message, executedSql: finalSql };
+            }
+            return { status: 'error', errorMessage: e instanceof Error ? e.message : String(e), executedSql: finalSql };
+          }
+        }
         let estimate;
         try {
           estimate = await provider.estimateCost(finalSql);
@@ -243,33 +323,48 @@ export async function executeQuery(params: {
           await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: `cost estimate failed: ${msg}` });
           return { status: 'error', errorMessage: `Could not estimate cost — query not run: ${msg}`, executedSql: finalSql };
         }
-        return {
-          status: 'needs_cost_confirmation',
-          executedSql: finalSql,
-          costEstimate: estimate,
-        };
+        const budget = (conn as unknown as { bigqueryDailyBytesBudget?: number }).bigqueryDailyBytesBudget ?? 0;
+        const now = new Date();
+        const admitted = await reserveBudget(connectionId, budget, estimate.estimatedBytes, now);
+        if (!admitted) {
+          const reason = `daily byte budget exceeded: this query's estimate (${estimate.estimatedBytes} bytes) plus today's usage would exceed the ${budget}-byte daily budget`;
+          await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: reason });
+          return { status: 'blocked', blockedReason: reason };
+        }
+        // The reservation is released exactly once: reconcile (moves estimate→committed
+        // with real billed) OR refund (releases estimate, commits nothing) — never both.
+        // `settled` guards against a double-release if audit() throws AFTER reconcile ran
+        // on the ok path, which would otherwise let refund free budget headroom that
+        // belongs to other concurrent queries (the GREATEST(...,0) clamp would hide it).
+        let settled = false;
+        try {
+          const res = await runBigQueryReal(async (billed) => {
+            await reconcileBudget(connectionId, estimate.estimatedBytes, billed, now);
+            settled = true;
+          });
+          if (!settled) await refundBudget(connectionId, estimate.estimatedBytes, now);
+          return res;
+        } catch (e) {
+          if (!settled) await refundBudget(connectionId, estimate.estimatedBytes, now);
+          throw e;
+        }
       }
 
-      let result: QueryResult;
-      try {
-        result = await provider.executeReadOnly(finalSql);
-      } catch (e) {
-        if (e instanceof MaximumBytesBilledExceededError) {
-          await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: e.message });
-          return { status: 'blocked', blockedReason: e.message };
+      // Path 3 — interactive preview (a human is present to see the estimate).
+      if (allowCostEstimatePreview) {
+        let estimate;
+        try {
+          estimate = await provider.estimateCost(finalSql);
+        } catch (e) {
+          const msg = e instanceof EstimateFailedError ? e.message : (e instanceof Error ? e.message : String(e));
+          await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: `cost estimate failed: ${msg}` });
+          return { status: 'error', errorMessage: `Could not estimate cost — query not run: ${msg}`, executedSql: finalSql };
         }
-        throw e;
+        return { status: 'needs_cost_confirmation', executedSql: finalSql, costEstimate: estimate };
       }
-      await audit({
-        connectionId,
-        sessionId,
-        actor,
-        sql: finalSql,
-        status: 'ok',
-        rowCount: result.rowCount,
-        durationMs: Date.now() - started,
-      });
-      return { status: 'ok', result, executedSql: finalSql, lineage: extractLineage(finalSql, conn.dialect) };
+
+      // Path 4 — no token, no budget opt-in, no preview: fail closed.
+      throw new BigQueryConfirmationRequiredError();
     }
 
     // Risk gate (P3): estimate blast radius and require confirmation for medium,
@@ -337,6 +432,9 @@ async function audit(row: {
   blockedReason?: string;
   rowCount?: number;
   durationMs?: number;
+  /** BigQuery-only real billed bytes for the daily-budget tally (or the per-query
+   *  cap sentinel when a successful run's figure was unreadable). Null for non-BQ. */
+  bytesBilled?: number | null;
 }) {
   await db.insert(queryRuns).values({
     connectionId: row.connectionId,
@@ -347,5 +445,6 @@ async function audit(row: {
     blockedReason: row.blockedReason ?? null,
     rowCount: row.rowCount ?? null,
     durationMs: row.durationMs ?? null,
+    bytesBilled: row.bytesBilled ?? null,
   });
 }

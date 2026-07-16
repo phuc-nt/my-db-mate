@@ -186,7 +186,7 @@ export async function runMetricDrivers(metricId: string, latestT: string, prevT:
       errors.push(`${dim}: column now marked sensitive — skipped`);
       continue;
     }
-    const res = await executeQuery({ connectionId: metric.connectionId, sql: rw.sql, actor: 'metric-driver', skipRiskGate: true });
+    const res = await executeQuery({ connectionId: metric.connectionId, sql: rw.sql, actor: 'metric-driver', skipRiskGate: true, backgroundBudgeted: true });
     if (res.status !== 'ok' || !res.result) { errors.push(`${dim}: ${res.blockedReason ?? res.errorMessage ?? 'failed'}`); continue; }
     if (res.result.rows.length >= rw.cap) {
       // Truncated driver data would produce confidently wrong numbers — skip.
@@ -201,7 +201,7 @@ export async function runMetricDrivers(metricId: string, latestT: string, prevT:
 export async function runMetric(metricId: string): Promise<{ run?: MetricRun; error?: string }> {
   const metric = await getMetric(metricId);
   if (!metric) return { error: 'not found' };
-  const res = await executeQuery({ connectionId: metric.connectionId, sql: metric.sql, actor: 'metric', skipRiskGate: true });
+  const res = await executeQuery({ connectionId: metric.connectionId, sql: metric.sql, actor: 'metric', skipRiskGate: true, backgroundBudgeted: true });
   if (res.status !== 'ok' || !res.result) {
     return { error: res.blockedReason ?? res.errorMessage ?? 'metric query failed' };
   }

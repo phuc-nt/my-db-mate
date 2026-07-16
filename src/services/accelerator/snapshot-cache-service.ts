@@ -201,8 +201,19 @@ export async function upsertSnapshotStatus(row: {
   }
 }
 
-async function extractToParquet(provider: ConnectionProvider, extractSql: string, parquetPath: string): Promise<void> {
-  const result = await provider.executeReadOnly(extractSql);
+/** Row-fetch step for a snapshot extract. Defaults to the provider's own
+ *  `executeReadOnly` (the OLTP accelerator path, unchanged). A caller can override
+ *  it — e.g. the BigQuery-over-DuckDB path routes the fetch through `executeQuery`'s
+ *  daily-budget gate so a BigQuery extract can never scan bytes un-budgeted. */
+export type SnapshotFetchRows = (sql: string) => Promise<{ columns: string[]; rows: unknown[][] }>;
+
+async function extractToParquet(
+  provider: ConnectionProvider,
+  extractSql: string,
+  parquetPath: string,
+  fetchRows?: SnapshotFetchRows,
+): Promise<void> {
+  const result = await (fetchRows ? fetchRows(extractSql) : provider.executeReadOnly(extractSql));
   const plans = inferColumnPlans(result.columns, result.rows);
   const columnList = result.columns.map((c, i) => `"${c.replace(/"/g, '""')}" ${plans[i].sqlType}`).join(', ');
 
@@ -231,6 +242,7 @@ export async function ensureSnapshot(
   provider: ConnectionProvider,
   extractSql: string,
   ttlMs: number,
+  fetchRows?: SnapshotFetchRows,
 ): Promise<SnapshotResult> {
   const cacheKey = cacheKeyFor(extractSql);
   const lockKey = `${connectionId}:${cacheKey}`;
@@ -257,7 +269,7 @@ export async function ensureSnapshot(
     await mkdir(dir, { recursive: true });
     await upsertSnapshotStatus({ connectionId, cacheKey, sql: extractSql, status: 'extracting' });
     try {
-      await extractToParquet(provider, extractSql, parquetPath);
+      await extractToParquet(provider, extractSql, parquetPath, fetchRows);
     } catch (e) {
       await upsertSnapshotStatus({
         connectionId,

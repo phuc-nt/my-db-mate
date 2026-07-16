@@ -1,0 +1,1 @@
+ALTER TABLE "connections" ADD COLUMN "bigquery_offline_mode" boolean DEFAULT false NOT NULL;

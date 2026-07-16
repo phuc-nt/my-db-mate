@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
 import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
 
-interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; bigqueryMaxBytesPerQuery?: number }
+interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; bigqueryMaxBytesPerQuery?: number; bigqueryDailyBytesBudget?: number; bigqueryOfflineMode?: boolean }
 
 const BQ_DEFAULT_MAX_BYTES = 1_073_741_824; // 1 GiB ≈ $0.006/query at $6.25/TiB on-demand pricing.
+const BQ_DEFAULT_DAILY_BUDGET = 10_737_418_240; // 10 GiB/day ≈ $0.06/day — daily cap for background analytics.
 
 const BLANK = {
   name: '', engine: 'postgres' as Engine, path: '', host: 'localhost', port: '5432', database: '', user: '', secret: '',
@@ -16,6 +17,7 @@ const BLANK = {
   sshOn: false, sshHost: '', sshPort: '22', sshUser: '', sshAuthMethod: 'key' as 'key' | 'password', sshSecret: '',
   // BigQuery (write-only service-account JSON, same "blank keeps current" pattern as password/SSH key).
   bqProjectId: '', bqServiceAccountJson: '', bqMaxBytesPerQuery: String(BQ_DEFAULT_MAX_BYTES),
+  bqDailyBytesBudget: String(BQ_DEFAULT_DAILY_BUDGET), bqOfflineMode: false,
 };
 
 export default function ConnectionsPage() {
@@ -63,6 +65,8 @@ export default function ConnectionsPage() {
         name: form.name, kind, dialect: form.engine, config: { projectId: form.bqProjectId.trim() },
         ...(form.bqServiceAccountJson.trim() ? { bigqueryServiceAccountJson: form.bqServiceAccountJson.trim() } : {}),
         bigqueryMaxBytesPerQuery: Number(form.bqMaxBytesPerQuery) || BQ_DEFAULT_MAX_BYTES,
+        bigqueryDailyBytesBudget: Number(form.bqDailyBytesBudget) || BQ_DEFAULT_DAILY_BUDGET,
+        bigqueryOfflineMode: form.bqOfflineMode,
       };
     }
     const ssh = form.sshOn && form.sshHost.trim()
@@ -134,6 +138,8 @@ export default function ConnectionsPage() {
       bqProjectId: String(cfg.projectId ?? ''),
       bqServiceAccountJson: '', // never pre-filled; blank keeps the existing service-account JSON
       bqMaxBytesPerQuery: String(c.bigqueryMaxBytesPerQuery ?? BQ_DEFAULT_MAX_BYTES),
+      bqDailyBytesBudget: String(c.bigqueryDailyBytesBudget ?? BQ_DEFAULT_DAILY_BUDGET),
+      bqOfflineMode: c.bigqueryOfflineMode ?? false,
     });
     setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
@@ -215,6 +221,21 @@ export default function ConnectionsPage() {
                   value={form.bqMaxBytesPerQuery} onChange={(e) => setForm({ ...form, bqMaxBytesPerQuery: e.target.value })} />
                 <span className="text-xs text-neutral-500">
                   ({(Number(form.bqMaxBytesPerQuery) / 1024 ** 3).toFixed(2)} GiB — BigQuery rejects any query needing more, before billing anything)
+                </span>
+              </label>
+              <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                Daily byte budget
+                <input className="w-40 rounded border p-1.5 text-sm dark:bg-neutral-900" type="number" min={1}
+                  value={form.bqDailyBytesBudget} onChange={(e) => setForm({ ...form, bqDailyBytesBudget: e.target.value })} />
+                <span className="text-xs text-neutral-500">
+                  ({(Number(form.bqDailyBytesBudget) / 1024 ** 3).toFixed(2)} GiB/day — cap for unattended dashboards/metrics/reports; a background refresh over the day&apos;s budget is skipped)
+                </span>
+              </label>
+              <label className="col-span-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <input type="checkbox" checked={form.bqOfflineMode} onChange={(e) => setForm({ ...form, bqOfflineMode: e.target.checked })} />
+                Offline mode
+                <span className="text-xs text-neutral-500">
+                  (dashboards/metrics/reports serve from a cached DuckDB snapshot — one budgeted extract, then $0 reads until it expires; data is stale between refreshes)
                 </span>
               </label>
               <p className="col-span-2 text-xs text-neutral-500">

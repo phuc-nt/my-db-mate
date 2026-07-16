@@ -24,6 +24,10 @@ export interface CreateConnectionInput {
   bigqueryServiceAccountJson?: string;
   /** Hard cap for BigQuery's `maximumBytesBilled`. Falls back to the schema default (1 GiB) when unset. */
   bigqueryMaxBytesPerQuery?: number;
+  /** Per-connection daily byte budget for BigQuery background analytics. Falls back to the schema default (10 GiB/day) when unset. */
+  bigqueryDailyBytesBudget?: number;
+  /** BigQuery offline mode: background analytics serve from a DuckDB-over-BigQuery snapshot instead of live queries. Off by default. */
+  bigqueryOfflineMode?: boolean;
   /** DuckDB accelerator opt-in (Phase 2). Off by default. */
   accelerateEnabled?: boolean;
   accelerateTtlMs?: number | null;
@@ -96,6 +100,10 @@ export async function createConnection(input: CreateConnectionInput) {
       accelerateTtlMs: input.accelerateTtlMs ?? null,
       bigqueryServiceAccountJsonEncrypted,
       ...(input.bigqueryMaxBytesPerQuery ? { bigqueryMaxBytesPerQuery: input.bigqueryMaxBytesPerQuery } : {}),
+      // `!= null` (not truthy) so an explicit 0 — "block all background BigQuery" — is
+      // honored fail-closed rather than dropped back to the schema default.
+      ...(input.bigqueryDailyBytesBudget != null ? { bigqueryDailyBytesBudget: input.bigqueryDailyBytesBudget } : {}),
+      ...(input.bigqueryOfflineMode != null ? { bigqueryOfflineMode: input.bigqueryOfflineMode } : {}),
     })
     .returning();
   return row;
@@ -103,7 +111,7 @@ export async function createConnection(input: CreateConnectionInput) {
 
 /** Update a connection's config/secret in place (edit instead of delete+recreate).
  *  Re-probes read-only. A blank secret keeps the existing one. */
-export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string; bigqueryServiceAccountJson?: string; bigqueryMaxBytesPerQuery?: number; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }) {
+export async function updateConnection(id: string, input: { name?: string; config?: Record<string, unknown>; dialect?: CreateConnectionInput['dialect']; secret?: string; sshSecret?: string; bigqueryServiceAccountJson?: string; bigqueryMaxBytesPerQuery?: number; bigqueryDailyBytesBudget?: number; bigqueryOfflineMode?: boolean; accelerateEnabled?: boolean; accelerateTtlMs?: number | null }) {
   const existing = await getConnection(id);
   if (!existing) throw new Error('Connection not found');
 
@@ -113,6 +121,8 @@ export async function updateConnection(id: string, input: { name?: string; confi
     ? encryptSecret(input.bigqueryServiceAccountJson)
     : existing.bigqueryServiceAccountJsonEncrypted;
   const bigqueryMaxBytesPerQuery = input.bigqueryMaxBytesPerQuery ?? existing.bigqueryMaxBytesPerQuery;
+  const bigqueryDailyBytesBudget = input.bigqueryDailyBytesBudget ?? existing.bigqueryDailyBytesBudget;
+  const bigqueryOfflineMode = input.bigqueryOfflineMode ?? existing.bigqueryOfflineMode;
   const config = input.config ?? (existing.config as Record<string, unknown>);
   const dialect = input.dialect ?? (existing.dialect as CreateConnectionInput['dialect']);
 
@@ -153,6 +163,8 @@ export async function updateConnection(id: string, input: { name?: string; confi
       accelerateTtlMs: input.accelerateTtlMs !== undefined ? input.accelerateTtlMs : existing.accelerateTtlMs,
       bigqueryServiceAccountJsonEncrypted,
       bigqueryMaxBytesPerQuery,
+      bigqueryDailyBytesBudget,
+      bigqueryOfflineMode,
     })
     .where(eq(connections.id, id))
     .returning();

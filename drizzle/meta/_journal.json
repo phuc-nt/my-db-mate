@@ -162,6 +162,27 @@
       "when": 1784126530440,
       "tag": "0022_bigquery_connector_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784164890192,
+      "tag": "0023_eager_the_watchers",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784165520119,
+      "tag": "0024_useful_exodus",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784166673310,
+      "tag": "0025_spooky_tyrannus",
+      "breakpoints": true
     }
   ]
 }

@@ -182,7 +182,7 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
   }
   const transient = isParametrized && range != null;
 
-  const res = await executeQuery({ connectionId: w.connectionId, sql, actor: 'dashboard', confirmed });
+  const res = await executeQuery({ connectionId: w.connectionId, sql, actor: 'dashboard', confirmed, backgroundBudgeted: true });
   if (res.status === 'blocked') return { status: 'blocked', message: res.blockedReason ?? 'blocked' };
   if (res.status === 'needs_confirmation') return { status: 'needs_confirmation', message: 'This widget is estimated as medium-risk. Confirm to run it.', risk: res.risk };
   if (res.status === 'error') return { status: 'error', message: res.errorMessage ?? 'error' };

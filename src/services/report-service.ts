@@ -183,7 +183,7 @@ export async function generateReport(reportId: string): Promise<{ version: numbe
       continue;
     }
     try {
-      const res = await executeQuery({ connectionId: s.connectionId, sql: s.sql, actor: 'report' });
+      const res = await executeQuery({ connectionId: s.connectionId, sql: s.sql, actor: 'report', backgroundBudgeted: true });
       if (res.status === 'ok') { s.columns = res.result!.columns; s.rows = res.result!.rows; }
       else s.error = res.blockedReason ?? res.errorMessage ?? res.status;
     } catch (e) { s.error = e instanceof Error ? e.message : String(e); }
