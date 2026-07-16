@@ -3,7 +3,7 @@
  *
  * Tests behavioral requirements:
  * 1. Metric retrieval — relevant metric returned, per-connection (distance floor)
- * 2. Distance floor excludes unrelated metrics (METRIC_DISTANCE_FLOOR = 0.55)
+ * 2. Distance floor excludes unrelated metrics (METRIC_DISTANCE_FLOOR = 0.35)
  * 3. Null-embedding metric doesn't crash + isn't returned
  * 4. embed-on-save: createMetric produces non-null embedding, updateMetric re-embeds on name/description change
  * 5. backfillMetricEmbeddings: null→embedding + idempotent
@@ -193,7 +193,7 @@ describe('semantic metrics layer (Phase 1+2)', () => {
   });
 
   // --- Test 2: Distance floor excludes unrelated metrics ---
-  describe('distance floor (METRIC_DISTANCE_FLOOR = 0.55)', () => {
+  describe('distance floor (METRIC_DISTANCE_FLOOR = 0.35)', () => {
     it('excludes a semantically-unrelated metric from retrieval', async () => {
       const conn = await makeTestConnection('test-conn-distance', 4, createdConnections, createdDbPaths);
 
