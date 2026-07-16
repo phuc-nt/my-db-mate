@@ -23,6 +23,7 @@ import { profileColumn } from './profiling-service';
 import { detectAnomalies } from './anomaly-service';
 import { getModel } from './llm-service';
 import { renderDateContext } from '../lib/date-context';
+import { missingGovernedFilters } from '../lib/metric-filter-lint';
 
 export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
 /** Both investigate tiers share tools/addendum; only budgets differ. Using a
@@ -89,6 +90,23 @@ interface InvestigationState {
   consecutiveFailures: number;
 }
 
+/** A governed metric matched to the question, with its cosine distance — used by the
+ *  run_sql adherence lint to enforce the metric's WHERE filters. */
+export interface MatchedMetric {
+  name: string;
+  sql: string;
+  distance: number;
+}
+
+/** Only metrics matched at least this close (cosine distance) enforce their filters via
+ *  the lint — tighter than the injection floor (0.35), because being close enough to
+ *  offer as context is a lower bar than "the answer MUST match this metric's definition".
+ *  Tuned against the eval/UAT fixture in Phase 3: 0.2 left "average order value by
+ *  month" (0.2079 to the Average order value metric) just outside the gate on real
+ *  embeddings, so it's loosened to 0.25 — still well below the 0.35 injection floor and
+ *  far from the non-metric control questions (which don't match any metric at all). */
+const LINT_DISTANCE_FLOOR = 0.25;
+
 /** Wrap untrusted DB values so the model cannot read them as instructions (M1). */
 function wrapData(payload: unknown): string {
   return `<data>${JSON.stringify(payload)}</data>`;
@@ -106,8 +124,13 @@ export function buildAgentTools(
   sessionId?: string,
   mode: AgentMode = 'chat',
   dialect: Dialect = 'postgres',
+  matchedMetrics: MatchedMetric[] = [],
 ) {
   const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0 };
+  // Metrics matched CLOSELY enough that the answer must obey their governed filters —
+  // a tighter gate than injection (a metric injected as context isn't necessarily one
+  // the SQL must adhere to filter-for-filter). See the run_sql adherence lint below.
+  const lintMetrics = matchedMetrics.filter((m) => m.distance <= LINT_DISTANCE_FLOOR);
 
   const baseTools = {
     schema_details: tool({
@@ -144,6 +167,35 @@ export function buildAgentTools(
         const sqlBudget = mode === 'investigate-deep' ? MAX_SQL_DEEP : MAX_SQL_PER_INVESTIGATION;
         if (state.sqlRunCount >= sqlBudget) {
           return { stopped: true, reason: `Query budget reached (${sqlBudget} queries this turn). Conclude with the evidence gathered so far.` };
+        }
+        // Governed-metric adherence lint (runs BEFORE execution, so a not-yet-corrected
+        // query never hits the DB or consumes budget — same discipline as needs_confirmation).
+        // A closely-matched metric's WHERE filter encodes the business definition; if the
+        // model dropped it, the number diverges from the dashboard. Force ONE bounded
+        // self-correction rather than running the wrong query. Never rewrite the model's
+        // SQL — ask it to fix it, so provenance stays honest. Fail-open past the retry cap.
+        if (lintMetrics.length && state.consecutiveFailures < MAX_CONSECUTIVE_SQL_FAILURES) {
+          for (const m of lintMetrics) {
+            const gaps = missingGovernedFilters(sql, m.sql, dialect);
+            if (gaps.length) {
+              state.consecutiveFailures++;
+              const cols = gaps.map((g) => g.column).join(', ');
+              const repair = selfRepairHint(state);
+              // At the retry cap `selfRepairHint` says "stop retrying" — don't also tell
+              // the model to re-run with the filter (contradictory). Only guide a fix
+              // when a retry is still allowed.
+              const stopping = 'stopRetrying' in repair;
+              return {
+                governedFilterMissing: true,
+                metric: m.name,
+                missingColumns: gaps.map((g) => g.column),
+                ...(stopping ? {} : {
+                  governedFilterHint: `The governed metric "${m.name}" defines this measure with a filter on ${cols} (its stored SQL: ${m.sql}). Your query omits that filter, so it returns a DIFFERENT number than the dashboard for the same metric. Re-run the same query but ADD the metric's filter on ${cols}.`,
+                }),
+                ...repair,
+              };
+            }
+          }
         }
         const res = await executeQuery({ connectionId, sql, actor, sessionId });
         // A medium-risk query needs human confirmation (P3) and did NOT execute, so
@@ -280,12 +332,12 @@ export async function streamAgentAnswer(params: {
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   // `convertToModelMessages` (called by the chat route) produces array-shaped
-  // `content` (e.g. `[{type:'text', text}]`) for UIMessage-sourced turns, not a plain
-  // string — a bare `typeof === 'string'` check silently dropped every real chat
-  // question (question resolved to '', so getRelevantContext ran with no input and NO
-  // curated context — glossary, verified queries, governed metrics — ever reached
-  // production chat). Non-streaming callers (runAgentAnswer, MCP, eval) that pass a
-  // plain string still work as before.
+  // `content` (e.g. `[{type:'text', text}]`) for UIMessage-sourced turns, not a
+  // plain string — a bare `typeof === 'string'` check silently drops every real
+  // chat question (question resolved to '', so getRelevantContext was never
+  // called with real input and NO context — glossary, verified queries, or
+  // governed metrics — ever reached production chat). Non-streaming callers
+  // (runAgentAnswer, MCP, eval) that pass a plain string still work as before.
   const question = typeof lastUser?.content === 'string'
     ? lastUser.content
     : Array.isArray(lastUser?.content)
@@ -293,7 +345,11 @@ export async function streamAgentAnswer(params: {
       : '';
   // Prune the schema to the question for large DBs (full summary for small ones).
   const schema = question ? await getPrunedSchemaSummary(connectionId, question) : await getSchemaSummary(connectionId);
-  const contextBlock = question ? renderContextForPrompt(await getRelevantContext(question, connectionId)) : '';
+  // Keep the retrieved context (not just its rendered string) so the governed-metric
+  // adherence lint can see the matched metrics' SQL + distance at run_sql time.
+  const relevant = question ? await getRelevantContext(question, connectionId) : null;
+  const contextBlock = relevant ? renderContextForPrompt(relevant) : '';
+  const matchedMetrics = relevant?.metrics ?? [];
   const bigTables = await getBigTables(connectionId);
 
   const system =
@@ -306,7 +362,7 @@ export async function streamAgentAnswer(params: {
     model: await getModel(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect),
+    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics),
     stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
   });
 }

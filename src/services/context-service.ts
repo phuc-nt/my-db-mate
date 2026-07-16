@@ -119,7 +119,7 @@ export interface RelevantContext {
   glossaryHits: { term: string; definition: string; sqlMapping: string | null }[];
   manualRelationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
   verifiedExamples: { question: string; sql: string }[];
-  metrics: { name: string; description: string | null; sql: string; dimensions: string[] | null }[];
+  metrics: { name: string; description: string | null; sql: string; dimensions: string[] | null; distance: number }[];
 }
 
 /** Pull the context relevant to a question for one connection. */
@@ -175,7 +175,16 @@ export async function getRelevantContext(question: string, connectionId: string)
   // Governed metrics: vector top-3 within the distance floor, per connection. A metric
   // with no embedding yet (pre-backfill) is skipped by the IS NOT NULL guard, not crashed.
   const metricRows = await db
-    .select({ name: metrics.name, description: metrics.description, sql: metrics.sql, dimensions: metrics.dimensions })
+    .select({
+      name: metrics.name,
+      description: metrics.description,
+      sql: metrics.sql,
+      dimensions: metrics.dimensions,
+      // Cosine distance to the question — carried so the adherence lint can apply a
+      // TIGHTER gate than injection: a metric injected as context (≤ floor) is not
+      // necessarily one the answer MUST obey filter-for-filter.
+      distance: sql<number>`(${metrics.embedding} <=> ${vecLiteral}::vector)`,
+    })
     .from(metrics)
     .where(and(
       eq(metrics.connectionId, connectionId),

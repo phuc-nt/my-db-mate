@@ -435,7 +435,7 @@ describe('semantic metrics layer (Phase 1+2)', () => {
     it('includes a "Governed metrics" block when metrics are present', () => {
       const rendered = renderContextForPrompt({
         ...emptyCtx,
-        metrics: [{ name: 'Monthly Revenue', description: 'total sales revenue per month', sql: 'SELECT 1 UNION ALL SELECT 2', dimensions: null }],
+        metrics: [{ name: 'Monthly Revenue', description: 'total sales revenue per month', sql: 'SELECT 1 UNION ALL SELECT 2', dimensions: null, distance: 0 }],
       });
       expect(rendered).toContain('Governed metrics');
       expect(rendered).toContain('authoritative definitions');
@@ -453,7 +453,7 @@ describe('semantic metrics layer (Phase 1+2)', () => {
     it('renders metric without dimensions when dimensions is null', () => {
       const rendered = renderContextForPrompt({
         ...emptyCtx,
-        metrics: [{ name: 'Simple Count', description: 'simple count metric', sql: 'SELECT COUNT(*) FROM t', dimensions: null }],
+        metrics: [{ name: 'Simple Count', description: 'simple count metric', sql: 'SELECT COUNT(*) FROM t', dimensions: null, distance: 0 }],
       });
       expect(rendered).toContain('Simple Count');
       expect(rendered).not.toContain('dimensions:');
@@ -462,7 +462,7 @@ describe('semantic metrics layer (Phase 1+2)', () => {
     it('renders metric with empty description and with dimensions', () => {
       const rendered = renderContextForPrompt({
         ...emptyCtx,
-        metrics: [{ name: 'No Desc Metric', description: null, sql: 'SELECT 1', dimensions: ['region', 'channel'] }],
+        metrics: [{ name: 'No Desc Metric', description: null, sql: 'SELECT 1', dimensions: ['region', 'channel'], distance: 0 }],
       });
       expect(rendered).toContain('No Desc Metric');
       expect(rendered).toContain('SQL:');
@@ -514,7 +514,7 @@ describe('semantic metrics layer (Phase 1+2)', () => {
       const rendered = renderContextForPrompt({
         tableAnnotations: [], columnAnnotations: [], glossaryHits: [], manualRelationships: [],
         verifiedExamples: [{ question: 'what percentage of users churned last month', sql: 'SELECT 15.5 as churn_pct' }],
-        metrics: [{ name: 'Churn Rate', description: 'monthly churn percentage', sql: 'SELECT 1', dimensions: null }],
+        metrics: [{ name: 'Churn Rate', description: 'monthly churn percentage', sql: 'SELECT 1', dimensions: null, distance: 0 }],
       });
       expect(rendered).toContain('Governed metrics');
       expect(rendered).toContain('Churn Rate');
