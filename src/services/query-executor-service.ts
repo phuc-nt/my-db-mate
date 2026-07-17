@@ -26,7 +26,7 @@ import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
-import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget } from './bigquery-daily-budget-service';
+import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from './bigquery-daily-budget-service';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
@@ -324,10 +324,20 @@ export async function executeQuery(params: {
           return { status: 'error', errorMessage: `Could not estimate cost — query not run: ${msg}`, executedSql: finalSql };
         }
         const budget = (conn as unknown as { bigqueryDailyBytesBudget?: number }).bigqueryDailyBytesBudget ?? 0;
+        // Priority-aware ceiling: low-tier maintenance actors (monitor/anomaly) reserve
+        // against a fraction of the day's budget so they can't starve higher-priority
+        // surfaces. The reserve UPDATE itself is unchanged — just handed a smaller bound.
+        const ceiling = effectiveBudget(budget, actor, backgroundBudgeted);
         const now = new Date();
-        const admitted = await reserveBudget(connectionId, budget, estimate.estimatedBytes, now);
+        const admitted = await reserveBudget(connectionId, ceiling, estimate.estimatedBytes, now);
         if (!admitted) {
-          const reason = `daily byte budget exceeded: this query's estimate (${estimate.estimatedBytes} bytes) plus today's usage would exceed the ${budget}-byte daily budget`;
+          // Distinguish a tier-ceiling block (this actor's priority fraction) from a
+          // genuinely-exhausted pool, so a throttled low-tier actor is diagnosable.
+          // Keyed off the tier decision, not `ceiling < budget` — the latter can't tell
+          // the two apart when the budget itself is 0.
+          const reason = isLowTierActor(actor, backgroundBudgeted)
+            ? `daily byte budget exceeded: this query's estimate (${estimate.estimatedBytes} bytes) plus today's usage would exceed the low-priority ceiling (${ceiling} of ${budget} bytes) for actor '${actor}'`
+            : `daily byte budget exceeded: this query's estimate (${estimate.estimatedBytes} bytes) plus today's usage would exceed the ${budget}-byte daily budget`;
           await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: reason });
           return { status: 'blocked', blockedReason: reason };
         }

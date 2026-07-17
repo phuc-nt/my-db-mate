@@ -101,6 +101,13 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     const conn = await getConnection(s.connectionId);
     if (!conn) { await record(scheduleId, 'error', 'connection not found'); return; }
 
+    // BigQuery: explicit cost-safety block on the raw scheduled-query path (both a
+    // deterministic sql and a question→SQL run end in the un-budgeted raw executeQuery
+    // below). The budgeted schedule modes (dashboard/report/monitor/metrics_digest)
+    // returned above already, so this guard does NOT touch them — a BigQuery monitor
+    // schedule still runs (plan #7). Fail closed with the typed message.
+    if (conn.dialect === 'bigquery') { await record(scheduleId, 'blocked', 'Scheduled query is not yet supported for BigQuery connections.'); return; }
+
     // Resolve SQL: deterministic sql, or ask the agent for a question then extract.
     let sql = s.sql ?? '';
     if (s.mode === 'question' && s.question) {

@@ -29,6 +29,12 @@ import { profileColumn } from './profiling-service';
 import { detectAnomalies } from './anomaly-service';
 import { fetchQueryLog } from './query-history-mining-service';
 import { runEval } from './eval-service';
+import { sampleRows } from './schema-browser-service';
+import { rerunNotebook } from './notebook-service';
+import { createSchedule, runSchedule } from './schedule-service';
+import { captureSnapshot } from './monitor-service';
+import { notebooks } from '../db/notebook-schema';
+import { scheduledQueries, scheduledRuns } from '../db/ecosystem-schema';
 import { schemaTables, schemaColumns, queryRuns } from '../db/schema';
 import { evalQueries } from '../db/intelligence-schema';
 import { desc } from 'drizzle-orm';
@@ -518,5 +524,67 @@ describe('BigQuery daily byte-budget (Phase 2)', () => {
       .where(eq(bqBudgetLedger.connectionId, conn.id))
       .limit(1);
     expect(ledger.committedBytes).toBe(0); // cache hit = 0 cost, not the cap sentinel
+  });
+});
+
+describe('Implicit surfaces are explicitly blocked on BigQuery (cost-governance hardening)', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+  let tableId: string;
+  let scheduleIdToClean: string | undefined;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+    const [t] = await db.insert(schemaTables).values({ connectionId: conn.id, tableName: 'orders', rowCount: 10 }).returning();
+    tableId = t.id;
+  });
+
+  afterEach(async () => {
+    if (scheduleIdToClean) {
+      await db.delete(scheduledRuns).where(eq(scheduledRuns.scheduleId, scheduleIdToClean));
+      await db.delete(scheduledQueries).where(eq(scheduledQueries.id, scheduleIdToClean));
+      scheduleIdToClean = undefined;
+    }
+    await db.delete(notebooks).where(eq(notebooks.connectionId, conn.id));
+    await db.delete(schemaTables).where(eq(schemaTables.id, tableId));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('schema-browser sampleRows returns a typed BigQuery block, never runs a query', async () => {
+    const res = await sampleRows(conn.id, 'orders');
+    expect(res.status).toBe('error');
+    expect(res.status === 'error' && res.message).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('notebook rerun returns a typed BigQuery block, never runs a query', async () => {
+    const [nb] = await db.insert(notebooks).values({
+      connectionId: conn.id, sessionId: null, title: 'nb', markdown: '# nb', dataSnapshot: {},
+    }).returning();
+    const res = await rerunNotebook(nb.id);
+    expect('error' in res && res.error).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('a scheduled raw query on BigQuery is recorded as blocked, never runs', async () => {
+    const s = await createSchedule({ connectionId: conn.id, name: 's', mode: 'sql', sql: 'SELECT 1', cron: '0 7 * * *' });
+    scheduleIdToClean = s.id;
+    await runSchedule(s.id);
+    const [run] = await db.select().from(scheduledRuns).where(eq(scheduledRuns.scheduleId, s.id)).orderBy(desc(scheduledRuns.ranAt)).limit(1);
+    expect(run.status).toBe('blocked');
+    expect(run.detail).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('REGRESSION (#7): a BigQuery MONITOR capture is NOT blocked by the new guard — it stays budgeted', async () => {
+    // captureSnapshot routes through executeQuery({backgroundBudgeted:true}); the new
+    // scheduled-query guard must not touch it. Without a budget token the capture won't
+    // return ok, but it must NOT surface the "not yet supported" block — proving monitor
+    // is exempt. (A distinct failure mode from the raw scheduled-query path above.)
+    await db.insert(schemaColumns).values({ tableId, columnName: 'amount', dataType: 'FLOAT64', isNullable: true, isPrimaryKey: false, ordinalPosition: 0 });
+    const snap = await captureSnapshot(conn.id, 'bigquery', 'orders');
+    const asString = JSON.stringify(snap);
+    expect(asString).not.toMatch(/not yet supported for BigQuery/);
   });
 });

@@ -42,6 +42,12 @@ export async function startMcpServer() {
   server.tool('run_sql', 'Run one read-only SELECT (goes through the full safety layer: validation, risk tier, audit).',
     { sql: z.string() },
     async ({ sql }) => {
+      // BigQuery: explicit cost-safety block on the raw-SQL exec path. A raw MCP
+      // query has no daily-byte-budget wiring, so it's blocked (unlike ask_database,
+      // which routes through the agent's dry-run+per-query-cap gate). Typed message.
+      if (conn.dialect === 'bigquery') {
+        return { content: [{ type: 'text', text: 'BLOCKED: MCP query execution is not yet supported for BigQuery connections.' }], isError: true };
+      }
       const res = await executeQuery({ connectionId, sql, actor, confirmed: false });
       if (res.status === 'blocked') return { content: [{ type: 'text', text: `BLOCKED: ${res.blockedReason}` }], isError: true };
       // RT-F5: never auto-run above the key's max tier — return a structured refusal.

@@ -30,6 +30,41 @@ export function utcDayBucket(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
+/** Fraction of the day's budget a low-priority maintenance actor (monitor/anomaly)
+ *  may reserve against. Keeps headroom for higher-priority surfaces so a periodic
+ *  monitor tick can't starve user-facing dashboard/metric/report refreshes. */
+export const LOW_TIER_FRACTION = 0.5;
+
+/** Priority-aware effective ceiling for a budget admission. The pool stays a single
+ *  `(connectionId, utcDay)` ledger; priority is expressed as a SMALLER ceiling handed
+ *  to the unchanged atomic `reserve` UPDATE — never a read-then-decide step (which
+ *  would reintroduce the race the reserve design eliminates).
+ *
+ *  Tiers (derived purely from `actor` + the interactive flag — no new call-site param):
+ *   - interactive (non-backgroundBudgeted: chat / SQL-panel / browse) → full budget;
+ *     already dry-run+confirm+per-query-cap protected, never sub-ceiled.
+ *   - low maintenance (`monitor`, `anomaly`) → `budget * LOW_TIER_FRACTION`.
+ *   - everything else background (dashboard / metric* / report) → full budget.
+ *
+ *  A low-tier reservation still debits the FULL pool for later high-tier admits (it
+ *  goes into the shared `reserved`), so high tier sees the real usage and can use the
+ *  headroom low tier left — exactly the intended fairness, with no extra ledger column.
+ *  The low-tier actor list is explicit: a new background actor defaults to full budget
+ *  and must opt into the low tier deliberately. */
+export function effectiveBudget(budgetBytes: number, actor: string, backgroundBudgeted?: boolean): number {
+  if (isLowTierActor(actor, backgroundBudgeted)) return Math.floor(budgetBytes * LOW_TIER_FRACTION);
+  return budgetBytes; // interactive + BI surfaces (dashboard/metric*/report) — full budget
+}
+
+/** True iff this admission is a low-priority maintenance tick (monitor/anomaly running
+ *  as background) that should reserve against only a fraction of the pool. Interactive
+ *  (non-backgroundBudgeted) is never low-tier. Exposed so a blocked-budget message can
+ *  say WHY it was throttled even when the budget is 0 (where `ceiling < budget` can't tell). */
+export function isLowTierActor(actor: string, backgroundBudgeted?: boolean): boolean {
+  if (!backgroundBudgeted) return false;
+  return actor === 'monitor' || actor === 'anomaly';
+}
+
 /** Ensure the (connection, day) ledger row exists so the conditional UPDATE in
  *  `reserve` has a row to match. Idempotent via the unique (connection, day) key. */
 async function ensureLedgerRow(connectionId: string, utcDay: string): Promise<void> {

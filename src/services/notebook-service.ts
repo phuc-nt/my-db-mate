@@ -141,6 +141,11 @@ export interface RefreshSummary { refreshed: number; skipped: string[]; omitted:
 export async function rerunNotebook(notebookId: string): Promise<RefreshSummary | { error: string }> {
   const [nb] = await db.select().from(notebooks).where(eq(notebooks.id, notebookId));
   if (!nb) return { error: 'Notebook not found' };
+  // BigQuery: explicit cost-safety block. Notebook re-run fires all of a notebook's
+  // queries unattended without the daily-byte-budget wiring, so it's blocked rather
+  // than left in the interactive dry-run path. Fail closed with the typed message.
+  const [conn] = await db.select({ dialect: connections.dialect }).from(connections).where(eq(connections.id, nb.connectionId));
+  if (conn?.dialect === 'bigquery') return { error: 'Notebook re-run is not yet supported for BigQuery connections.' };
   const pairs = extractRefreshPairs(nb.markdown);
   if (pairs.length === 0) return { error: 'notebook format mismatch — no refreshable queries found' };
 

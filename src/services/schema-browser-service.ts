@@ -28,8 +28,17 @@ export async function sampleRows(connectionId: string, table: string): Promise<S
 
   const provider = await getProvider(connectionId);
   const dialect = provider.dialect;
+  // BigQuery: explicit cost-safety block. Schema-browser sampling runs unattended-ish
+  // without the daily-byte-budget wiring, so it's blocked (like profiling/eval) rather
+  // than left in the interactive dry-run path. Return the typed message (this surface
+  // reports errors as a result, doesn't throw), and close the provider we opened.
+  if (dialect === 'bigquery') {
+    await provider.close();
+    return { status: 'error', message: 'Schema browser query execution is not yet supported for BigQuery connections.' };
+  }
   const safe = t.tableName.replace(/[^A-Za-z0-9_]/g, '');
-  const quoted = dialect === 'mysql' || dialect === 'bigquery' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
+  // BigQuery is blocked above, so only OLTP dialects reach here.
+  const quoted = dialect === 'mysql' ? `\`${safe}\`` : dialect === 'mssql' ? `[${safe}]` : `"${safe}"`;
   await provider.close(); // executeQuery opens its own provider
 
   const res = await executeQuery({
