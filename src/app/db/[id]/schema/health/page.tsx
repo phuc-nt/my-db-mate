@@ -12,6 +12,13 @@ interface AnomalyReport { table: string; column: string; total: number; nullRate
 // isNumericType isn't exported anywhere — inline check against synced dataType.
 const NUMERIC_RE = /int|numeric|real|float|double|decimal|money/i;
 
+/** The anomaly service wraps DB-derived min/max in `<data>…</data>` so the agent can't
+ *  read them as instructions. That guard is for the agent path; when rendering the
+ *  min/max to the user here, strip the wrapper so the number shows plainly. */
+function unwrapData(v: string): string {
+  return v.replace(/^<data>([\s\S]*)<\/data>$/, '$1');
+}
+
 const ISSUE_LABEL: Record<string, string> = {
   high_null: '⚠ High NULL rate',
   single_value: '① Single value',
@@ -127,7 +134,7 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
             <div className="mt-2 rounded border border-neutral-200 p-2 text-xs dark:border-neutral-800" data-testid="anomaly-report">
               <b className="font-mono">{anomaly.table}.{anomaly.column}</b> · {anomaly.total.toLocaleString()} rows · null {Math.round(anomaly.nullRate * 1000) / 10}%
               {anomaly.numeric && (
-                <> · avg {Math.round(anomaly.numeric.avg * 100) / 100} · σ {Math.round(anomaly.numeric.stddev * 100) / 100} · range [{anomaly.numeric.min} … {anomaly.numeric.max}] · <b>{anomaly.numeric.outlierCount} outliers (±3σ)</b></>
+                <> · avg {Math.round(anomaly.numeric.avg * 100) / 100} · σ {Math.round(anomaly.numeric.stddev * 100) / 100} · range [{unwrapData(anomaly.numeric.min)} … {unwrapData(anomaly.numeric.max)}] · <b>{anomaly.numeric.outlierCount} outliers (±3σ)</b></>
               )}
               {anomaly.note && <p className="mt-1 text-neutral-500">{anomaly.note}</p>}
               <Link className="ml-2 text-blue-600 hover:underline"
