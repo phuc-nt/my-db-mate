@@ -29,6 +29,9 @@ jobs:
 
     env:
       DATABASE_URL: postgres://mydbmate:mydbmate@localhost:5432/mydbmate
+      # Test-only AES key (32-byte hex) so credential-cipher round-trips in CI.
+      # NOT a production secret — tests encrypt throwaway fixture credentials only.
+      CREDENTIAL_ENC_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
     steps:
       - uses: actions/checkout@v4
