@@ -33,6 +33,7 @@ import {
   renderContextForPrompt,
   addVerifiedQuery,
 } from './context-service';
+import { embed } from './embedding-service';
 
 // ===== HELPERS =====
 
@@ -122,7 +123,12 @@ describe('semantic metrics layer (Phase 1+2)', () => {
   beforeAll(async () => {
     await rm(DB_ROOT, { recursive: true, force: true });
     await mkdir(DB_ROOT, { recursive: true });
-  });
+    // Warm up the embedding pipeline BEFORE any retrieval assertion. On a cold cache
+    // (CI) the first embed loads the model — folding that into the first test made it
+    // both slow (~5s) and flaky. Warming here isolates model load from the assertions
+    // so a metric created and a question asked are embedded by the same warm pipeline.
+    await embed('warmup');
+  }, 60_000);
 
   afterEach(async () => {
     await cleanupConnections(createdConnections);

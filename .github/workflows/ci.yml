@@ -44,6 +44,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Cache the transformers.js embedding model (~120MB) so it isn't re-downloaded
+      # every run — faster, and removes download-timing as a flakiness source for the
+      # embedding-retrieval tests.
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-Xenova-paraphrase-multilingual-MiniLM-L12-v2
+
       - name: Typecheck
         run: npx tsc --noEmit
 
