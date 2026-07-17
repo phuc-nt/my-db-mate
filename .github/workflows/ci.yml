@@ -9,6 +9,27 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    # App tests run against a real Postgres (pgvector) — the same engine the app DB
+    # uses — so DB-backed service tests exercise real SQL, not a mock.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: mydbmate
+          POSTGRES_PASSWORD: mydbmate
+          POSTGRES_DB: mydbmate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mydbmate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://mydbmate:mydbmate@localhost:5432/mydbmate
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +47,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test (safety adversarial gate)
+      - name: Apply DB migrations
+        run: npm run db:migrate
+
+      - name: Test (safety adversarial gate + DB-backed service tests)
         run: npm test
 
       - name: Build
