@@ -81,6 +81,17 @@ Chosen (B — block all four raw paths, keep only budgeted modes + agent paths).
 - None. Plan complete, commit landed. Monitor the production behavior of the priority ceiling (if a monitor ever hits 50% utilization, we know the fraction is wrong). Adjust `LOW_TIER_FRACTION` if real data suggests a different split.
 - The 4 blocked surfaces are documented in `docs/features.md` as explicitly BigQuery-unsupported. Open them later if demand + sub-budget analysis warrant.
 
+## Through-app UAT (2026-07-17 follow-up)
+
+Beyond the 465 unit/integration tests, ran a real through-app pass on a live BigQuery connection (standing rule: mocks miss real bugs). Provisioned `mydbmate_uat.sales_uat` (201 rows) via `bq` CLI, created + synced a BQ connection (budget 100MB, per-query cap 50MB) via the app's `createConnection`/`syncSchema`, then exercised the actual service functions:
+
+- **Phase 1 through `executeQuery`**: a `monitor`-actor scan on real BQ admitted (billed 10MB, under its 50MB low-tier ceiling); a `dashboard`-actor scan admitted too.
+- **Phase 1 fairness on the real Postgres ledger + real connection budget**: with a dashboard having reserved 60MB, a `monitor` 5MB reserve was **blocked** (60+5 > 50MB low ceiling) even though the full 100MB pool had 40MB free; a `dashboard` 5MB reserve into that same headroom was **admitted**. This is the core starve-protection behavior, proven end-to-end.
+- **Phase 2 through app**: `sampleRows` (schema-browser), `rerunNotebook`, and a `runSchedule` on a `sql`-mode schedule each returned/recorded the typed "not yet supported for BigQuery" block — no query run.
+- **Regression #7 through app**: `captureSnapshot` (monitor) returned rowCount=201 on real BQ — NOT blocked by the new scheduled-query guard.
+
+Cleanup: connection deleted (cascade schema/ledger/notebook/schedule), BQ dataset dropped — no residual rows or storage cost.
+
 ---
 
-**Status**: DONE. All acceptance criteria pass (budget fairness tested + atomicity verified, 4 surfaces explicitly blocked, monitor regression test confirms no regression, tsc + lint + 465 tests green).
+**Status**: DONE. All acceptance criteria pass (budget fairness tested + atomicity verified, 4 surfaces explicitly blocked, monitor regression test confirms no regression, tsc + lint + 465 tests green). Through-app UAT on real BigQuery confirms the priority ceiling, the 4 blocks, and the monitor exemption all behave as designed.
