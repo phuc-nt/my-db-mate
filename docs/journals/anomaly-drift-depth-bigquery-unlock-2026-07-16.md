@@ -69,6 +69,19 @@ Five separate fixes, one oversight each time:
 - **Real BigQuery UAT**: job on public `usa_names` (5,552,452 rows, min=5, max=10025, avg=53.26) ran end-to-end ✓
 - **Cost safety (priority#1)**: over-cap scan rejected as `MaximumBytesBilledExceededError` with **zero cost** ✓
 
+### Full through-app UAT (2026-07-17 follow-up)
+
+Initial UAT (above) was provider-level + unit round-trip — not through the app's own service functions on a synced connection, unlike prior plans. Closed that gap: provisioned a real BQ table `mydbmate_uat.sales_uat` (201 rows + one 100000 outlier) via the owner account (`bq` CLI — the app's read-only service account intentionally lacks `datasets.create`), created + synced a BigQuery connection **via `createConnection`/`syncSchema`**, then exercised the real app paths:
+
+- `getSchemaSummary` + `getPrunedSchemaSummary` (primary chat path) → `mydbmate_uat.sales_uat(...)` — dataset-qualified on BOTH paths ✓
+- `detectAnomalies(cid,'sales_uat','amount')` through app → total 201, σ-outlier 1, **MAD-outlier 1** (median 102, caught 100000), min 100 / max 100000 (exact SQL) — budgeted BQ ✓
+- `captureSnapshot` through app → rowCount 201, avg 599.0 ✓
+- `sample_rows` round-trip: model passes qualified `mydbmate_uat.sales_uat` → resolves `` `mydbmate_uat`.`sales_uat` `` → real rows; model passes BARE `sales_uat` → DB lookup recovers the dataset → same valid ref (proves the fix#2 lookup + fallback) ✓
+- **Cost safety through `executeQuery` (not just provider)**: an over-budget scan (12 GB estimate) returned `status: blocked` at the daily-byte-budget layer **before running** — zero cost. (`COUNT(*)` was a false alarm — BQ bills 0 bytes for metadata-only counts, so it correctly ran.) ✓
+- **OLTP no-regression re-UAT** on real sqlite (`75ba4e61` Demo Online Shop): `getSchemaSummary` → BARE names (no dataset prefix); `detectAnomalies` orders.total_amt → total 5000, min 7.2 max 3052.29, σ 27, **MAD 22** (matches pre-fix numbers exactly); monitor baseline diff → `method:"baseline"` on ≥14 obs, legacy-threshold fallback on cold-start ✓
+
+Cleanup: UAT connection deleted from the app DB, BQ dataset dropped — no residual rows or storage cost.
+
 ## Next
 
 1. **Watch multi-dataset BigQuery projects**: schema-pruning-service collisions are documented but not fixed. Will surface if a user projects has tables with shared names across datasets.
