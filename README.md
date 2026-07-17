@@ -69,6 +69,30 @@ Chi tiết: [Metrics & digest trong user guide](docs/user-guide.md) · [features
 
 ---
 
+## Phân tích sâu (OLAP) — anomaly, monitor, warehouse
+
+Không chỉ chat one-shot. My DB Mate làm được các tác vụ phân tích sâu, chạy cả trên warehouse (BigQuery) với chi phí kiểm soát chặt.
+
+**Phát hiện bất thường có baseline (không "ML mờ").** Tab Data Health kiểm outlier từng cột bằng **median-absolute-deviation (MAD)** — bền hơn ±3σ (σ bị chính outlier làm phồng lên và che mất bất thường thật). Báo cả số σ-outlier lẫn số MAD-outlier; min/max chính xác.
+
+![Data Health: anomaly check với robust MAD baseline](docs/images/anomaly-health.png)
+
+**Data-drift monitor.** Theo dõi bảng theo lịch cron: snapshot rowCount/null-rate/avg mỗi lần chạy, so với **baseline cuộn (rolling MAD)** của các snapshot trước (bắt được "trôi chậm" mà diff-với-lần-trước bỏ sót), alert khi lệch ngưỡng → POST webhook.
+
+![Data monitor: cron + watch tables + thresholds](docs/images/data-monitor.png)
+
+**Investigate mode (agentic).** Thay vì dịch 1 câu → 1 SQL, agent tự lập kế hoạch → query → quan sát → tinh chỉnh qua nhiều bước để trả lời câu hỏi phân tích thật.
+
+![Investigate mode: agent nhiều bước](docs/images/investigate-mode.png)
+
+**BigQuery với cost-safety 3 lớp.** Warehouse tính tiền theo bytes quét, nên mỗi query interactive được **dry-run ước tính + xác nhận** trước khi chạy; mỗi job mang **hard cap `maximumBytesBilled`** (BigQuery tự từ chối trước khi tính tiền nếu vượt); và phân tích nền (dashboards/metrics/reports/anomaly/monitor) đi qua **daily byte-budget** — với **ưu tiên công bằng**: tác vụ bảo trì (monitor/anomaly) chỉ được dùng tối đa nửa budget ngày, chừa chỗ cho refresh quan trọng hơn.
+
+![BigQuery: connection form + cost-safety (per-query cap, daily budget, offline mode)](docs/images/bigquery-cost-safety.png)
+
+Chi tiết: [features.md](docs/features.md) · [user-guide.md](docs/user-guide.md).
+
+---
+
 ## Giấy phép
 
 Phát hành theo **[PolyForm Noncommercial License 1.0.0](LICENSE.md)** — tự do dùng, sửa, chia sẻ cho mọi mục đích **phi thương mại** (cá nhân, học tập, nghiên cứu, tổ chức phi lợi nhuận).
