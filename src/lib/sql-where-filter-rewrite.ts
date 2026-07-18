@@ -47,7 +47,7 @@ export function rewriteWithWhereFilter(
   const colRef = { type: 'column_ref', table: null, column };
   const predicate = value === null
     ? { type: 'unary_expr', operator: 'IS NULL', expr: colRef }
-    : { type: 'binary_expr', operator: '=', left: colRef, right: valueNode(value) };
+    : { type: 'binary_expr', operator: '=', left: colRef, right: valueNode(value, dialect) };
 
   const existing = stmt.where;
   stmt.where = existing
@@ -62,14 +62,25 @@ export function rewriteWithWhereFilter(
   }
 }
 
-function valueNode(value: string | number | boolean): Record<string, unknown> {
+/** Dialects whose default string literals treat backslash as an escape char
+ *  (MySQL, BigQuery), so `\'` collapses to a literal quote and the NEXT quote
+ *  closes the string — quote-doubling alone leaves an injection hole there. */
+const BACKSLASH_ESCAPE_DIALECTS = new Set(['mysql', 'bigquery']);
+
+function valueNode(value: string | number | boolean, dialect: string): Record<string, unknown> {
   if (typeof value === 'number') return { type: 'number', value };
   if (typeof value === 'boolean') return { type: 'bool', value };
-  // node-sql-parser's sqlify does NOT escape a raw single quote in a
-  // single_quote_string node (verified across pg/mysql/sqlite/mssql/bigquery):
-  // it emits `'O'Brien'` verbatim. It DOES round-trip a value that already
-  // contains a doubled quote. So we double the quotes ourselves — this is the
-  // escaping, not sqlify. Backslashes are left as-is (standard SQL string
-  // literals don't treat `\` specially; the doubled-quote is what matters).
-  return { type: 'single_quote_string', value: String(value).replace(/'/g, "''") };
+  // node-sql-parser's sqlify emits the value verbatim inside a single_quote_string
+  // node (no escaping — verified across all five parser dialects), so WE escape.
+  // Double every single quote (stops the primary breakout on every dialect).
+  // On MySQL/BigQuery, whose string literals ALSO treat `\` as an escape, a bare
+  // `\'` would still break out, so double backslashes there too — FIRST, so the
+  // quotes we add next aren't themselves re-escaped. We do NOT double backslashes
+  // on the other dialects: with standard_conforming_strings (PG/SQLite/MSSQL
+  // default) `\` is an ordinary character, and doubling it would corrupt a value
+  // that legitimately contains a backslash.
+  let s = String(value);
+  if (BACKSLASH_ESCAPE_DIALECTS.has(dialect)) s = s.replace(/\\/g, '\\\\');
+  s = s.replace(/'/g, "''");
+  return { type: 'single_quote_string', value: s };
 }

@@ -197,11 +197,16 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
   let filterReason: string | undefined;
   if (activeFilters.length > 0) {
     const conn = await getConnection(w.connectionId);
-    filtered = true;
-    for (const f of activeFilters) {
-      const r = rewriteWithWhereFilter(sql, f.column, f.value, conn.dialect);
-      if ('error' in r) { filtered = false; filterReason = r.error; break; }
-      sql = r.sql;
+    if (!conn) {
+      filtered = false;
+      filterReason = 'connection unavailable';
+    } else {
+      filtered = true;
+      for (const f of activeFilters) {
+        const r = rewriteWithWhereFilter(sql, f.column, f.value, conn.dialect);
+        if ('error' in r) { filtered = false; filterReason = r.error; break; }
+        sql = r.sql;
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { DashboardWidget, type WidgetData } from '../../../components/dashboard-widget';
 import { FormModal } from '../../../components/form-modal';
@@ -38,7 +38,10 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   // generation guards against a slow earlier response overwriting a newer one.
   const [crossFilters, setCrossFilters] = useState<{ column: string; value: string | number | boolean | null; label: string; sourceWidgetId: string }[]>([]);
   const [filterResults, setFilterResults] = useState<Record<string, { columns: string[]; rows: unknown[][]; filtered: boolean; reason?: string }>>({});
-  const [filterGen, setFilterGen] = useState(0);
+  // Monotonic token in a ref (not state) so every apply/clear gets a DISTINCT
+  // value even when several fire in the same tick before React re-renders —
+  // a stale in-flight response then can't overwrite a newer one.
+  const filterGenRef = useRef(0);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/dashboards/${id}`);
@@ -124,8 +127,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
    *  and lives below the loading early-return. */
   async function runCrossFilters(filters: typeof crossFilters) {
     if (!dash) return;
-    const gen = filterGen + 1;
-    setFilterGen(gen);
+    // Distinct token per call, incremented imperatively — covers same-tick calls
+    // that a state-derived counter would collide on.
+    const gen = ++filterGenRef.current;
     if (filters.length === 0) { setFilterResults({}); return; }
     const payload = filters.map((f) => ({ column: f.column, value: f.value }));
     const sourceIds = new Set(filters.map((f) => f.sourceWidgetId));
@@ -140,11 +144,8 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
       if (d.status === 'ok') next[w.id] = { columns: d.columns, rows: d.rows, filtered: d.filtered !== false, reason: d.filterReason };
       else next[w.id] = { columns: [], rows: [], filtered: false, reason: d.message };
     }));
-    // Ignore if a newer apply started while we awaited.
-    setFilterGen((cur) => {
-      if (cur === gen) setFilterResults(next);
-      return cur;
-    });
+    // Only apply if no newer run (or clear) started while we awaited.
+    if (gen === filterGenRef.current) setFilterResults(next);
   }
 
   /** A datapoint was clicked in a widget → add/replace the filter for that column
@@ -169,6 +170,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   }
 
   function clearCrossFilters() {
+    // Bump the token so any in-flight apply that resolves after this can't
+    // repopulate filterResults.
+    filterGenRef.current++;
     setCrossFilters([]);
     setFilterResults({});
   }

@@ -56,6 +56,31 @@ describe('rewriteWithWhereFilter — happy paths', () => {
     // The whole payload stays one escaped string literal — no stray operator.
     expect(s).toContain("'x'' OR ''1''=''1'");
   });
+
+  // MySQL/BigQuery treat `\` as a string escape, so a bare `\'` payload would
+  // break out under quote-doubling alone. Backslashes are doubled there; re-parse
+  // the emitted SQL in the SAME dialect and assert the predicate stayed `=`
+  // (the injected `OR 1=1` never becomes the top-level WHERE operator).
+  for (const dialect of ['mysql', 'bigquery'] as const) {
+    it(`neutralizes a backslash-quote breakout on ${dialect}`, async () => {
+      const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', "\\' OR 1=1 -- ", dialect));
+      const { default: pkg } = await import('node-sql-parser');
+      const db = dialect === 'mysql' ? 'MySQL' : 'BigQuery';
+      const reparsed = new pkg.Parser().astify(s, { database: db }) as { where?: { operator?: string } };
+      expect(reparsed.where?.operator).toBe('=');
+    });
+  }
+
+  // On standard-conforming dialects (PG/SQLite/MSSQL) `\` is an ordinary char, so
+  // a backslash in the value must be preserved verbatim (NOT doubled) — doubling
+  // would change which rows match.
+  for (const dialect of ['postgres', 'sqlite', 'mssql'] as const) {
+    it(`preserves a literal backslash (not doubled) on ${dialect}`, () => {
+      const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', 'C:\\path', dialect));
+      expect(s).toContain("'C:\\path'");
+      expect(s).not.toContain('C:\\\\path');
+    });
+  }
 });
 
 describe('rewriteWithWhereFilter — all dialects', () => {
