@@ -227,7 +227,9 @@ export function nextBucketDate(at: Date, grain: MetricGrain): Date {
   const d = new Date(at.getTime());
   if (grain === 'day') d.setUTCDate(d.getUTCDate() + 1);
   else if (grain === 'week') d.setUTCDate(d.getUTCDate() + 7);
-  else d.setUTCMonth(d.getUTCMonth() + 1);
+  // Clamp to day 1 BEFORE stepping the month so a month-end label (e.g. Jan 31)
+  // can't overflow into March and skip February's cohort.
+  else { d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1); }
   return d;
 }
 

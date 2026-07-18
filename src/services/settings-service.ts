@@ -59,7 +59,12 @@ export async function saveLlmSettings(input: { provider: LlmProviderId; model: s
     apiKeyEncrypted = encryptSecret('ollama');
   } else {
     const current = await getLlmSettings();
-    if (!current) throw new Error('API key required');
+    // Only reuse a stored key for the SAME keyed provider. The ollama placeholder
+    // is never a real key, and a DIFFERENT provider's key won't authenticate —
+    // keeping either would 200 at save then 401 on every LLM call.
+    if (!current || current.provider === 'ollama' || current.provider !== input.provider) {
+      throw new Error('API key required');
+    }
     apiKeyEncrypted = encryptSecret(current.apiKey);
   }
   const value = JSON.stringify({

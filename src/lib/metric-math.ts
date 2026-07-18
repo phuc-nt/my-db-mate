@@ -213,6 +213,23 @@ export interface MetricForecast {
   vsGoal: 'on-track' | 'at-risk' | null;
 }
 
+/** Parse a metric time-bucket label to a UTC-anchored Date so the season bucket
+ *  (getUTCDay/getUTCMonth) is stable regardless of the server/browser timezone —
+ *  a space-separated SQL timestamp would otherwise be parsed as LOCAL time and
+ *  could land a daily metric in the wrong weekday cohort across DST. Extracts the
+ *  leading Y-M-D and anchors at UTC noon (noon avoids any ±date drift). */
+function parseBucketDate(t: string): Date | null {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(t.trim());
+  if (!m) {
+    const d = new Date(t);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const day = m[3] ? Number(m[3]) : 1;
+  return new Date(Date.UTC(y, mo, day, 12));
+}
+
 /** Adapter: MetricPoint series → seasonal-naive forecast for the next bucket.
  *  Pure and deterministic (robust-stats); the LLM only ever narrates this number.
  *  Null on cold-start — callers must render nothing, not zero. */
@@ -223,8 +240,8 @@ export function computeForecast(
   target?: number | null,
 ): MetricForecast | null {
   const pts = series
-    .map((p) => ({ value: p.v, at: new Date(p.t) }))
-    .filter((p) => !Number.isNaN(p.at.getTime()));
+    .map((p) => ({ value: p.v, at: parseBucketDate(p.t) }))
+    .filter((p): p is { value: number; at: Date } => p.at != null);
   const f = seasonalNaiveForecast(pts, grain);
   if (!f) return null;
   const dir = direction === 'up_good' ? 'up' : direction === 'down_good' ? 'down' : 'neutral';

@@ -504,7 +504,9 @@ describe('robust-stats', () => {
     it('nextBucketDate steps one grain in UTC', () => {
       expect(nextBucketDate(new Date(Date.UTC(2026, 0, 31)), 'day').toISOString()).toBe('2026-02-01T00:00:00.000Z');
       expect(nextBucketDate(new Date(Date.UTC(2026, 0, 1)), 'week').getUTCDate()).toBe(8);
-      expect(nextBucketDate(new Date(Date.UTC(2026, 11, 15)), 'month').toISOString()).toBe('2027-01-15T00:00:00.000Z');
+      // month step clamps to day 1 first, so month-end labels don't overflow.
+      expect(nextBucketDate(new Date(Date.UTC(2026, 11, 15)), 'month').getUTCMonth()).toBe(0); // Jan
+      expect(nextBucketDate(new Date(Date.UTC(2026, 0, 31)), 'month').getUTCMonth()).toBe(1); // Jan 31 → Feb, NOT Mar
     });
   });
 

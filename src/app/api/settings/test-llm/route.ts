@@ -12,10 +12,16 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const body = await req.json();
   try {
+    const providers = ['openrouter', 'openai', 'anthropic', 'google', 'ollama'];
+    if (!providers.includes(body.provider)) return NextResponse.json({ ok: false, error: 'unknown provider' }, { status: 400 });
     let apiKey: string = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
     if (!apiKey && body.provider !== 'ollama') {
       const stored = await getLlmSettings();
-      if (!stored) return NextResponse.json({ ok: false, error: 'API key required' }, { status: 400 });
+      // Only reuse a stored key for the SAME keyed provider (the ollama placeholder
+      // or a different provider's key would test with the wrong secret).
+      if (!stored || stored.provider === 'ollama' || stored.provider !== body.provider) {
+        return NextResponse.json({ ok: false, error: 'API key required' }, { status: 400 });
+      }
       apiKey = stored.apiKey;
     }
     const baseUrl = body.provider === 'ollama' && typeof body.baseUrl === 'string' && body.baseUrl.trim() ? body.baseUrl.trim() : undefined;

@@ -273,6 +273,22 @@ describe('computeForecast', () => {
     expect(computeForecast([{ t: 'not-a-date', v: 1 }], 'day', 'neutral', null)).toBeNull();
   });
 
+  it('parses space-separated SQL timestamps to a stable UTC bucket (no tz drift)', () => {
+    // A full daily series over 4 weeks via SQL-style 'YYYY-MM-DD HH:MM:SS' labels,
+    // ending on a Sunday so the forecast targets Monday. Parsed at UTC noon → the
+    // Monday cohort is stable regardless of host timezone (a LOCAL parse could
+    // split it across a DST boundary and drop the method to mad-fallback/null).
+    const series: { t: string; v: number }[] = [];
+    for (let d = 0; d < 28; d++) {
+      const at = new Date(Date.UTC(2026, 0, 5 + d)); // start Mon Jan 5
+      series.push({ t: `${at.toISOString().slice(0, 10)} 00:00:00`, v: at.getUTCDay() === 1 ? 100 : 50 });
+    }
+    const f = computeForecast(series, 'day', 'up_good', null);
+    expect(f).not.toBeNull();
+    expect(f!.method).toBe('seasonal');
+    expect(f!.point).toBe(100); // the 4 Mondays, all 100
+  });
+
   it('neutral direction never judges the goal', () => {
     const series = Array.from({ length: 8 }, (_, i) => ({ t: new Date(Date.UTC(2026, 0, 1 + i * 7)).toISOString(), v: 10 }));
     const f = computeForecast(series, 'week', 'neutral', 5);
