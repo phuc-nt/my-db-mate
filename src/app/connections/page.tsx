@@ -18,6 +18,8 @@ const BLANK = {
   // BigQuery (write-only service-account JSON, same "blank keeps current" pattern as password/SSH key).
   bqProjectId: '', bqServiceAccountJson: '', bqMaxBytesPerQuery: String(BQ_DEFAULT_MAX_BYTES),
   bqDailyBytesBudget: String(BQ_DEFAULT_DAILY_BUDGET), bqOfflineMode: false,
+  // DuckDB file: which source shape + the path (must be inside DUCKDB_DATA_DIR).
+  duckdbMode: 'parquet' as 'duckdb' | 'parquet' | 'csv-dir',
 };
 
 export default function ConnectionsPage() {
@@ -34,7 +36,7 @@ export default function ConnectionsPage() {
 
   /** Switching engine sets the conventional default port (like DBeaver). */
   function setEngine(engine: Engine) {
-    setForm((f) => ({ ...f, engine, port: engine === 'sqlite' || engine === 'bigquery' ? '' : String(DEFAULT_PORT[engine]) }));
+    setForm((f) => ({ ...f, engine, port: engine === 'sqlite' || engine === 'bigquery' || engine === 'duckdb' ? '' : String(DEFAULT_PORT[engine as 'postgres' | 'mysql' | 'mssql']) }));
   }
 
   /** Picking a provider preset pre-fills engine/port/SSL and shows its note.
@@ -72,6 +74,9 @@ export default function ConnectionsPage() {
     const ssh = form.sshOn && form.sshHost.trim()
       ? { sshHost: form.sshHost.trim(), sshPort: Number(form.sshPort) || 22, sshUser: form.sshUser.trim(), sshAuthMethod: form.sshAuthMethod }
       : {};
+    if (form.engine === 'duckdb') {
+      return { name: form.name, kind, dialect: 'duckdb', config: { mode: form.duckdbMode, path: form.path.trim() } };
+    }
     const config = form.engine === 'sqlite'
       ? { path: form.path }
       : {
@@ -140,6 +145,7 @@ export default function ConnectionsPage() {
       bqMaxBytesPerQuery: String(c.bigqueryMaxBytesPerQuery ?? BQ_DEFAULT_MAX_BYTES),
       bqDailyBytesBudget: String(c.bigqueryDailyBytesBudget ?? BQ_DEFAULT_DAILY_BUDGET),
       bqOfflineMode: c.bigqueryOfflineMode ?? false,
+      duckdbMode: (cfg.mode === 'duckdb' || cfg.mode === 'csv-dir' ? cfg.mode : 'parquet') as 'duckdb' | 'parquet' | 'csv-dir',
     });
     setPresetNote('');
     setMsg('Editing — leave password blank to keep the current one.');
@@ -165,6 +171,7 @@ export default function ConnectionsPage() {
 
   const isSqlite = form.engine === 'sqlite';
   const isBigQuery = form.engine === 'bigquery';
+  const isDuckDb = form.engine === 'duckdb';
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -178,16 +185,16 @@ export default function ConnectionsPage() {
 
         {/* Engine picker */}
         <div className="mb-3 flex gap-2">
-          {(['postgres', 'mysql', 'sqlite', 'mssql', 'bigquery'] as Engine[]).map((e) => (
+          {(['postgres', 'mysql', 'sqlite', 'mssql', 'bigquery', 'duckdb'] as Engine[]).map((e) => (
             <button key={e} onClick={() => setEngine(e)} disabled={!!editingId}
               className={`rounded border px-3 py-1.5 text-sm capitalize disabled:opacity-50 ${form.engine === e ? 'border-blue-600 bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300' : ''}`}>
-              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : e === 'sqlite' ? '📄 SQLite' : e === 'mssql' ? '🟦 SQL Server' : '🔷 BigQuery'}
+              {e === 'postgres' ? '🐘 PostgreSQL' : e === 'mysql' ? '🐬 MySQL' : e === 'sqlite' ? '📄 SQLite' : e === 'mssql' ? '🟦 SQL Server' : e === 'bigquery' ? '🔷 BigQuery' : '🦆 DuckDB files'}
             </button>
           ))}
         </div>
 
         {/* Provider preset (TCP only) — fills engine/port/SSL, then everything stays editable. */}
-        {!isSqlite && !isBigQuery && !editingId && (
+        {!isSqlite && !isBigQuery && !isDuckDb && !editingId && (
           <select defaultValue="generic" onChange={(e) => applyPreset(e.target.value)}
             className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900">
             <option value="generic">Provider preset (optional)…</option>
@@ -199,7 +206,7 @@ export default function ConnectionsPage() {
         {presetNote && <p className="mb-2 text-xs text-neutral-500">{presetNote}</p>}
 
         {/* Connection-string paste (TCP only) */}
-        {!isSqlite && !isBigQuery && !editingId && (
+        {!isSqlite && !isBigQuery && !isDuckDb && !editingId && (
           <input className="mb-2 w-full rounded border p-2 text-sm dark:bg-neutral-900"
             placeholder="Paste connection string (postgres://user:pass@host:5432/db?sslmode=require) — optional"
             onChange={(e) => pasteUrl(e.target.value)} />
@@ -209,6 +216,23 @@ export default function ConnectionsPage() {
           <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           {isSqlite ? (
             <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="Absolute path to .db" value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} />
+          ) : isDuckDb ? (
+            <>
+              <div className="col-span-2 flex gap-2 text-sm" data-testid="duckdb-mode">
+                {(['parquet', 'csv-dir', 'duckdb'] as const).map((m) => (
+                  <button key={m} type="button" onClick={() => setForm({ ...form, duckdbMode: m })} disabled={!!editingId}
+                    className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${form.duckdbMode === m ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : ''}`}>
+                    {m === 'parquet' ? '.parquet file' : m === 'csv-dir' ? 'CSV/Parquet folder' : '.duckdb file'}
+                  </button>
+                ))}
+              </div>
+              <input className="col-span-2 rounded border p-2 font-mono text-sm dark:bg-neutral-900"
+                placeholder={form.duckdbMode === 'csv-dir' ? 'Path to a folder of .csv/.parquet files' : `Path to the ${form.duckdbMode === 'duckdb' ? '.duckdb' : '.parquet'} file`}
+                value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} />
+              <p className="col-span-2 text-xs text-neutral-500">
+                Files are read <b>locally, read-only</b> — nothing is sent anywhere. The path must be inside the app&rsquo;s data directory (<code>DUCKDB_DATA_DIR</code>, default <code>./data-files</code>); copy your files there (or mount it in Docker). The filesystem is locked before any query runs, so a query can never read another file.
+              </p>
+            </>
           ) : isBigQuery ? (
             <>
               <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="GCP project ID" value={form.bqProjectId} onChange={(e) => setForm({ ...form, bqProjectId: e.target.value })} />

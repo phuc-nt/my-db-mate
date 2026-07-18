@@ -13,7 +13,7 @@ import type { ConnectionProvider } from './connection-providers/provider-interfa
 
 export interface CreateConnectionInput {
   name: string;
-  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http' | 'mssql-driver' | 'bigquery-driver';
+  kind: 'tcp-driver' | 'sqlite-file' | 'remote-http' | 'mssql-driver' | 'bigquery-driver' | 'duckdb-file';
   dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'bigquery';
   config: Record<string, unknown>;
   /** Plaintext secret (password/token); encrypted before storage. */

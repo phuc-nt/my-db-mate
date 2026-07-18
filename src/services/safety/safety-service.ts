@@ -38,6 +38,10 @@ export const PARSER_DIALECT: Record<Dialect, string> = {
   // the BigQuery connector plan owns its own cost-safety path). Verified node-sql-parser
   // 5.4.0 does accept 'bigquery' as a `database` option value, for if this ever changes.
   bigquery: 'bigquery',
+  // node-sql-parser has no DuckDB grammar; postgresql is the closest superset for the
+  // read-only SELECT surface we allow. DuckDB-specific syntax that postgresql can't
+  // parse is REJECTED (fail-closed) rather than passed through — safer than guessing.
+  duckdb: 'postgresql',
 };
 
 /** Canonical SQL form for dedup comparison — collapse whitespace, trim, lowercase,

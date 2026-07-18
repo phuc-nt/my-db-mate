@@ -5,7 +5,7 @@
  * schema introspection, and query execution so the rest of the app is dialect-agnostic.
  */
 
-export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'bigquery';
+export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'bigquery' | 'duckdb';
 
 export interface ColumnInfo {
   tableName: string;
