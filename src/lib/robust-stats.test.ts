@@ -8,6 +8,9 @@ import {
   seasonalNaive,
   seasonKey,
   cusum,
+  seasonalNaiveForecast,
+  nextBucketDate,
+  forecastVsGoal,
   MIN_MAD_OBS,
   MIN_SEASON_BUCKET_OBS,
 } from './robust-stats';
@@ -449,6 +452,77 @@ describe('robust-stats', () => {
       expect(verdict.isOutlier).toBe(false);
       // and a value that matches the WEEKEND baseline is abnormal for a weekday
       expect(seasonalNaive(history, 'dow', 80, testDate, 3).isOutlier).toBe(true);
+    });
+  });
+
+  describe('seasonalNaiveForecast', () => {
+    // A daily series where every Monday (dow=1) is ~100 and other days ~50. The
+    // forecast for the next bucket after a Sunday should be the Monday value.
+    const dailySeries = () => {
+      const out: { value: number; at: Date }[] = [];
+      // Start Mon 2026-01-05 (UTC). 4 full weeks.
+      for (let w = 0; w < 4; w++) {
+        for (let d = 0; d < 7; d++) {
+          const at = new Date(Date.UTC(2026, 0, 5 + w * 7 + d));
+          const dow = at.getUTCDay();
+          out.push({ value: dow === 1 ? 100 + w : 50 + w, at }); // Monday distinct
+        }
+      }
+      return out;
+    };
+
+    it('forecasts the next bucket from its own season (Monday → Monday median)', () => {
+      const series = dailySeries();
+      // Last point is Sun 2026-02-01 (dow 0); next bucket is Mon 2026-02-02 (dow 1).
+      const f = seasonalNaiveForecast(series, 'day');
+      expect(f).not.toBeNull();
+      expect(f!.method).toBe('seasonal');
+      expect(f!.seasonBucket).toBe(1); // Monday
+      expect(f!.point).toBe(median([100, 101, 102, 103])); // the 4 Mondays
+      expect(f!.n).toBe(4);
+    });
+
+    it('returns null on cold-start (too few in the target bucket)', () => {
+      const series = [
+        { value: 10, at: new Date(Date.UTC(2026, 0, 5)) },
+        { value: 11, at: new Date(Date.UTC(2026, 0, 6)) },
+      ];
+      expect(seasonalNaiveForecast(series, 'day')).toBeNull();
+    });
+
+    it('week grain uses global median (no natural season)', () => {
+      const series = Array.from({ length: 6 }, (_, i) => ({ value: 10 + i, at: new Date(Date.UTC(2026, 0, 1 + i * 7)) }));
+      const f = seasonalNaiveForecast(series, 'week');
+      expect(f!.method).toBe('global-median');
+      expect(f!.point).toBe(median([10, 11, 12, 13, 14, 15]));
+    });
+
+    it('is silent on empty series', () => {
+      expect(seasonalNaiveForecast([], 'month')).toBeNull();
+    });
+
+    it('nextBucketDate steps one grain in UTC', () => {
+      expect(nextBucketDate(new Date(Date.UTC(2026, 0, 31)), 'day').toISOString()).toBe('2026-02-01T00:00:00.000Z');
+      expect(nextBucketDate(new Date(Date.UTC(2026, 0, 1)), 'week').getUTCDate()).toBe(8);
+      // month step clamps to day 1 first, so month-end labels don't overflow.
+      expect(nextBucketDate(new Date(Date.UTC(2026, 11, 15)), 'month').getUTCMonth()).toBe(0); // Jan
+      expect(nextBucketDate(new Date(Date.UTC(2026, 0, 31)), 'month').getUTCMonth()).toBe(1); // Jan 31 → Feb, NOT Mar
+    });
+  });
+
+  describe('forecastVsGoal', () => {
+    const fc = { point: 90, band: 5, method: 'seasonal' as const, n: 4 };
+    it('up direction: below goal is at-risk', () => {
+      expect(forecastVsGoal(fc, 100, 'up')).toBe('at-risk');
+      expect(forecastVsGoal({ ...fc, point: 110 }, 100, 'up')).toBe('on-track');
+    });
+    it('down direction: above goal is at-risk', () => {
+      expect(forecastVsGoal({ ...fc, point: 110 }, 100, 'down')).toBe('at-risk');
+      expect(forecastVsGoal(fc, 100, 'down')).toBe('on-track');
+    });
+    it('neutral / no goal → no verdict', () => {
+      expect(forecastVsGoal(fc, 100, 'neutral')).toBeNull();
+      expect(forecastVsGoal(fc, null, 'up')).toBeNull();
     });
   });
 });

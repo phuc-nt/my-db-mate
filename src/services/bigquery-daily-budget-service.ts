@@ -62,7 +62,7 @@ export function effectiveBudget(budgetBytes: number, actor: string, backgroundBu
  *  say WHY it was throttled even when the budget is 0 (where `ceiling < budget` can't tell). */
 export function isLowTierActor(actor: string, backgroundBudgeted?: boolean): boolean {
   if (!backgroundBudgeted) return false;
-  return actor === 'monitor' || actor === 'anomaly';
+  return actor === 'monitor' || actor === 'anomaly' || actor === 'profiling';
 }
 
 /** Ensure the (connection, day) ledger row exists so the conditional UPDATE in

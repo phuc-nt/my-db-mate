@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Line, LineChart, ResponsiveContainer } from 'recharts';
-import { formatMetricValue, type MetricPoint } from '../lib/metric-math';
+import { computeForecast, formatMetricValue, type MetricPoint, type MetricDirection, type TimeGrain } from '../lib/metric-math';
 
 export interface MetricRowUI {
   id: string;
@@ -31,6 +31,25 @@ export function MetricCard({ connectionId, metric, onEdit, onDelete }: {
       .then((d) => (d.error ? setError(d.error) : setRun(d)))
       .catch((e) => setError(String(e)));
   }, [connectionId, metric.id]);
+
+  // Deterministic next-bucket forecast (seasonal-naive ± MAD) computed from the
+  // already-fetched series — zero extra queries. Null on cold-start → no render.
+  const forecast = useMemo(() => run
+    ? computeForecast(run.series, (metric.timeGrain as TimeGrain) || 'month', metric.direction as MetricDirection, metric.target)
+    : null,
+  [run, metric.timeGrain, metric.direction, metric.target]);
+
+  // Sparkline data: real series plus one dashed forecast point. The last real
+  // point carries BOTH keys so the dashed segment connects to the solid line.
+  const sparkData = useMemo(() => {
+    if (!run) return [];
+    const pts: { v?: number; f?: number }[] = run.series.map((p) => ({ v: p.v }));
+    if (forecast && pts.length > 0) {
+      pts[pts.length - 1] = { ...pts[pts.length - 1], f: run.series[run.series.length - 1].v };
+      pts.push({ f: forecast.point });
+    }
+    return pts;
+  }, [run, forecast]);
 
   // Delta badge color follows the metric's direction: growth is only "good"
   // when the owner said up is good.
@@ -85,11 +104,25 @@ export function MetricCard({ connectionId, metric, onEdit, onDelete }: {
           {run.series.length > 1 && (
             <div className="mt-1 h-10">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={run.series}>
+                <LineChart data={sparkData}>
                   <Line dataKey="v" stroke="#2563eb" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  {forecast && (
+                    <Line dataKey="f" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 2 }} isAnimationActive={false} />
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          )}
+          {forecast && (
+            <p className="mt-0.5 text-[11px] text-neutral-400" data-testid="metric-forecast"
+              title={`Seasonal-naive forecast (${forecast.method}, ${forecast.n} obs): median of prior same-${metric.timeGrain === 'day' ? 'weekday' : metric.timeGrain === 'month' ? 'month' : 'bucket'} values ± MAD`}>
+              next ~{formatMetricValue(forecast.point)} ±{formatMetricValue(forecast.band)}
+              {forecast.vsGoal && (
+                <span className={forecast.vsGoal === 'at-risk' ? ' text-red-500' : ' text-green-600'}>
+                  {' '}· forecast {forecast.vsGoal}
+                </span>
+              )}
+            </p>
           )}
         </>
       )}

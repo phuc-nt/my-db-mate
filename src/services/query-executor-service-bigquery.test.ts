@@ -192,9 +192,22 @@ describe('Group A services refuse BigQuery connections cleanly (Phase 6)', () =>
     await db.delete(connections).where(eq(connections.id, conn.id));
   });
 
-  it('profileColumn throws BigQueryNotSupportedError without ever calling executeReadOnly', async () => {
-    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.toThrow(/not yet supported for BigQuery/);
-    expect(createQueryJobMock).not.toHaveBeenCalled();
+  it('profileColumn on BigQuery routes through the budget path (no longer a hard Group-A block)', async () => {
+    // Column profiling is now budgeted like anomaly/monitor: with a 0-byte daily
+    // budget every read is admission-blocked, so the profile fails with the budget
+    // reason — NOT the old "not yet supported" guard — and no real job ever runs
+    // (only dry-run estimates are issued).
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 0 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('1000');
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.toThrow(/daily byte budget exceeded/);
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.not.toThrow(/not yet supported/);
+  });
+
+  it('profileColumn reserves as the low-tier maintenance actor (half-budget ceiling)', async () => {
+    // Budget 100; estimate 60 exceeds the 50% low-tier ceiling for 'profiling'.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.toThrow(/low-priority ceiling/);
   });
 
   it('detectAnomalies on BigQuery routes through the budget path (no longer a hard Group-A block) and never crashes', async () => {

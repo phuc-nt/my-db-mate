@@ -14,18 +14,22 @@ import { db } from '../db/client';
 import { appSettings } from '../db/app-settings-schema';
 import { encryptSecret, decryptSecret } from './crypto/credential-cipher';
 
-export type LlmProviderId = 'openrouter' | 'openai' | 'anthropic' | 'google';
+export type LlmProviderId = 'openrouter' | 'openai' | 'anthropic' | 'google' | 'ollama';
 
 export interface LlmSettings {
   provider: LlmProviderId;
   model: string;
-  /** Decrypted key — server-side use only. */
+  /** Decrypted key — server-side use only. Ollama stores a placeholder (the
+   *  local server ignores it); it is never a real secret there. */
   apiKey: string;
+  /** OpenAI-compatible endpoint base URL — Ollama only. Not a secret (it's the
+   *  user's own localhost/LAN server), stored in plain JSON. */
+  baseUrl?: string;
 }
 
 const KEY = 'llm';
 
-interface StoredLlm { provider: LlmProviderId; model: string; apiKeyEncrypted: string }
+interface StoredLlm { provider: LlmProviderId; model: string; apiKeyEncrypted: string; baseUrl?: string }
 
 const g = globalThis as unknown as { __mdmLlmSettingsCache?: LlmSettings | null | undefined };
 
@@ -39,22 +43,34 @@ export async function getLlmSettings(): Promise<LlmSettings | null> {
     provider: stored.provider,
     model: stored.model,
     apiKey: decryptSecret(stored.apiKeyEncrypted),
+    ...(stored.baseUrl ? { baseUrl: stored.baseUrl } : {}),
   };
   g.__mdmLlmSettingsCache = resolved;
   return resolved;
 }
 
-/** Save LLM settings. Empty apiKey keeps the previously stored key (edit-safe). */
-export async function saveLlmSettings(input: { provider: LlmProviderId; model: string; apiKey?: string }): Promise<void> {
+/** Save LLM settings. Empty apiKey keeps the previously stored key (edit-safe).
+ *  Ollama needs no key — the local server ignores it, so a placeholder is stored. */
+export async function saveLlmSettings(input: { provider: LlmProviderId; model: string; apiKey?: string; baseUrl?: string }): Promise<void> {
   let apiKeyEncrypted: string;
   if (input.apiKey?.trim()) {
     apiKeyEncrypted = encryptSecret(input.apiKey.trim());
+  } else if (input.provider === 'ollama') {
+    apiKeyEncrypted = encryptSecret('ollama');
   } else {
     const current = await getLlmSettings();
-    if (!current) throw new Error('API key required');
+    // Only reuse a stored key for the SAME keyed provider. The ollama placeholder
+    // is never a real key, and a DIFFERENT provider's key won't authenticate —
+    // keeping either would 200 at save then 401 on every LLM call.
+    if (!current || current.provider === 'ollama' || current.provider !== input.provider) {
+      throw new Error('API key required');
+    }
     apiKeyEncrypted = encryptSecret(current.apiKey);
   }
-  const value = JSON.stringify({ provider: input.provider, model: input.model, apiKeyEncrypted } satisfies StoredLlm);
+  const value = JSON.stringify({
+    provider: input.provider, model: input.model, apiKeyEncrypted,
+    ...(input.provider === 'ollama' && input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
+  } satisfies StoredLlm);
   await db.insert(appSettings).values({ key: KEY, value })
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
   g.__mdmLlmSettingsCache = undefined; // re-read on next call
@@ -75,5 +91,6 @@ export async function getLlmSettingsPublic() {
     provider: s.provider,
     model: s.model,
     keyTail: s.apiKey.slice(-4),
+    ...(s.baseUrl ? { baseUrl: s.baseUrl } : {}),
   };
 }
