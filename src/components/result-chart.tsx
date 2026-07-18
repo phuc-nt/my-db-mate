@@ -8,16 +8,24 @@ import {
 import { inferChartSpec, type ChartSpec } from '../services/chart-spec-service';
 import { pivotLongToWide } from '../lib/chart-data';
 import { formatMetricValue } from '../lib/metric-math';
+import { ScatterChartView, ComboChartView, TreemapChartView } from './charts/scatter-combo-treemap-charts';
+import { HeatmapMatrixChart } from './charts/heatmap-matrix-chart';
 
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#0d9488', '#9333ea', '#ca8a04', '#475569'];
+
+/** onDatumClick carries the RAW value (not the display label) so a consumer can
+ *  build a correct SQL literal. No-op by default. */
+type DatumClick = (column: string, rawValue: unknown) => void;
 
 /**
  * Renders a result set as a chart. `spec` (persisted picker choice) wins over
  * inference; absent/invalid columns fall back to the inferred default so old
- * widgets and ad-hoc results keep working. kpi/stacked-bar/multi-series are
- * picker-only types layered on top of the basic four.
+ * widgets and ad-hoc results keep working. kpi/stacked/scatter/combo/heatmap/
+ * treemap are picker-only types layered on top of the basic four.
  */
-export function ResultChart({ columns, rows, spec: specProp }: { columns: string[]; rows: unknown[][]; spec?: ChartSpec | null }) {
+export function ResultChart({ columns, rows, spec: specProp, onDatumClick }: {
+  columns: string[]; rows: unknown[][]; spec?: ChartSpec | null; onDatumClick?: DatumClick;
+}) {
   const inferred = inferChartSpec(columns ?? [], rows ?? []);
   const initial = specProp ?? inferred;
   const [spec, setSpec] = useState<ChartSpec | null>(initial);
@@ -35,7 +43,7 @@ export function ResultChart({ columns, rows, spec: specProp }: { columns: string
   if (xi === -1 || yi === -1) {
     // Stored spec no longer matches the columns — fall back to inference.
     if (!inferred) return null;
-    return <BasicChart columns={columns} rows={rows} spec={inferred} onType={(t) => setSpec({ ...inferred, type: t })} />;
+    return <BasicChart columns={columns} rows={rows} spec={inferred} onType={(t) => setSpec({ ...inferred, type: t })} onDatumClick={onDatumClick} />;
   }
 
   if (spec.type === 'kpi') {
@@ -59,15 +67,23 @@ export function ResultChart({ columns, rows, spec: specProp }: { columns: string
     );
   }
 
+  if (spec.type === 'scatter') return <ScatterChartView columns={columns} rows={rows} spec={spec} onDatumClick={onDatumClick} />;
+  if (spec.type === 'combo') return <ComboChartView columns={columns} rows={rows} spec={spec} />;
+  if (spec.type === 'treemap') return <TreemapChartView columns={columns} rows={rows} spec={spec} />;
+  if (spec.type === 'heatmap') return <HeatmapMatrixChart columns={columns} rows={rows} spec={spec} onDatumClick={onDatumClick} />;
+
   const si = spec.series ? columns.indexOf(spec.series) : -1;
-  if ((spec.type === 'stacked-bar' || (spec.type === 'line' && si !== -1)) && si !== -1) {
+  if ((spec.type === 'stacked-bar' || spec.type === 'stacked-100' || (spec.type === 'line' && si !== -1)) && si !== -1) {
     const { data, seriesKeys } = pivotLongToWide(rows.slice(0, 500), xi, si, yi);
+    const stacked = spec.type === 'stacked-bar' || spec.type === 'stacked-100';
     return (
-      <div className="mt-2" data-testid={spec.type === 'stacked-bar' ? 'stacked-bar-chart' : 'multi-series-line'}>
+      <div className="mt-2" data-testid={spec.type === 'stacked-100' ? 'stacked-100-chart' : spec.type === 'stacked-bar' ? 'stacked-bar-chart' : 'multi-series-line'}>
         <ResponsiveContainer width="100%" height={240}>
-          {spec.type === 'stacked-bar' ? (
-            <BarChart data={data}>
-              <XAxis dataKey="x" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 10 }} />
+          {stacked ? (
+            <BarChart data={data} stackOffset={spec.type === 'stacked-100' ? 'expand' : 'none'}>
+              <XAxis dataKey="x" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={spec.type === 'stacked-100' ? (v) => `${Math.round(v * 100)}%` : undefined} />
+              <Tooltip /><Legend wrapperStyle={{ fontSize: 10 }} />
               {seriesKeys.map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={COLORS[i % COLORS.length]} />)}
             </BarChart>
           ) : (
@@ -80,20 +96,35 @@ export function ResultChart({ columns, rows, spec: specProp }: { columns: string
       </div>
     );
   }
-  // stacked-bar without a series column degrades to a plain bar.
-  const basic = spec.type === 'stacked-bar' ? { ...spec, type: 'bar' as const } : spec;
-  return <BasicChart columns={columns} rows={rows} spec={basic} onType={(t) => setSpec({ ...spec, type: t, series: undefined })} />;
+  // stacked without a series column degrades to a plain bar.
+  if (spec.type === 'stacked-bar' || spec.type === 'stacked-100') {
+    return <BasicChart columns={columns} rows={rows} spec={{ ...spec, type: 'bar' }} onType={(t) => setSpec({ ...spec, type: t, series: undefined })} onDatumClick={onDatumClick} />;
+  }
+  // Only the basic four reach here; any unknown type falls through to the table
+  // (return null) rather than silently rendering a misleading pie.
+  if (spec.type !== 'bar' && spec.type !== 'line' && spec.type !== 'area' && spec.type !== 'pie') return null;
+  return <BasicChart columns={columns} rows={rows} spec={spec} onType={(t) => setSpec({ ...spec, type: t, series: undefined })} onDatumClick={onDatumClick} />;
 }
 
 /** The original four single-series types with the inline type switcher. */
-function BasicChart({ columns, rows, spec, onType }: {
+function BasicChart({ columns, rows, spec, onType, onDatumClick }: {
   columns: string[]; rows: unknown[][];
   spec: ChartSpec;
   onType: (t: 'bar' | 'line' | 'area' | 'pie') => void;
+  onDatumClick?: DatumClick;
 }) {
   const xi = columns.indexOf(spec.x);
   const yi = columns.indexOf(spec.y);
-  const data = rows.slice(0, 50).map((r) => ({ x: String(r[xi]), y: Number(r[yi]) }));
+  // rawX keeps the un-stringified x value so onDatumClick can emit a SQL literal.
+  const data = rows.slice(0, 50).map((r) => ({ x: String(r[xi]), y: Number(r[yi]), rawX: r[xi] }));
+  // recharts click payloads vary by chart; the datum lands on `.payload` (bar) or
+  // directly (pie sector). Read rawX from either shape without fighting the types.
+  const clickBar = onDatumClick
+    ? (d: unknown) => {
+        const payload = (d as { payload?: { rawX?: unknown }; rawX?: unknown });
+        onDatumClick(spec.x, payload?.payload?.rawX ?? payload?.rawX);
+      }
+    : undefined;
 
   return (
     <div className="mt-2">
@@ -105,13 +136,13 @@ function BasicChart({ columns, rows, spec, onType }: {
       </div>
       <ResponsiveContainer width="100%" height={220}>
         {spec.type === 'bar' ? (
-          <BarChart data={data}><XAxis dataKey="x" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="y" fill={COLORS[0]} /></BarChart>
+          <BarChart data={data}><XAxis dataKey="x" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="y" fill={COLORS[0]} onClick={clickBar} /></BarChart>
         ) : spec.type === 'line' ? (
           <LineChart data={data}><XAxis dataKey="x" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Line dataKey="y" stroke={COLORS[0]} /></LineChart>
         ) : spec.type === 'area' ? (
           <AreaChart data={data}><XAxis dataKey="x" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Area dataKey="y" fill={COLORS[0]} stroke={COLORS[0]} /></AreaChart>
         ) : (
-          <PieChart><Pie data={data} dataKey="y" nameKey="x" outerRadius={80}>{data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip /></PieChart>
+          <PieChart><Pie data={data} dataKey="y" nameKey="x" outerRadius={80} onClick={clickBar}>{data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip /></PieChart>
         )}
       </ResponsiveContainer>
     </div>

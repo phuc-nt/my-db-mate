@@ -10,6 +10,58 @@ export interface PivotResult {
 
 export const SERIES_CAP = 12;
 
+/** Heatmap cap — matrices beyond this on either axis are refused (the caller
+ *  shows a "refine SQL" message) rather than rendering an unreadable grid. */
+export const HEATMAP_AXIS_CAP = 30;
+
+export interface HeatmapMatrix {
+  /** Distinct x values in first-seen order (NO reordering — a month axis must
+   *  stay chronological, unlike pivotLongToWide which sorts by total). */
+  xKeys: string[];
+  /** Distinct series values in first-seen order. */
+  seriesKeys: string[];
+  /** cells[series][x] = numeric value, or null when that (x, series) pair has
+   *  no row (rendered as an empty cell, excluded from the color scale). */
+  cells: Map<string, Map<string, number | null>>;
+  min: number;
+  max: number;
+  /** True when either axis exceeded HEATMAP_AXIS_CAP — caller should not render. */
+  tooLarge: boolean;
+}
+
+/** Build a heatmap matrix from (x, series, y) long rows. First-seen ordering on
+ *  both axes, missing pairs stay null (not 0 — 0 would distort the color scale),
+ *  and no "Other" bucket merge. Refuses matrices past HEATMAP_AXIS_CAP. */
+export function buildHeatmapMatrix(rows: unknown[][], xi: number, si: number, yi: number): HeatmapMatrix {
+  const xKeys: string[] = [];
+  const seriesKeys: string[] = [];
+  const xSeen = new Set<string>();
+  const sSeen = new Set<string>();
+  const cells = new Map<string, Map<string, number | null>>();
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (const r of rows) {
+    const x = r[xi] == null ? '' : String(r[xi]);
+    const s = r[si] == null ? '(none)' : String(r[si]);
+    if (!xSeen.has(x)) { xSeen.add(x); xKeys.push(x); }
+    if (!sSeen.has(s)) { sSeen.add(s); seriesKeys.push(s); }
+    const v = Number(r[yi]);
+    if (Number.isNaN(v)) continue;
+    if (!cells.has(s)) cells.set(s, new Map());
+    const row = cells.get(s)!;
+    const next = (row.get(x) as number | null | undefined);
+    const acc = (typeof next === 'number' ? next : 0) + v;
+    row.set(x, acc);
+    if (acc < min) min = acc;
+    if (acc > max) max = acc;
+  }
+
+  const tooLarge = xKeys.length > HEATMAP_AXIS_CAP || seriesKeys.length > HEATMAP_AXIS_CAP;
+  if (min === Infinity) { min = 0; max = 0; }
+  return { xKeys, seriesKeys, cells, min, max, tooLarge };
+}
+
 /** Pivot (x, series, y) long rows to wide format. Non-numeric y coerces to 0;
  *  null/undefined series buckets under '(none)'. Beyond `cap` distinct series
  *  (by total |y|), the tail is merged into 'Other' to keep legend/colors sane. */
