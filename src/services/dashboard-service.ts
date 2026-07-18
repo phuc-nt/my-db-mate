@@ -22,6 +22,7 @@ import { validateChartSpec } from './chart-spec-service';
 import { assessRisk } from './risk-scoring-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { PROBE_RANGE, defaultDateRange, hasDateRangePlaceholders, substituteDateRange, type DateRange } from '../lib/sql-param';
+import { rewriteWithWhereFilter } from '../lib/sql-where-filter-rewrite';
 import type { Dialect } from './connection-providers/provider-interface';
 
 const LAST_RESULT_ROW_CAP = 500;
@@ -155,8 +156,14 @@ export async function deleteWidget(id: string) {
 }
 
 export type RefreshResult =
-  | { status: 'ok'; columns: string[]; rows: unknown[][]; refreshedAt: string; acceleratedAsOf?: string }
+  | { status: 'ok'; columns: string[]; rows: unknown[][]; refreshedAt: string; acceleratedAsOf?: string;
+      /** false + reason when active cross-filters couldn't apply to this widget
+       *  (column absent, un-rewritable SQL); the rows are then UNFILTERED. */
+      filtered?: boolean; filterReason?: string }
   | { status: 'blocked' | 'error' | 'needs_confirmation'; message: string; risk?: { tier: string; score: number; reason: string } };
+
+/** One clicked-datapoint filter: `column = value` (or IS NULL when value null). */
+export interface CrossFilter { column: string; value: string | number | boolean | null }
 
 /**
  * OWNER-side widget refresh. Runs through the query-executor choke point WITHOUT
@@ -167,7 +174,7 @@ export type RefreshResult =
  * share view must never inherit someone's personal range); no range means the
  * default last-30-days, and only those runs write the cache.
  */
-export async function runWidget(widgetId: string, confirmed = false, range?: DateRange): Promise<RefreshResult> {
+export async function runWidget(widgetId: string, confirmed = false, range?: DateRange, crossFilters?: CrossFilter[]): Promise<RefreshResult> {
   const [w] = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.id, widgetId));
   if (!w) return { status: 'error', message: 'Widget not found' };
 
@@ -180,7 +187,27 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
       return { status: 'error', message: e instanceof Error ? e.message : String(e) };
     }
   }
-  const transient = isParametrized && range != null;
+
+  // Cross-filters (clicked datapoints) rewrite the SQL AFTER date-range
+  // substitution — the placeholders are gone by now so the parser sees real SQL.
+  // A rewrite failure (column absent, CTE/UNION) degrades to unfiltered rows
+  // with a reason rather than dropping the widget.
+  const activeFilters = crossFilters ?? [];
+  let filtered: boolean | undefined;
+  let filterReason: string | undefined;
+  if (activeFilters.length > 0) {
+    const conn = await getConnection(w.connectionId);
+    filtered = true;
+    for (const f of activeFilters) {
+      const r = rewriteWithWhereFilter(sql, f.column, f.value, conn.dialect);
+      if ('error' in r) { filtered = false; filterReason = r.error; break; }
+      sql = r.sql;
+    }
+  }
+
+  // A cross-filtered view is personal and MUST NOT overwrite the shared cache,
+  // even for a non-parametrized widget (share view reads lastResult).
+  const transient = (isParametrized && range != null) || activeFilters.length > 0;
 
   const res = await executeQuery({ connectionId: w.connectionId, sql, actor: 'dashboard', confirmed, backgroundBudgeted: true });
   if (res.status === 'blocked') return { status: 'blocked', message: res.blockedReason ?? 'blocked' };
@@ -196,7 +223,7 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
   }
   // Surface snapshot staleness for BigQuery offline mode (and any accelerated result)
   // so the widget can badge "as of <extraction time>" rather than implying live data.
-  return { status: 'ok', columns: res.result!.columns, rows, refreshedAt: refreshedAt.toISOString(), acceleratedAsOf: res.result!.accelerated?.asOf };
+  return { status: 'ok', columns: res.result!.columns, rows, refreshedAt: refreshedAt.toISOString(), acceleratedAsOf: res.result!.accelerated?.asOf, filtered, filterReason };
 }
 
 /**
