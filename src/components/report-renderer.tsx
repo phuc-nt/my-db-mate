@@ -30,7 +30,7 @@ export function ReportRenderer({ markdown, snapshot }: { markdown: string; snaps
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {charts.map((c) => (
               <div key={c.id} className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
-                <ResultChart columns={c.data.columns} rows={c.data.rows} />
+                <ResultChart columns={c.data.columns} rows={c.data.rows} spec={c.spec} />
               </div>
             ))}
           </div>

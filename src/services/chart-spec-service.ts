@@ -25,12 +25,26 @@ export type ChartSpec = z.infer<typeof ChartSpecSchema>;
  */
 export function inferChartSpec(columns: string[], rows: unknown[][]): ChartSpec | null {
   if (columns.length < 2 || rows.length === 0) return null;
-  const numericCol = columns.findIndex((_, i) => rows.every((r) => r[i] == null || !isNaN(Number(r[i]))));
+  const isNumeric = (i: number) => rows.every((r) => r[i] == null || !isNaN(Number(r[i])));
+  const numericCol = columns.findIndex((_, i) => isNumeric(i));
   if (numericCol === -1) return null;
-  const labelCol = columns.findIndex((_, i) => i !== numericCol);
-  if (labelCol === -1) return null;
-  const looksTemporal = /date|time|month|year|day|created|_at$/i.test(columns[labelCol]);
-  return { type: looksTemporal ? 'line' : 'bar', x: columns[labelCol], y: columns[numericCol] };
+  const looksTemporal = (name: string) => /date|time|month|year|day|week|quarter|created|_at$/i.test(name);
+
+  // A non-numeric column is the natural label; prefer it (bar/line as before).
+  const labelCol = columns.findIndex((_, i) => i !== numericCol && !isNumeric(i));
+  if (labelCol !== -1) {
+    return { type: looksTemporal(columns[labelCol]) ? 'line' : 'bar', x: columns[labelCol], y: columns[numericCol] };
+  }
+  // No categorical/temporal label but a second numeric column exists → scatter
+  // (added after the label cases so existing behaviour is unchanged).
+  const secondNumeric = columns.findIndex((_, i) => i !== numericCol && isNumeric(i));
+  if (secondNumeric !== -1 && !looksTemporal(columns[numericCol]) && !looksTemporal(columns[secondNumeric])) {
+    return { type: 'scatter', x: columns[numericCol], y: columns[secondNumeric] };
+  }
+  // Fall back to the old any-other-column-as-label behaviour.
+  const anyLabel = columns.findIndex((_, i) => i !== numericCol);
+  if (anyLabel === -1) return null;
+  return { type: looksTemporal(columns[anyLabel]) ? 'line' : 'bar', x: columns[anyLabel], y: columns[numericCol] };
 }
 
 export function validateChartSpec(spec: unknown): ChartSpec | null {
@@ -47,6 +61,10 @@ export function validateChartSpec(spec: unknown): ChartSpec | null {
 export function shouldAutoChart(columns: string[], rows: unknown[][]): ChartSpec | null {
   const spec = inferChartSpec(columns, rows);
   if (!spec) return null;
+  // Auto-open stays conservative: only line/bar (the same two it ever produced
+  // here). Scatter is inferrable now but must NEVER auto-open — it would also
+  // change the "Track as metric" gate, which keys on an auto-charted line.
+  if (spec.type !== 'line' && spec.type !== 'bar') return null;
   if (spec.type === 'line') return spec;                 // temporal — always chart-worthy
   if (columns.length === 2 && rows.length > 0 && rows.length <= 20) return spec; // small categorical
   return null;
