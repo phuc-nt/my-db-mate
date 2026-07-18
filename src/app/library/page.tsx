@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { NewDashboardForm, NewReportForm } from '../../components/new-output-forms';
+import { DashboardGenerateModal } from '../../components/dashboard-generate-modal';
 
 /** Unified outputs list: dashboards + reports + notebooks in one place, filterable
  *  by type and connection. Detail pages keep their original URLs — this only
@@ -35,6 +36,8 @@ function LibraryInner() {
   const [conn, setConn] = useState('all');
   const [q, setQ] = useState('');
   const [showForm, setShowForm] = useState<'dashboard' | 'report' | null>(null);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [conns, setConns] = useState<{ id: string; name: string }[]>([]);
 
   async function load() {
     const [ds, rs, ns] = await Promise.all([
@@ -54,6 +57,7 @@ function LibraryInner() {
     setLoaded(true);
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => { fetch('/api/connections').then((r) => r.json()).then((cs: { id: string; name: string }[]) => setConns(cs)).catch(() => {}); }, []);
 
   const connOptions = useMemo(() => [...new Set(items.flatMap((i) => i.connections))].sort(), [items]);
   const shown = items.filter((i) =>
@@ -66,11 +70,13 @@ function LibraryInner() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Library</h1>
         <div className="flex gap-2 text-sm">
+          <button onClick={() => setShowGenerate(true)} disabled={conns.length === 0} className="rounded border border-blue-300 px-3 py-1 text-blue-600 hover:bg-blue-50 disabled:opacity-40 dark:border-blue-800 dark:hover:bg-blue-950/30" data-testid="generate-dashboard-open">✨ Generate dashboard</button>
           <button onClick={() => setShowForm(showForm === 'dashboard' ? null : 'dashboard')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">+ Dashboard</button>
           <button onClick={() => setShowForm(showForm === 'report' ? null : 'report')} className="rounded border px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">+ Report</button>
         </div>
       </div>
 
+      {showGenerate && <DashboardGenerateModal connections={conns} onClose={() => { setShowGenerate(false); load(); }} />}
       {showForm === 'dashboard' && <NewDashboardForm onCreated={() => { setShowForm(null); load(); }} />}
       {showForm === 'report' && <NewReportForm onCreated={() => { setShowForm(null); load(); }} />}
 

@@ -109,3 +109,35 @@ describe('generateDashboardProposal', () => {
     if (r.ok) expect(r.widgets.find((w) => w.title === 'Empty')).toBeUndefined();
   });
 });
+
+describe('acceptDashboardProposal', () => {
+  it('creates a dashboard and pins the selected widgets', async () => {
+    const { acceptDashboardProposal } = await import('./dashboard-generation-service');
+    const r = await acceptDashboardProposal({
+      connectionId: connId, dashboardTitle: 'Accepted',
+      widgets: [{ title: 'W1', sql: 'SELECT region, SUM(amt) AS t FROM sales GROUP BY region', chartSpec: null }],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.pinned).toBe(1);
+      const { getDashboard, deleteDashboard } = await import('./dashboard-service');
+      const d = await getDashboard(r.dashboardId);
+      expect(d?.widgets.length).toBe(1);
+      await deleteDashboard(r.dashboardId); // cleanup
+    }
+  });
+
+  it('deletes the freshly-created dashboard when zero widgets pin (no orphan)', async () => {
+    const { acceptDashboardProposal } = await import('./dashboard-generation-service');
+    const { listDashboards } = await import('./dashboard-service');
+    const before = (await listDashboards()).length;
+    // A non-SELECT is rejected by the pin gate (validateSql), so it can never pin.
+    const r = await acceptDashboardProposal({
+      connectionId: connId, dashboardTitle: 'ShouldVanish',
+      widgets: [{ title: 'Bad', sql: 'DELETE FROM sales', chartSpec: null }],
+    });
+    expect(r.ok).toBe(false);
+    const after = (await listDashboards()).length;
+    expect(after).toBe(before); // no orphan left behind
+  });
+});

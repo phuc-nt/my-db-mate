@@ -17,7 +17,7 @@ import { getRelevantContext } from './context-service';
 import { getPrunedSchemaSummary } from './schema-pruning-service';
 import { getConnection } from './connection-service';
 import { getMetric } from './metric-service';
-import { checkWidgetSql } from './dashboard-service';
+import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard } from './dashboard-service';
 import { executeQuery } from './query-executor-service';
 import { substituteDateRange, PROBE_RANGE, hasDateRangePlaceholders } from '../lib/sql-param';
 import { validateChartSpec } from './chart-spec-service';
@@ -173,3 +173,34 @@ async function probeWidget(connectionId: string, sql: string, isBq: boolean): Pr
 }
 
 export { metricChartSpec };
+
+/** Accept a subset of a proposal: create the dashboard (or use an existing one
+ *  for iterate mode) and pin the chosen widgets in one request. If NOT a single
+ *  widget pins on a freshly-created dashboard, delete it so no empty orphan is
+ *  left (red-team C2). Each widget re-passes the pin gate — a proposal that
+ *  probed OK should pin, but the gate is authoritative. */
+export async function acceptDashboardProposal(input: {
+  connectionId: string;
+  dashboardTitle: string;
+  existingDashboardId?: string;
+  widgets: { title: string; sql: string; chartSpec?: unknown }[];
+}): Promise<{ ok: true; dashboardId: string; pinned: number; failures: string[] } | { ok: false; error: string }> {
+  if (input.widgets.length === 0) return { ok: false, error: 'no widgets selected' };
+
+  const created = !input.existingDashboardId;
+  const dashboardId = input.existingDashboardId ?? (await createDashboard(input.dashboardTitle || 'Generated dashboard')).id;
+
+  const failures: string[] = [];
+  let pinned = 0;
+  for (const w of input.widgets) {
+    const res = await pinWidget({ dashboardId, connectionId: input.connectionId, title: w.title, sql: w.sql, chartSpec: w.chartSpec });
+    if (res.ok) pinned++;
+    else failures.push(`${w.title}: ${res.reason}`);
+  }
+
+  if (pinned === 0 && created) {
+    await deleteDashboard(dashboardId);
+    return { ok: false, error: `No widget could be pinned. ${failures.join('; ')}` };
+  }
+  return { ok: true, dashboardId, pinned, failures };
+}
