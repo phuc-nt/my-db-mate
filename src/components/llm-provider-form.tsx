@@ -7,7 +7,10 @@ const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'gpt-5.2' },
   { id: 'anthropic', label: 'Anthropic (Claude)', placeholder: 'claude-sonnet-5' },
   { id: 'google', label: 'Google (Gemini)', placeholder: 'gemini-3-flash' },
+  { id: 'ollama', label: 'Ollama (local)', placeholder: 'qwen3' },
 ] as const;
+
+const OLLAMA_DEFAULT_URL = 'http://localhost:11434/v1';
 
 type ProviderId = (typeof PROVIDERS)[number]['id'];
 
@@ -18,14 +21,15 @@ export function LlmProviderForm() {
   const [provider, setProvider] = useState<ProviderId>('openrouter');
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [current, setCurrent] = useState<{ configured: boolean; provider?: string; model?: string; keyTail?: string }>();
+  const [baseUrl, setBaseUrl] = useState(OLLAMA_DEFAULT_URL);
+  const [current, setCurrent] = useState<{ configured: boolean; provider?: string; model?: string; keyTail?: string; baseUrl?: string }>();
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function load() {
     const d = await (await fetch('/api/settings')).json();
     setCurrent(d);
-    if (d.configured) { setProvider(d.provider); setModel(d.model); }
+    if (d.configured) { setProvider(d.provider); setModel(d.model); if (d.baseUrl) setBaseUrl(d.baseUrl); }
   }
   useEffect(() => { load(); }, []);
 
@@ -33,7 +37,7 @@ export function LlmProviderForm() {
     setBusy(true); setMsg('Testing…');
     const r = await (await fetch('/api/settings/test-llm', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider, model, apiKey }),
+      body: JSON.stringify({ provider, model, apiKey, ...(provider === 'ollama' ? { baseUrl } : {}) }),
     })).json();
     setMsg(r.ok ? `✓ Provider replied: "${r.reply}"` : `✗ ${r.error}`);
     setBusy(false);
@@ -43,7 +47,7 @@ export function LlmProviderForm() {
     setBusy(true); setMsg('Saving…');
     const r = await fetch('/api/settings', {
       method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider, model, apiKey }),
+      body: JSON.stringify({ provider, model, apiKey, ...(provider === 'ollama' ? { baseUrl } : {}) }),
     });
     const d = await r.json();
     setMsg(r.ok ? 'Saved ✓ — all features now use this provider' : `✗ ${d.error}`);
@@ -80,12 +84,21 @@ export function LlmProviderForm() {
         ))}
       </div>
       <div className="space-y-2 text-sm">
-        <input type="password" autoComplete="off" className="w-full rounded border p-2 dark:bg-neutral-900"
-          placeholder={current?.configured && current.provider === provider ? 'API key (leave blank to keep the stored key)' : 'API key'}
-          value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+        {provider === 'ollama' ? (
+          <input className="w-full rounded border p-2 dark:bg-neutral-900" placeholder={`Ollama base URL — e.g. ${OLLAMA_DEFAULT_URL}`}
+            value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} data-testid="ollama-base-url" />
+        ) : (
+          <input type="password" autoComplete="off" className="w-full rounded border p-2 dark:bg-neutral-900"
+            placeholder={current?.configured && current.provider === provider ? 'API key (leave blank to keep the stored key)' : 'API key'}
+            value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+        )}
         <input className="w-full rounded border p-2 dark:bg-neutral-900" placeholder={`Model — e.g. ${ph}`}
           value={model} onChange={(e) => setModel(e.target.value)} />
-        <p className="text-xs text-neutral-400">Use an exact model ID your account can access (the placeholder is only an example). Hit Test to confirm before saving.</p>
+        <p className="text-xs text-neutral-400">
+          {provider === 'ollama'
+            ? 'No API key needed — inference runs on your own machine, nothing leaves it. Pick a tool-calling-capable model (qwen3, llama3.1+; ≥7B recommended — smaller models struggle with the agent loop). Hit Test to confirm the server responds before saving.'
+            : 'Use an exact model ID your account can access (the placeholder is only an example). Hit Test to confirm before saving.'}
+        </p>
         <div className="flex items-center gap-2">
           <button onClick={test} disabled={busy || !model.trim()} className="rounded border px-3 py-1 text-sm disabled:opacity-50">Test</button>
           <button onClick={save} disabled={busy || !model.trim()} className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50">Save</button>

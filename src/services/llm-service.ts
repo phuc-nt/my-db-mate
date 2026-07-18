@@ -15,40 +15,48 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel } from 'ai';
 import { getLlmSettings, type LlmProviderId } from './settings-service';
 
-function buildModel(provider: LlmProviderId, apiKey: string, model: string): LanguageModel {
+export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434/v1';
+
+function buildModel(provider: LlmProviderId, apiKey: string, model: string, baseUrl?: string): LanguageModel {
   switch (provider) {
     case 'openrouter': return createOpenRouter({ apiKey })(model);
     case 'openai': return createOpenAI({ apiKey })(model);
     case 'anthropic': return createAnthropic({ apiKey })(model);
     case 'google': return createGoogleGenerativeAI({ apiKey })(model);
+    // Ollama speaks the OpenAI-compatible API on /v1; the key is ignored by the
+    // local server but the SDK requires a non-empty string.
+    case 'ollama': return createOpenAI({ apiKey: apiKey || 'ollama', baseURL: baseUrl || OLLAMA_DEFAULT_BASE_URL })(model);
   }
 }
 
-/** Per-provider env fallback (key + model + a sensible default model name). */
-const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; defaultModel: string }> = {
-  openrouter: { keyVar: 'OPENROUTER_API_KEY', modelVar: 'OPENROUTER_MODEL', defaultModel: 'qwen/qwen3.7-max' },
-  openai: { keyVar: 'OPENAI_API_KEY', modelVar: 'OPENAI_MODEL', defaultModel: 'gpt-5.2' },
-  anthropic: { keyVar: 'ANTHROPIC_API_KEY', modelVar: 'ANTHROPIC_MODEL', defaultModel: 'claude-sonnet-5' },
-  google: { keyVar: 'GOOGLE_GENERATIVE_AI_API_KEY', modelVar: 'GOOGLE_MODEL', defaultModel: 'gemini-3-flash' },
+/** Per-provider env fallback (key + model + a sensible default model name).
+ *  keyRequired=false: Ollama runs without any key. */
+const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; defaultModel: string; keyRequired: boolean; baseUrlVar?: string }> = {
+  openrouter: { keyVar: 'OPENROUTER_API_KEY', modelVar: 'OPENROUTER_MODEL', defaultModel: 'qwen/qwen3.7-max', keyRequired: true },
+  openai: { keyVar: 'OPENAI_API_KEY', modelVar: 'OPENAI_MODEL', defaultModel: 'gpt-5.2', keyRequired: true },
+  anthropic: { keyVar: 'ANTHROPIC_API_KEY', modelVar: 'ANTHROPIC_MODEL', defaultModel: 'claude-sonnet-5', keyRequired: true },
+  google: { keyVar: 'GOOGLE_GENERATIVE_AI_API_KEY', modelVar: 'GOOGLE_MODEL', defaultModel: 'gemini-3-flash', keyRequired: true },
+  ollama: { keyVar: 'OLLAMA_API_KEY', modelVar: 'OLLAMA_MODEL', defaultModel: 'qwen3', keyRequired: false, baseUrlVar: 'OLLAMA_BASE_URL' },
 };
 
 function isProvider(v: string | undefined): v is LlmProviderId {
-  return v === 'openrouter' || v === 'openai' || v === 'anthropic' || v === 'google';
+  return v === 'openrouter' || v === 'openai' || v === 'anthropic' || v === 'google' || v === 'ollama';
 }
 
 export async function getModel(): Promise<LanguageModel> {
   const settings = await getLlmSettings();
-  if (settings) return buildModel(settings.provider, settings.apiKey, settings.model);
+  if (settings) return buildModel(settings.provider, settings.apiKey, settings.model, settings.baseUrl);
 
   // env fallback — LLM_PROVIDER selects which provider's *_API_KEY / *_MODEL to use.
   const provider: LlmProviderId = isProvider(process.env.LLM_PROVIDER) ? process.env.LLM_PROVIDER : 'openrouter';
   const cfg = ENV_FALLBACK[provider];
   const apiKey = process.env[cfg.keyVar];
-  if (!apiKey) throw new Error(`No LLM configured — set one in Settings or provide ${cfg.keyVar}`);
-  return buildModel(provider, apiKey, process.env[cfg.modelVar] ?? cfg.defaultModel);
+  if (!apiKey && cfg.keyRequired) throw new Error(`No LLM configured — set one in Settings or provide ${cfg.keyVar}`);
+  const baseUrl = cfg.baseUrlVar ? process.env[cfg.baseUrlVar] : undefined;
+  return buildModel(provider, apiKey ?? '', process.env[cfg.modelVar] ?? cfg.defaultModel, baseUrl);
 }
 
 /** Build a model from an UNSAVED config — used by the Settings "Test" button. */
-export function getModelForTest(provider: LlmProviderId, apiKey: string, model: string): LanguageModel {
-  return buildModel(provider, apiKey, model);
+export function getModelForTest(provider: LlmProviderId, apiKey: string, model: string, baseUrl?: string): LanguageModel {
+  return buildModel(provider, apiKey, model, baseUrl);
 }
