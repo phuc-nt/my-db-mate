@@ -54,7 +54,7 @@ export function HeatmapMatrixChart({ columns, rows, spec, onDatumClick }: {
                 const bg = color(v);
                 return (
                   <td key={x} title={`${s} · ${x}: ${v == null ? '—' : formatMetricValue(v)}`}
-                    onClick={() => onDatumClick?.(spec.x, x)}
+                    onClick={() => onDatumClick?.(spec.x, m.xRaw.get(x))}
                     className="cursor-default border border-white p-1 text-center dark:border-neutral-900"
                     style={{ backgroundColor: bg, color: bg && (v! - m.min) / span > 0.55 ? '#fff' : undefined, minWidth: 28 }}>
                     {v == null ? '' : formatMetricValue(v)}

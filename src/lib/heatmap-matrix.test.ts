@@ -34,6 +34,13 @@ describe('buildHeatmapMatrix', () => {
     expect(m.max).toBe(120);
   });
 
+  it('retains the raw (un-stringified) x value per key for cross-filter literals', () => {
+    const dated = [[new Date('2026-01-01'), 's', 5]];
+    const m = buildHeatmapMatrix(dated, 0, 1, 2);
+    const key = m.xKeys[0];
+    expect(m.xRaw.get(key)).toBeInstanceOf(Date); // not the String()-ified key
+  });
+
   it('flags tooLarge past the axis cap', () => {
     const big = Array.from({ length: HEATMAP_AXIS_CAP + 1 }, (_, i) => [`x${i}`, 's', 1]);
     expect(buildHeatmapMatrix(big, 0, 1, 2).tooLarge).toBe(true);

@@ -18,6 +18,9 @@ export interface HeatmapMatrix {
   /** Distinct x values in first-seen order (NO reordering — a month axis must
    *  stay chronological, unlike pivotLongToWide which sorts by total). */
   xKeys: string[];
+  /** Raw (un-stringified) x value for each xKey, same order — lets a consumer
+   *  (cross-filter) build a correct SQL literal instead of the display string. */
+  xRaw: Map<string, unknown>;
   /** Distinct series values in first-seen order. */
   seriesKeys: string[];
   /** cells[series][x] = numeric value, or null when that (x, series) pair has
@@ -32,8 +35,13 @@ export interface HeatmapMatrix {
 /** Build a heatmap matrix from (x, series, y) long rows. First-seen ordering on
  *  both axes, missing pairs stay null (not 0 — 0 would distort the color scale),
  *  and no "Other" bucket merge. Refuses matrices past HEATMAP_AXIS_CAP. */
+/** Rows are capped before building — a large result with few distinct x/series
+ *  would otherwise scan every row even though the grid itself is tiny. */
+export const HEATMAP_ROW_SCAN_CAP = 5000;
+
 export function buildHeatmapMatrix(rows: unknown[][], xi: number, si: number, yi: number): HeatmapMatrix {
   const xKeys: string[] = [];
+  const xRaw = new Map<string, unknown>();
   const seriesKeys: string[] = [];
   const xSeen = new Set<string>();
   const sSeen = new Set<string>();
@@ -41,10 +49,10 @@ export function buildHeatmapMatrix(rows: unknown[][], xi: number, si: number, yi
   let min = Infinity;
   let max = -Infinity;
 
-  for (const r of rows) {
+  for (const r of rows.length > HEATMAP_ROW_SCAN_CAP ? rows.slice(0, HEATMAP_ROW_SCAN_CAP) : rows) {
     const x = r[xi] == null ? '' : String(r[xi]);
     const s = r[si] == null ? '(none)' : String(r[si]);
-    if (!xSeen.has(x)) { xSeen.add(x); xKeys.push(x); }
+    if (!xSeen.has(x)) { xSeen.add(x); xKeys.push(x); xRaw.set(x, r[xi]); }
     if (!sSeen.has(s)) { sSeen.add(s); seriesKeys.push(s); }
     const v = Number(r[yi]);
     if (Number.isNaN(v)) continue;
@@ -59,7 +67,7 @@ export function buildHeatmapMatrix(rows: unknown[][], xi: number, si: number, yi
 
   const tooLarge = xKeys.length > HEATMAP_AXIS_CAP || seriesKeys.length > HEATMAP_AXIS_CAP;
   if (min === Infinity) { min = 0; max = 0; }
-  return { xKeys, seriesKeys, cells, min, max, tooLarge };
+  return { xKeys, xRaw, seriesKeys, cells, min, max, tooLarge };
 }
 
 /** Pivot (x, series, y) long rows to wide format. Non-numeric y coerces to 0;
