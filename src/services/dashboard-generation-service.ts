@@ -147,7 +147,14 @@ async function resolveWidget(
   const chartSpec = w.chartType && w.x && w.y
     ? validateChartSpec({ type: w.chartType, x: w.x, y: w.y, ...(w.series ? { series: w.series } : {}) })
     : null;
-  return { title: w.title, sql: w.sql, chartSpec, rationale: w.rationale };
+  return { title: w.title, sql: normalizePlaceholderQuotes(w.sql), chartSpec, rationale: w.rationale };
+}
+
+/** Models often write `'{{from}}'` despite the "unquoted" instruction; the
+ *  substitution then produces `''2026-01-01''` and the parser chokes. Strip a
+ *  single pair of surrounding quotes so the placeholder substitutes cleanly. */
+function normalizePlaceholderQuotes(sql: string): string {
+  return sql.replace(/'(\{\{\s*(?:from|to)\s*\}\})'/gi, '$1');
 }
 
 /** Probe one widget through the pin gate + a trial run. BigQuery uses a free
