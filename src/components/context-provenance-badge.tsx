@@ -7,6 +7,8 @@ export interface Provenance {
   verified: { question: string; sim: number }[];
   glossary: string[];
   annotations: string[];
+  /** Governed metrics injected as the authoritative definition for this answer. */
+  metrics?: { name: string; sim: number }[];
 }
 
 const CONF_STYLE: Record<Provenance['confidence'], { label: string; cls: string }> = {
@@ -22,6 +24,7 @@ const CONF_STYLE: Record<Provenance['confidence'], { label: string; cls: string 
 export function ContextProvenanceBadge({ p, connectionId }: { p: Provenance; connectionId: string }) {
   const s = CONF_STYLE[p.confidence];
   const parts: string[] = [
+    ...(p.metrics ?? []).map((m) => `governed metric "${m.name}"`),
     ...p.verified.map((v) => `verified "${v.question.slice(0, 48)}${v.question.length > 48 ? '…' : ''}"`),
     ...p.glossary.map((g) => `glossary "${g}"`),
     ...p.annotations.map((a) => `annotation ${a}`),
