@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { startInvestigation } from '../../../../lib/start-investigation-client';
+import { ActionTriggersPanel } from '../../../../components/action-triggers-panel';
 
 interface Schedule {
   id: string; name: string; mode: string; sql: string | null; question: string | null;
@@ -164,6 +165,8 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
           </li>
         ))}
       </ul>
+
+      <ActionTriggersPanel connectionId={id} />
     </main>
   );
 }
