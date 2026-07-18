@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { and, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../../../../../db/client';
 import { glossaryTerms, verifiedQueries, columnAnnotations, tableAnnotations } from '../../../../../db/context-schema';
+import { metrics } from '../../../../../db/metric-schema';
 import { embed } from '../../../../../services/embedding-service';
 
 export const runtime = 'nodejs';
@@ -11,6 +12,9 @@ export const runtime = 'nodejs';
 // Tuned on the demo DB; cosine similarity = 1 - pgvector cosine distance.
 const HIGH_SIM = 0.6;
 const MEDIUM_SIM = 0.45;
+// A governed metric is injected when its cosine DISTANCE ≤ 0.35 — mirror that
+// exact gate here (sim ≥ 0.65) so provenance shows the metric iff it was injected.
+const METRIC_INJECT_SIM = 0.65;
 
 /** POST { question, sqlTexts?: string[] } → which curated context plausibly fed
  *  this answer + a coarse confidence. Names only — no SQL/definitions returned.
@@ -35,6 +39,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const verified = verifiedRows
     .map((r) => ({ question: r.question, sim: 1 - Number(r.distance) }))
     .filter((r) => r.sim >= MEDIUM_SIM);
+
+  // Governed metrics: the same vector gate the injector uses (distance ≤ 0.35),
+  // so provenance lists a metric exactly when it was injected as the authoritative
+  // definition — closing the gap where a governed number never showed its source.
+  const metricRows = await db
+    .select({ name: metrics.name, distance: dsql<number>`${metrics.embedding} <=> ${vec}::vector` })
+    .from(metrics)
+    .where(and(eq(metrics.connectionId, id), dsql`${metrics.embedding} IS NOT NULL`))
+    .orderBy(dsql`${metrics.embedding} <=> ${vec}::vector`)
+    .limit(3);
+  const governedMetrics = metricRows
+    .map((r) => ({ name: r.name, sim: 1 - Number(r.distance) }))
+    .filter((r) => r.sim >= METRIC_INJECT_SIM);
 
   // Glossary: lexical hit (term/synonym in question) is the strong signal.
   const qLower = question.toLowerCase();
@@ -64,8 +81,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const bestVerified = verified[0]?.sim ?? 0;
+  // A governed metric injected as the authoritative definition is a strong
+  // provenance signal — it lifts confidence to at least medium.
   const confidence = bestVerified >= HIGH_SIM ? 'high'
-    : bestVerified >= MEDIUM_SIM || glossary.length > 0 || annotations.length > 0 ? 'medium'
+    : bestVerified >= MEDIUM_SIM || glossary.length > 0 || annotations.length > 0 || governedMetrics.length > 0 ? 'medium'
     : 'low';
 
   return NextResponse.json({
@@ -73,5 +92,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     verified: verified.map((v) => ({ question: v.question, sim: Math.round(v.sim * 100) / 100 })),
     glossary,
     annotations: annotations.slice(0, 6),
+    metrics: governedMetrics.map((m) => ({ name: m.name, sim: Math.round(m.sim * 100) / 100 })),
   });
 }

@@ -8,7 +8,7 @@ interface MetricRow extends MetricRowUI { sql: string; dimensions?: string[] | n
 
 const METRIC_FIELDS = (m?: MetricRow): FormModalField[] => [
   { name: 'name', label: 'Metric name', required: true, defaultValue: m?.name ?? '' },
-  { name: 'description', label: 'Description (optional)', defaultValue: m?.description ?? '' },
+  { name: 'description', label: 'Description (optional — improves chat matching; a line in your query language helps cross-lingual retrieval)', defaultValue: m?.description ?? '' },
   { name: 'sql', label: 'SQL — must return exactly (time_bucket, value)', type: 'textarea', mono: true, required: true, defaultValue: m?.sql ?? '' },
   { name: 'target', label: 'Target (optional — goal for the latest value)', defaultValue: m?.target != null ? String(m.target) : '' },
   { name: 'dimensions', label: 'Dimensions (optional, ≤3 columns comma-separated — digest reports top drivers per slice)', defaultValue: (m?.dimensions ?? []).join(', ') },
