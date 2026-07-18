@@ -4,7 +4,7 @@
  * own client, so literals are escaped per the TARGET dialect (red-team M2 — a
  * SQLite round-trip does not prove PG/MySQL safety).
  */
-export type ExportDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql';
+export type ExportDialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb';
 
 /** Guard against CSV formula injection: a cell starting with = + - @ is prefixed
  *  with a single quote so spreadsheet apps don't execute it as a formula. */

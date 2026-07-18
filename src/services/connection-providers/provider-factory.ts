@@ -1,6 +1,7 @@
 /** Build a ConnectionProvider from a stored connection row (kind + config + secret). */
 import type { ConnectionProvider } from './provider-interface';
 import { SqliteFileProvider } from './sqlite-file-provider';
+import { DuckDbFileProvider } from './duckdb-file-provider';
 import { TcpDriverProvider } from './tcp-driver-provider';
 import { MssqlDriverProvider } from './mssql-driver-provider';
 import { RemoteHttpProvider } from './remote-http-provider';
@@ -38,6 +39,14 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
   switch (row.kind) {
     case 'sqlite-file':
       return new SqliteFileProvider({ path: String(row.config.path) });
+
+    case 'duckdb-file':
+      // File analytics (.duckdb / parquet / csv-dir). No secret — the data is the
+      // file itself; read-only ingest-then-lock happens inside the provider's child.
+      return new DuckDbFileProvider({
+        mode: (String(row.config.mode) as 'duckdb' | 'parquet' | 'csv-dir'),
+        path: String(row.config.path),
+      });
 
     case 'mssql-driver': {
       const password = row.secretEncrypted ? decryptSecret(row.secretEncrypted) : '';

@@ -4,7 +4,7 @@
  * connection string (postgres://… / mysql://…) into the same shape — the
  * paste-a-URL flow every DB client (DBeaver, TablePlus) offers.
  */
-export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql' | 'bigquery';
+export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql' | 'bigquery' | 'duckdb';
 
 /** TLS posture for a TCP connection.
  *  - 'disable'      — plaintext (local/LAN).
@@ -15,16 +15,20 @@ export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mssql' | 'bigquery';
  *                     system CA store unless a CA PEM is provided on the config. */
 export type SslMode = 'disable' | 'require' | 'verify-full';
 
-export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite' | 'bigquery'>, number> = {
+export const DEFAULT_PORT: Record<Exclude<Engine, 'sqlite' | 'bigquery' | 'duckdb'>, number> = {
   postgres: 5432,
   mysql: 3306,
   mssql: 1433,
 };
 
-/** The stored kind for an engine. SQLite is a file; SQL Server has its own driver;
- *  BigQuery is HTTP-based (no host/port); PG/MySQL share the TCP driver. */
-export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' | 'mssql-driver' | 'bigquery-driver' {
+/** Engines that are file-based (no host/port/credentials). */
+export const FILE_ENGINES: Engine[] = ['sqlite', 'duckdb'];
+
+/** The stored kind for an engine. SQLite/DuckDB are files; SQL Server has its own
+ *  driver; BigQuery is HTTP-based (no host/port); PG/MySQL share the TCP driver. */
+export function kindForEngine(engine: Engine): 'sqlite-file' | 'tcp-driver' | 'mssql-driver' | 'bigquery-driver' | 'duckdb-file' {
   if (engine === 'sqlite') return 'sqlite-file';
+  if (engine === 'duckdb') return 'duckdb-file';
   if (engine === 'mssql') return 'mssql-driver';
   if (engine === 'bigquery') return 'bigquery-driver';
   return 'tcp-driver';

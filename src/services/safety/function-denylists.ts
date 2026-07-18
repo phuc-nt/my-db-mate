@@ -73,6 +73,24 @@ export const FUNCTION_DENYLIST: Record<Dialect, string[]> = {
   // maximumBytesBilled) is a dedicated mechanism, not the OLTP denylist/row-cap screen
   // (see Phase 3 of the BigQuery connector plan). Empty, not a real per-dialect list.
   bigquery: [],
+  // DuckDB (file connections). DEFENSE IN DEPTH ONLY — the real filesystem boundary
+  // is the engine lockdown the provider applies before any user SQL runs
+  // (enable_external_access=false + lock_configuration=true, verified by spike). A
+  // denylist can't catch a DuckDB REPLACEMENT SCAN (`SELECT * FROM '/etc/passwd'`
+  // has no function call), which is exactly why the engine lock is primary. These
+  // block the obvious file/extension/config functions so a lock regression degrades
+  // gracefully rather than silently.
+  duckdb: [
+    // File readers (all the aliases a name-check can see).
+    'read_csv', 'read_csv_auto', 'csv_scan',
+    'read_parquet', 'parquet_scan',
+    'read_json', 'read_json_auto', 'read_ndjson', 'read_ndjson_auto', 'read_json_objects',
+    'read_text', 'read_blob', 'sniff_csv', 'glob',
+    // Env / system introspection.
+    'getenv',
+    // Extension + external database attach as function-style (belt; phrases below too).
+    'load_extension', 'install_extension',
+  ],
 };
 
 /**
@@ -110,6 +128,22 @@ export const PHRASE_DENYLIST: Record<Dialect, RegExp[]> = {
     /\bfor\s+xml\b/i,
     // GO batch separator — not valid inside a single statement, block defensively.
     /(^|\n)\s*go\s*($|\n)/i,
+  ],
+  // DuckDB phrase constructs a function-name check misses. Again defense-in-depth
+  // behind the engine lockdown — these block the statement forms that change config,
+  // load extensions, attach databases, or write/export files.
+  duckdb: [
+    /\binstall\b/i,          // INSTALL <extension>
+    /\bload\b/i,             // LOAD <extension>
+    /\battach\b/i,           // ATTACH '<db>' / ATTACH DATABASE
+    /\bdetach\b/i,
+    /\bcopy\b[\s\S]*\bto\b/i, // COPY ... TO '<file>' (write/export)
+    /\bexport\s+database\b/i,
+    /\bimport\s+database\b/i,
+    /\bpragma\b/i,           // PRAGMA changes engine config
+    /\b(set|reset)\b/i,      // SET enable_external_access / lock_configuration etc.
+    /\bcreate\b/i,           // no DDL from user SQL (tables are provider-ingested)
+    /\binstall\s+extension\b/i,
   ],
   // See FUNCTION_DENYLIST.bigquery above — BigQuery never reaches this screen.
   bigquery: [],

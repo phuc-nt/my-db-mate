@@ -65,6 +65,20 @@ export const MUST_BLOCK: AdversarialCase[] = [
   { sql: 'MERGE t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=1', dialect: 'mssql', expect: 'blocked', label: 'MERGE (write)' },
   { sql: 'SELECT 1; DROP TABLE users', dialect: 'mssql', expect: 'blocked', label: 'stacked ;DROP (mssql)' },
   { sql: 'UPDATE users SET admin=1', dialect: 'mssql', expect: 'blocked', label: 'UPDATE (mssql)' },
+  // DuckDB file connections — denylist is defense-in-depth behind the engine
+  // filesystem lock, but these obvious file/extension/config forms are blocked at
+  // the AST/denylist screen too. (A replacement scan `FROM '/path'` is NOT
+  // catchable here — that's precisely what the engine lock in the provider stops.)
+  { sql: "SELECT * FROM read_csv_auto('/etc/passwd')", dialect: 'duckdb', expect: 'blocked', label: 'read_csv exfil (duckdb)' },
+  { sql: "SELECT * FROM read_text('/etc/passwd')", dialect: 'duckdb', expect: 'blocked', label: 'read_text exfil (duckdb)' },
+  { sql: "SELECT * FROM read_parquet('/secret.parquet')", dialect: 'duckdb', expect: 'blocked', label: 'read_parquet exfil (duckdb)' },
+  { sql: "INSTALL httpfs", dialect: 'duckdb', expect: 'blocked', label: 'INSTALL extension (duckdb)' },
+  { sql: "LOAD httpfs", dialect: 'duckdb', expect: 'blocked', label: 'LOAD extension (duckdb)' },
+  { sql: "ATTACH 'other.db' AS x", dialect: 'duckdb', expect: 'blocked', label: 'ATTACH (duckdb)' },
+  { sql: "COPY orders TO '/tmp/out.csv'", dialect: 'duckdb', expect: 'blocked', label: 'COPY TO write (duckdb)' },
+  { sql: "SET enable_external_access = true", dialect: 'duckdb', expect: 'blocked', label: 'SET config (duckdb)' },
+  { sql: "PRAGMA database_list", dialect: 'duckdb', expect: 'blocked', label: 'PRAGMA (duckdb)' },
+  { sql: "EXPORT DATABASE '/tmp/dump'", dialect: 'duckdb', expect: 'blocked', label: 'EXPORT DATABASE (duckdb)' },
 ];
 
 export const MUST_PASS: AdversarialCase[] = [
@@ -86,4 +100,8 @@ export const MUST_PASS: AdversarialCase[] = [
   // English words inside string literals must NOT trip the denylist (false-positive guard).
   { sql: "SELECT id FROM notes WHERE body LIKE '%execute the report%'", dialect: 'mssql', expect: 'ok', label: 'exec inside literal (mssql)' },
   { sql: "SELECT id FROM logs WHERE msg = 'sleep study results'", dialect: 'mysql', expect: 'ok', label: 'sleep inside literal (mysql)' },
+  // DuckDB legitimate SELECTs over ingested tables (false-positive guard).
+  { sql: 'SELECT status, COUNT(*) FROM orders GROUP BY status', dialect: 'duckdb', expect: 'ok', label: 'group by (duckdb)' },
+  { sql: 'SELECT o.id, c.name FROM orders o JOIN customers c ON o.id = c.id', dialect: 'duckdb', expect: 'ok', label: 'join (duckdb)' },
+  { sql: 'WITH r AS (SELECT * FROM orders WHERE amount > 10) SELECT COUNT(*) FROM r', dialect: 'duckdb', expect: 'ok', label: 'CTE select (duckdb)' },
 ];
