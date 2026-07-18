@@ -7,9 +7,11 @@
  * - MANUAL trigger, run INLINE in the request (cost-capped + the route's
  *   maxDuration). NOT fire-and-forget after sync — a request handler has no
  *   background runtime to finish the work.
- * - Profiling reuses profileColumn, which reads the target DB DIRECTLY (not through
- *   the query-executor choke point) — so this is NOT audited/risk-gated. The column
- *   allow-list inside profileColumn is the safety here; we do not claim otherwise.
+ * - Profiling reuses profileColumn. On non-BigQuery engines it reads the target DB
+ *   DIRECTLY (not through the query-executor choke point) — NOT audited/risk-gated;
+ *   the column allow-list inside profileColumn is the safety there. On BigQuery it
+ *   routes through the choke point's budgeted path (actor 'profiling', maintenance
+ *   half-budget tier) so every scan is cost-admitted, capped, and audited.
  * - Per-column try/catch: one failing column doesn't sink the scan, and the result
  *   reports scanned/failed so the UI can show "partial (N/M)" instead of pretending
  *   the scan is complete.
@@ -19,8 +21,15 @@ import { db } from '../db/client';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { columnProfiles } from '../db/intelligence-schema';
 import { profileColumn } from './profiling-service';
+import { getConnection } from './connection-service';
 
 const DEFAULT_MAX_COLUMNS = Number(process.env.DATA_QUALITY_MAX_COLUMNS ?? 60);
+/** Tighter per-scan column cap on BigQuery: every profiled column costs real
+ *  bytes (COUNT(DISTINCT c) scans the whole column), so a full 60-column sweep
+ *  could burn the daily budget in one click. 20 keeps a scan comfortably inside
+ *  the maintenance half-budget on typical tables; raise via env when the budget
+ *  allows. */
+const DEFAULT_MAX_COLUMNS_BIGQUERY = Number(process.env.DATA_QUALITY_MAX_COLUMNS_BIGQUERY ?? 20);
 const HIGH_NULL_RATE = 0.5;
 
 export interface ProfileRunResult {
@@ -32,7 +41,8 @@ export interface ProfileRunResult {
 /** Profile up to maxColumns of the connection's columns (inline). Idempotent —
  *  profileColumn upserts. Per-column try/catch so a failure is counted, not fatal. */
 export async function profileConnection(connectionId: string, opts?: { maxColumns?: number }): Promise<ProfileRunResult> {
-  const maxColumns = opts?.maxColumns ?? DEFAULT_MAX_COLUMNS;
+  const conn = await getConnection(connectionId);
+  const maxColumns = opts?.maxColumns ?? (conn?.dialect === 'bigquery' ? DEFAULT_MAX_COLUMNS_BIGQUERY : DEFAULT_MAX_COLUMNS);
   const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
 
   let scanned = 0, failed = 0, totalColumns = 0;
