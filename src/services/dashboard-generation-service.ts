@@ -17,7 +17,7 @@ import { getRelevantContext } from './context-service';
 import { getPrunedSchemaSummary } from './schema-pruning-service';
 import { getConnection } from './connection-service';
 import { getMetric } from './metric-service';
-import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard } from './dashboard-service';
+import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard, getDashboard } from './dashboard-service';
 import { executeQuery } from './query-executor-service';
 import { substituteDateRange, PROBE_RANGE, hasDateRangePlaceholders } from '../lib/sql-param';
 import { validateChartSpec } from './chart-spec-service';
@@ -151,8 +151,11 @@ async function resolveWidget(
 }
 
 /** Models often write `'{{from}}'` despite the "unquoted" instruction; the
- *  substitution then produces `''2026-01-01''` and the parser chokes. Strip a
- *  single pair of surrounding quotes so the placeholder substitutes cleanly. */
+ *  substitution then produces a doubled-quote literal that the parser chokes on.
+ *  Strip a single pair of surrounding quotes so the placeholder substitutes
+ *  cleanly. A legitimate string literal that is exactly `'{{from}}'` would be
+ *  de-quoted too, but that never appears as real analytics data, and the result
+ *  still re-passes validateSql — a bad rewrite fails safe (probe fails), not unsafe. */
 function normalizePlaceholderQuotes(sql: string): string {
   return sql.replace(/'(\{\{\s*(?:from|to)\s*\}\})'/gi, '$1');
 }
@@ -193,6 +196,18 @@ export async function acceptDashboardProposal(input: {
   widgets: { title: string; sql: string; chartSpec?: unknown }[];
 }): Promise<{ ok: true; dashboardId: string; pinned: number; failures: string[] } | { ok: false; error: string }> {
   if (input.widgets.length === 0) return { ok: false, error: 'no widgets selected' };
+
+  // Iterate mode: the new widgets must belong to the same connection the
+  // dashboard already uses, so a request can't graft a foreign-connection widget
+  // onto an existing dashboard (keeps a dashboard's connections coherent).
+  if (input.existingDashboardId) {
+    const dash = await getDashboard(input.existingDashboardId);
+    if (!dash) return { ok: false, error: 'dashboard not found' };
+    const existingConn = (dash.widgets[0] as { connectionId?: string } | undefined)?.connectionId;
+    if (existingConn && existingConn !== input.connectionId) {
+      return { ok: false, error: 'widgets must use the same connection as the dashboard' };
+    }
+  }
 
   const created = !input.existingDashboardId;
   const dashboardId = input.existingDashboardId ?? (await createDashboard(input.dashboardTitle || 'Generated dashboard')).id;

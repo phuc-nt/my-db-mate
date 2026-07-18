@@ -127,6 +127,19 @@ describe('acceptDashboardProposal', () => {
     }
   });
 
+  it('refuses iterate-append when the body connection differs from the dashboard', async () => {
+    const { acceptDashboardProposal } = await import('./dashboard-generation-service');
+    const { createDashboard, pinWidget, deleteDashboard } = await import('./dashboard-service');
+    const dash = await createDashboard('conn-A dash');
+    await pinWidget({ dashboardId: dash.id, connectionId: connId, title: 'seed', sql: 'SELECT region FROM sales GROUP BY region' });
+    const r = await acceptDashboardProposal({
+      connectionId: 'some-other-connection-id', dashboardTitle: '', existingDashboardId: dash.id,
+      widgets: [{ title: 'X', sql: 'SELECT 1', chartSpec: null }],
+    });
+    expect(r.ok).toBe(false);
+    await deleteDashboard(dash.id);
+  });
+
   it('deletes the freshly-created dashboard when zero widgets pin (no orphan)', async () => {
     const { acceptDashboardProposal } = await import('./dashboard-generation-service');
     const { listDashboards } = await import('./dashboard-service');
