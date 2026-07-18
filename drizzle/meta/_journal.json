@@ -197,6 +197,13 @@
       "when": 1784205900218,
       "tag": "0027_mysterious_zarek",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784337249862,
+      "tag": "0028_investigation-session-metadata",
+      "breakpoints": true
     }
   ]
 }

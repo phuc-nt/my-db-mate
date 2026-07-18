@@ -2,10 +2,11 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { startInvestigation } from '../../../../../lib/start-investigation-client';
 
 interface Flag { tableName: string; columnName: string; issue: string; detail: string }
 interface Health { flags: Flag[]; profiledColumns: number; totalColumns: number }
-interface MonitorRun { id: string; status: string; detail: string | null; ranAt: string; result: { columns: string[]; rows: unknown[][] } | null }
+interface MonitorRun { id: string; scheduleId: string; status: string; detail: string | null; ranAt: string; result: { columns: string[]; rows: unknown[][] } | null }
 interface SchemaCol { tableName: string; columnName: string; dataType: string }
 interface AnomalyReport { table: string; column: string; total: number; nullRate: number; numeric?: { avg: number; stddev: number; min: string; max: string; outlierCount: number }; note?: string }
 
@@ -61,6 +62,7 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [invErr, setInvErr] = useState('');
 
   const load = useCallback(async () => {
     setHealth(await (await fetch(`/api/connections/${id}/data-health`)).json());
@@ -137,9 +139,12 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
                 <> · avg {Math.round(anomaly.numeric.avg * 100) / 100} · σ {Math.round(anomaly.numeric.stddev * 100) / 100} · range [{unwrapData(anomaly.numeric.min)} … {unwrapData(anomaly.numeric.max)}] · <b>{anomaly.numeric.outlierCount} outliers (±3σ)</b></>
               )}
               {anomaly.note && <p className="mt-1 text-neutral-500">{anomaly.note}</p>}
-              <Link className="ml-2 text-blue-600 hover:underline"
-                href={`/db/${id}/chat?q=${encodeURIComponent(`Column ${anomaly.column} in ${anomaly.table}: ${anomaly.numeric?.outlierCount ?? 0} outliers beyond 3 sigma, null rate ${Math.round(anomaly.nullRate * 100)}%. Investigate what these outliers are and whether they are a data problem.`)}`}>
-                Ask agent →</Link>
+              <button className="ml-2 text-blue-600 hover:underline" data-testid="investigate-anomaly"
+                onClick={() => startInvestigation(id, {
+                  kind: 'anomaly', table: anomaly.table, column: anomaly.column,
+                  summary: { total: anomaly.total, nullRate: anomaly.nullRate, outlierCount: anomaly.numeric?.outlierCount },
+                }, setInvErr)}>
+                🔎 Investigate →</button>
             </div>
           )}
         </section>
@@ -151,11 +156,25 @@ export default function DataHealthPage({ params }: { params: Promise<{ id: strin
             {monitorRuns.map((r) => (
               <li key={r.id} className={`rounded border p-2 ${r.result?.rows?.length ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : 'border-neutral-200 dark:border-neutral-800'}`}>
                 <span className="text-neutral-500">{new Date(r.ranAt).toLocaleString()}</span> · {r.detail ?? r.status}
+                {(r.result?.rows?.length ?? 0) > 0 && (
+                  <ul className="mt-1 space-y-0.5">
+                    {r.result!.rows.map((row, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <span className="font-mono">{String(row[0])}.{String(row[1])} {String(row[2])}→{String(row[3])}</span>
+                        <button className="text-blue-600" onClick={() => startInvestigation(id, {
+                          kind: 'monitor', scheduleId: r.scheduleId, runCreatedAt: r.ranAt,
+                          finding: { table: row[0], metric: row[1], before: row[2], after: row[3], deltaPct: row[4] },
+                        }, setInvErr)}>🔎 Investigate</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
         </section>
       )}
+      {invErr && <p className="mt-2 text-xs text-amber-600">{invErr}</p>}
     </main>
   );
 }

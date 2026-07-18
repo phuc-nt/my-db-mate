@@ -74,12 +74,35 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setFollowupsOn(localStorage.getItem('mdm.followups') !== 'off');
   }, []);
 
+  // Investigate-from-finding autostart: kickoff text fetched from the session's
+  // server-side target (never client-carried), fired once when the chat is ready.
+  const [pendingKickoff, setPendingKickoff] = useState<string | null>(null);
+  const kickoffFiredRef = useRef(false);
+
   // Create a session for this chat so queries + transcript can be distilled later.
+  // `?session=<id>` (investigate-from-finding, navigate-first flow) reuses the
+  // session the investigate-finding route created instead of minting a new one —
+  // THIS page owns the stream, so navigating here first means the conclusion's
+  // onFinish persistence can't be lost to an aborted fetch elsewhere.
   useEffect(() => {
-    fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }) })
-      .then((r) => r.json()).then((s) => setSessionId(s.id));
+    const sp = new URLSearchParams(window.location.search);
+    const existing = sp.get('session');
+    if (existing) {
+      setSessionId(existing);
+      if (sp.get('autostart')) {
+        fetch(`/api/connections/${connectionId}/investigate-finding?sessionId=${existing}`)
+          .then((r) => r.json())
+          .then((d) => { if (d.kickoff) setPendingKickoff(d.kickoff); })
+          .catch(() => {});
+      }
+      router.replace(`/db/${connectionId}/chat`, { scroll: false });
+    } else {
+      fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }) })
+        .then((r) => r.json()).then((s) => setSessionId(s.id));
+    }
     // Dialect drives dialect-aware SQL-insert export in result blocks.
     fetch(`/api/connections/${connectionId}/schema`).then((r) => r.json()).then((d) => setDialect(d.dialect)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId]);
 
   const { messages, sendMessage, addToolResult, status, setMessages } = useChat({
@@ -216,6 +239,17 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       body: JSON.stringify({ question, sqlTexts }),
     }).then((r) => r.json()).then(setProvenance).catch(() => {});
   }, [status, messages, connectionId, artifacts]);
+
+  // Fire the investigation kickoff exactly once, after the session id is bound.
+  // Mode is advisory here — the chat route forces investigate mode + the 5-step
+  // cap for any session that carries an investigation target.
+  useEffect(() => {
+    if (!pendingKickoff || !sessionId || kickoffFiredRef.current) return;
+    kickoffFiredRef.current = true;
+    send(pendingKickoff, 'investigate');
+    setPendingKickoff(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingKickoff, sessionId]);
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {

@@ -26,6 +26,7 @@ import { detectAnomalies } from './anomaly-service';
 import { getModel } from './llm-service';
 import { renderDateContext } from '../lib/date-context';
 import { missingGovernedFilters } from '../lib/metric-filter-lint';
+import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from './finding-investigation-service';
 
 export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
 /** Both investigate tiers share tools/addendum; only budgets differ. Using a
@@ -127,8 +128,20 @@ export function buildAgentTools(
   mode: AgentMode = 'chat',
   dialect: Dialect = 'postgres',
   matchedMetrics: MatchedMetric[] = [],
+  // Finding-investigation cap: when set, run_sql draws from a PER-SESSION persisted
+  // counter (atomic reserve) instead of only the per-request budget — reopening the
+  // session cannot reset it, and a client value can only lower the ceiling (red-team).
+  findingCap?: { sessionId: string; cap: number },
 ) {
   const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0 };
+  const findingSqlCap = findingCap ? Math.min(Math.max(1, findingCap.cap), INVESTIGATE_FINDING_MAX_SQL) : null;
+  // Investigate-from-finding: actor is derived HERE (server side, from the presence
+  // of the session's validated target) — never from the request body — and the
+  // BigQuery admission uses the agentBudgeted path (full-priority budget, no
+  // per-step confirm). Plain chat keeps actor/flags unchanged, so BQ chat still
+  // fail-closes at the choke point.
+  const execActor = findingCap ? 'investigate-finding' : actor;
+  const bqFlags = findingCap ? { agentBudgeted: true as const } : {};
   // Metrics matched CLOSELY enough that the answer must obey their governed filters —
   // a tighter gate than injection (a metric injected as context isn't necessarily one
   // the SQL must adhere to filter-for-filter). See the run_sql adherence lint below.
@@ -166,7 +179,11 @@ export function buildAgentTools(
         const [t] = await db.select({ schemaName: schemaTables.schemaName }).from(schemaTables).where(and(...conds));
         const quoted = qualifiedTableRef(dialect, safe, t?.schemaName ?? (safeDataset || undefined));
         // App-generated, bounded (5 rows) → skip the risk EXPLAIN (M2 hot-path).
-        const res = await executeQuery({ connectionId, sql: capRows(`SELECT * FROM ${quoted}`, 5, dialect), actor, sessionId, skipRiskGate: true });
+        // In an investigation on BigQuery this rides agentBudgeted (dry-run + daily
+        // budget + maximumBytesBilled cap), so it is cost-bounded — but it is NOT
+        // counted against the 5 run_sql investigation steps (it's a schema-peek, not
+        // an analytical query); the daily budget + per-query cap are its ceiling.
+        const res = await executeQuery({ connectionId, sql: capRows(`SELECT * FROM ${quoted}`, 5, dialect), actor: execActor, sessionId, skipRiskGate: true, ...bqFlags });
         if (res.status !== 'ok') return { error: res.blockedReason ?? res.errorMessage };
         return { columns: res.result!.columns, rows: wrapData(res.result!.rows) };
       },
@@ -212,11 +229,22 @@ export function buildAgentTools(
             }
           }
         }
-        const res = await executeQuery({ connectionId, sql, actor, sessionId });
+        // Finding-investigation cap: atomic per-session reservation just before running —
+        // binding across turns/reopens (the per-request budget above is not). Sits AFTER
+        // the lint so a lint-rejected (never-executed) query doesn't burn a step.
+        if (findingSqlCap && findingCap) {
+          const r = await reserveInvestigationStep(findingCap.sessionId, findingSqlCap);
+          if (!r.allowed) {
+            return { stopped: true, hitStepCap: true, reason: `Investigation step cap reached (${findingSqlCap} SQL queries per investigation, across all turns). Conclude NOW with the evidence gathered so far and state explicitly that the step cap was hit.` };
+          }
+        }
+        const res = await executeQuery({ connectionId, sql, actor: execActor, sessionId, ...bqFlags });
         // A medium-risk query needs human confirmation (P3) and did NOT execute, so
         // it does not consume the query budget (review M-5). Report and stop.
         if (res.status === 'needs_confirmation') {
           state.consecutiveFailures = 0;
+          // The reserved investigation step was not spent — give it back.
+          if (findingSqlCap && findingCap) await releaseInvestigationStep(findingCap.sessionId);
           return { needsConfirmation: true, risk: res.risk, note: 'This query is estimated as medium-risk (heavy) and did NOT run. Tell the user (in their language) the exact UI path to run it themselves: press "view \u2192" on the query chip, then "Re-run", then the amber "Confirm & run anyway" button in the SQL panel. Confirming in chat has no effect; do not retry automatically. After they confirm, the result is recorded into the conversation for you.' };
         }
         // The query actually ran (ok/error/blocked) → it counts against the budget.
@@ -341,8 +369,14 @@ export async function streamAgentAnswer(params: {
   actor?: string;
   sessionId?: string;
   mode?: AgentMode;
+  /** Server-built finding context (investigate-from-finding). NEVER client text —
+   *  the chat route derives it from the session's stored InvestigationTarget. */
+  findingContext?: string;
+  /** Per-session SQL-step cap for a finding investigation. Clamped to
+   *  INVESTIGATE_FINDING_MAX_SQL; requires sessionId (persisted counter). */
+  maxSqlSteps?: number;
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat' } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -370,14 +404,17 @@ export async function streamAgentAnswer(params: {
   const system =
     SYSTEM(schema, dialect) +
     (isInvestigative(mode) ? INVESTIGATE_ADDENDUM(dialect) : '') +
+    (findingContext ? `\n\n${findingContext}` : '') +
     bigTablePolicy(bigTables) +
     (contextBlock ? `\n\n## Curated context for this database\n${contextBlock}` : '');
+
+  const findingCap = findingContext && sessionId && maxSqlSteps ? { sessionId, cap: maxSqlSteps } : undefined;
 
   return streamText({
     model: await getModel(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics),
+    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap),
     stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
   });
 }
