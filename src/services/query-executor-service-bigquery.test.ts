@@ -588,3 +588,71 @@ describe('Implicit surfaces are explicitly blocked on BigQuery (cost-governance 
     expect(asString).not.toMatch(/not yet supported for BigQuery/);
   });
 });
+
+describe('agentBudgeted — investigate-from-finding admission path', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+  });
+
+  afterEach(async () => {
+    await db.delete(bqBudgetLedger).where(eq(bqBudgetLedger.connectionId, conn.id));
+    await db.delete(queryRuns).where(eq(queryRuns.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('admits at FULL budget priority and reconciles the ledger with real billed bytes', async () => {
+    // Budget 100 bytes-scale test: estimate 60 would exceed a low-tier (50%) ceiling
+    // but fits the full budget — proving investigate-finding is NOT maintenance-tier.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    mockRealRun({ totalBytesBilled: '40', totalBytesProcessed: '40' });
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('ok');
+    const [ledger] = await db.select().from(bqBudgetLedger).where(eq(bqBudgetLedger.connectionId, conn.id)).limit(1);
+    expect(ledger.committedBytes).toBe(40);
+    expect(ledger.reservedBytes).toBe(0);
+    // Audit trail carries the server-derived actor.
+    const [run] = await db.select().from(queryRuns).where(eq(queryRuns.connectionId, conn.id)).orderBy(desc(queryRuns.createdAt)).limit(1);
+    expect(run.actor).toBe('investigate-finding');
+  });
+
+  it('the SAME estimate under backgroundBudgeted as a maintenance actor is blocked by the low-tier ceiling', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'monitor', backgroundBudgeted: true });
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/low-priority ceiling/);
+  });
+
+  it('blocks cleanly when the estimate exceeds the full budget (partial-conclusion path upstream)', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('500');
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/daily byte budget exceeded/);
+    expect(res.blockedReason).not.toMatch(/low-priority ceiling/);
+  });
+
+  it('REGRESSION: agentBudgeted never serves the offline snapshot — a live dry-run job is issued', async () => {
+    // Offline mode on the connection redirects backgroundBudgeted to the DuckDB
+    // snapshot; an investigation must stay live (stale data cannot explain fresh drift).
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 1_000_000, bigqueryOfflineMode: true }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('10');
+    mockRealRun({ totalBytesBilled: '10', totalBytesProcessed: '10' });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('ok');
+    expect(createQueryJobMock).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+  });
+
+  it('REGRESSION: plain BQ chat (no flags, as the non-investigation agent path) still fail-closes', async () => {
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'owner' });
+    expect(res.status).toBe('error');
+    expect(res.errorMessage).toMatch(/interactive cost-confirmation/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+});

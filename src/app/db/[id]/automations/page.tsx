@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { startInvestigation } from '../../../../lib/start-investigation-client';
 
 interface Schedule {
   id: string; name: string; mode: string; sql: string | null; question: string | null;
@@ -159,7 +160,7 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
             {s.targetName && <p className="mt-1 text-xs text-neutral-500">{s.mode === 'dashboard_refresh' ? '📊 refresh dashboard' : s.mode === 'report_regenerate' ? '📝 regenerate report' : s.mode} · <b>{s.targetName}</b></p>}
             {s.mode === 'metrics_digest' && <p className="mt-1 text-xs text-neutral-500">📈 metrics digest{(s.config as { quiet?: boolean } | null)?.quiet ? ' (quiet — only sends on changes)' : ''} — all metrics of this connection, 1 LLM call/run</p>}
             {s.mode === 'monitor' && <p className="mt-1 text-xs text-neutral-500">🔎 data monitor</p>}
-            <RunHistory connectionId={id} scheduleId={s.id} />
+            <RunHistory connectionId={id} scheduleId={s.id} scheduleMode={s.mode} />
           </li>
         ))}
       </ul>
@@ -167,13 +168,17 @@ export default function AutomationsPage({ params }: { params: Promise<{ id: stri
   );
 }
 
-interface RunRow { id: string; status: string; detail: string | null; ranAt: string; rowCount: number | null }
+interface RunRow { id: string; status: string; detail: string | null; ranAt: string; rowCount: number | null; result?: { columns: string[]; rows: unknown[][] } | null }
 
 /** Collapsible last-runs list per schedule. Digest runs keep their (capped)
- *  markdown in `detail`, so a webhook-less digest is still readable here. */
-function RunHistory({ connectionId, scheduleId }: { connectionId: string; scheduleId: string }) {
+ *  markdown in `detail`, so a webhook-less digest is still readable here. Monitor
+ *  runs carry structured findings in `result` — each row gets an Investigate
+ *  button (digest findings are merged FROM monitor runs, so this is also the
+ *  investigate entry for what a digest reports). */
+function RunHistory({ connectionId, scheduleId, scheduleMode }: { connectionId: string; scheduleId: string; scheduleMode?: string }) {
   const [open, setOpen] = useState(false);
   const [runs, setRuns] = useState<RunRow[] | null>(null);
+  const [err, setErr] = useState('');
   async function toggleOpen() {
     const next = !open;
     setOpen(next);
@@ -194,8 +199,22 @@ function RunHistory({ connectionId, scheduleId }: { connectionId: string; schedu
               <span className={r.status === 'ok' ? 'text-green-600' : r.status === 'skipped' ? 'text-neutral-400' : 'text-amber-600'}>{r.status}</span>
               <span className="text-neutral-400"> · {new Date(r.ranAt).toLocaleString()}{r.rowCount != null ? ` · ${r.rowCount} rows` : ''}</span>
               {r.detail && <pre className="mt-0.5 whitespace-pre-wrap text-neutral-500">{r.detail}</pre>}
+              {scheduleMode === 'monitor' && (r.result?.rows?.length ?? 0) > 0 && (
+                <ul className="mt-1 space-y-0.5" data-testid="monitor-findings">
+                  {r.result!.rows.map((row, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="font-mono text-neutral-600 dark:text-neutral-300">{String(row[0])}.{String(row[1])} {String(row[2])}→{String(row[3])}{row[4] != null ? ` (${String(row[4])}%)` : ''}</span>
+                      <button className="text-blue-600" onClick={() => startInvestigation(connectionId, {
+                        kind: 'monitor', scheduleId, runCreatedAt: r.ranAt,
+                        finding: { table: row[0], metric: row[1], before: row[2], after: row[3], deltaPct: row[4] },
+                      }, setErr)}>🔎 Investigate</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
+          {err && <li className="text-amber-600">{err}</li>}
           {runs.length === 0 && <li className="text-neutral-400">No runs yet.</li>}
         </ul>
       )}

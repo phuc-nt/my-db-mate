@@ -147,13 +147,18 @@ export const schemaForeignKeys = pgTable('schema_foreign_keys', {
   toColumn: text('to_column').notNull(),
 });
 
-/** A chat session against one connection. */
+/** A chat session against one connection. `metadata` carries session-scoped state
+ *  that must survive across HTTP turns — today: the finding-investigation target
+ *  (server-side source of truth for the investigate-from-finding flow) and its
+ *  persisted SQL-step counter (the 5-step cap is per-session, NOT per-request, so
+ *  reopening the session cannot reset it). */
 export const chatSessions = pgTable('chat_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   connectionId: uuid('connection_id')
     .notNull()
     .references(() => connections.id, { onDelete: 'cascade' }),
   title: text('title'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

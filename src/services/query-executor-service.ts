@@ -208,6 +208,17 @@ export async function executeQuery(params: {
    *  reached without an explicit background caller opting in. On a BigQuery connection:
    *  dry-run estimate → reserve against the daily budget → run (or block) → reconcile. */
   backgroundBudgeted?: boolean;
+  /** BigQuery-only: set ONLY by the agent's investigate-from-finding path (the
+   *  session carries a server-validated investigation target; actor is derived
+   *  server-side as 'investigate-finding'). A user-triggered investigation has a
+   *  human BEHIND it but no per-step confirm UI (5 sequential confirms would kill
+   *  the flow), so each step is admitted like a budgeted query at FULL priority:
+   *  dry-run estimate → reserve against the full daily budget → run (per-query
+   *  `maximumBytesBilled` still applies) → reconcile. Deliberately separate from
+   *  `backgroundBudgeted` (whose contract is no-human background callers and
+   *  which may serve the offline snapshot instead) — plain BQ chat without an
+   *  investigation target still fail-closes on Path 4. */
+  agentBudgeted?: boolean;
   /** BigQuery-only: set by the DuckDB-over-BigQuery extract service to prevent
    *  infinite recursion when fetching rows for a snapshot extract. When true,
    *  skips the offline-mode check even if `bigqueryOfflineMode` is set on the
@@ -217,7 +228,7 @@ export async function executeQuery(params: {
   const {
     connectionId, sql, sessionId, actor = 'owner', confirmed = false, skipRiskGate = false,
     bigqueryCostConfirmationToken = false, allowCostEstimatePreview = false,
-    backgroundBudgeted = false, _bypassOfflineMode = false,
+    backgroundBudgeted = false, agentBudgeted = false, _bypassOfflineMode = false,
   } = params;
   const conn = await getConnection(connectionId);
   if (!conn) return { status: 'error', errorMessage: 'Connection not found' };
@@ -284,10 +295,13 @@ export async function executeQuery(params: {
         return await runBigQueryReal();
       }
 
-      // Path 2 — background budgeted (dashboards/metrics/reports, no human present):
+      // Path 2 — budgeted execution with no per-query human confirm:
+      //   backgroundBudgeted (dashboards/metrics/reports — no human at all), or
+      //   agentBudgeted (investigate-from-finding — human-triggered, full priority,
+      //   always live: an offline snapshot can't answer "what is drifting right now").
       // dry-run estimate → reserve against the daily budget → run → reconcile/refund.
       // Deliberately unreachable via the OLTP confirmed/skipRiskGate flags.
-      if (backgroundBudgeted) {
+      if (backgroundBudgeted || agentBudgeted) {
         // Offline mode (Mode 2): serve from a DuckDB-over-BigQuery snapshot instead of
         // querying BigQuery live. The extract itself still goes through THIS budget path
         // (the extract service calls executeQuery with backgroundBudgeted), so there is
@@ -295,7 +309,7 @@ export async function executeQuery(params: {
         // (the extract service imports executeQuery). Cache-valid reads cost $0.
         // _bypassOfflineMode prevents infinite recursion when the extract service's
         // fetchRows callback calls executeQuery internally.
-        const offlineMode = !_bypassOfflineMode && (conn as unknown as { bigqueryOfflineMode?: boolean }).bigqueryOfflineMode === true;
+        const offlineMode = backgroundBudgeted && !_bypassOfflineMode && (conn as unknown as { bigqueryOfflineMode?: boolean }).bigqueryOfflineMode === true;
         if (offlineMode) {
           const { extractBigQueryToDuckDB, BigQueryExtractBlockedError } = await import('./accelerator/bigquery-duckdb-extract-service');
           try {
