@@ -204,6 +204,13 @@
       "when": 1784337249862,
       "tag": "0028_investigation-session-metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784362585655,
+      "tag": "0029_action-triggers",
+      "breakpoints": true
     }
   ]
 }

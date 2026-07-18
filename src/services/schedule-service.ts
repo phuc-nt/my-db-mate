@@ -234,6 +234,19 @@ async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
     : baselines === tables.length ? 'baseline captured' : 'healthy';
   const result = { columns: ['table', 'metric', 'before', 'after', 'deltaPct'], rows: findings.map((f) => [f.table, f.metric, f.before, f.after, f.deltaPct]) };
 
+  // Action triggers: webhook-out rules over this run's findings. Evaluated BEFORE
+  // the legacy per-schedule webhook so a legacy-delivery failure (which returns
+  // early below) can't skip an independent trigger targeting a different URL. Own
+  // try/catch — a trigger problem must never turn a healthy monitor run into a failure.
+  if (findings.length > 0) {
+    try {
+      const { evaluateTriggers } = await import('./action-trigger-service');
+      await evaluateTriggers(s.connectionId, 'monitor',
+        findings.map((f) => ({ name: f.table, detail: f.metric, before: f.before, after: f.after, deltaPct: f.deltaPct })),
+        conn.name);
+    } catch (e) { console.warn(`action triggers (monitor ${s.id}):`, e instanceof Error ? e.message : e); }
+  }
+
   if (findings.length && s.webhookUrl) {
     const vet = await vetWebhookUrl(s.webhookUrl);
     if (!vet.ok) { await record(s.id, 'delivery_failed', `webhook blocked: ${vet.reason}`, findings.length, result); return; }
@@ -328,6 +341,21 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   if (cfg.quiet && !hasChanges && monitorFindings.length === 0 && errors.length === 0) {
     await record(s.id, 'ok', 'quiet — no significant changes, digest skipped', lines.length, runResult);
     return;
+  }
+
+  // Action triggers: fire on metrics whose CHANGE flags fired (same signal as
+  // quiet mode — a persistently-missed target or a mere forecast never triggers).
+  // Own try/catch + placed before the LLM call: delivery must not depend on
+  // narration succeeding, and a trigger problem must not fail the digest run.
+  const changedLines = lines.filter((l) => l.insight.changeFlags.length > 0);
+  if (changedLines.length > 0) {
+    try {
+      const { evaluateTriggers } = await import('./action-trigger-service');
+      const conn = await getConnection(s.connectionId);
+      await evaluateTriggers(s.connectionId, 'digest',
+        changedLines.map((l) => ({ name: l.name, detail: l.insight.changeFlags.join(', '), before: null, after: l.latest, deltaPct: l.insight.deltaPct })),
+        conn?.name ?? 'connection');
+    } catch (e) { console.warn(`action triggers (digest ${s.id}):`, e instanceof Error ? e.message : e); }
   }
 
   // One LLM call. The prompt carries ONLY computed numbers (never raw series) and
