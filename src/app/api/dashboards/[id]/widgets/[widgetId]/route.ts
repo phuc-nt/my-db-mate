@@ -1,6 +1,29 @@
 import { NextResponse } from 'next/server';
-import { runWidget, deleteWidget, updateWidgetLayout } from '../../../../../../services/dashboard-service';
+import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '../../../../../../services/dashboard-service';
 import { isValidIsoDate } from '../../../../../../lib/sql-param';
+
+const MAX_CROSS_FILTERS = 3;
+const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/** Cross-filters are user-clicked (column, value) pairs. Validate shape here —
+ *  column must be a plain identifier, value a primitive or null — before they
+ *  reach the AST rewrite. */
+export function parseCrossFilters(raw: unknown): { filters: CrossFilter[] } | { error: string } {
+  if (raw == null) return { filters: [] };
+  if (!Array.isArray(raw)) return { error: 'crossFilters must be an array' };
+  if (raw.length > MAX_CROSS_FILTERS) return { error: `at most ${MAX_CROSS_FILTERS} cross-filters` };
+  const filters: CrossFilter[] = [];
+  for (const f of raw) {
+    if (!f || typeof f !== 'object') return { error: 'each cross-filter must be an object' };
+    const { column, value } = f as { column?: unknown; value?: unknown };
+    if (typeof column !== 'string' || !COLUMN_RE.test(column)) return { error: `invalid cross-filter column` };
+    if (value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      return { error: 'cross-filter value must be a string, number, boolean, or null' };
+    }
+    filters.push({ column, value });
+  }
+  return { filters };
+}
 
 export const runtime = 'nodejs';
 
@@ -18,7 +41,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     range = { from: String(body.from), to: String(body.to) };
   }
-  const res = await runWidget(widgetId, Boolean(body.confirmed), range);
+  const parsed = parseCrossFilters(body.crossFilters);
+  if ('error' in parsed) {
+    return NextResponse.json({ status: 'error', message: parsed.error }, { status: 400 });
+  }
+  const res = await runWidget(widgetId, Boolean(body.confirmed), range, parsed.filters);
   return NextResponse.json(res);
 }
 

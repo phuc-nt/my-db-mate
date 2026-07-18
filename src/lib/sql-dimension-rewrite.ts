@@ -13,18 +13,23 @@
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
 
-const DIALECT_MAP: Record<string, string> = {
+/** node-sql-parser database keys per app dialect. Shared with the WHERE-filter
+ *  rewrite. bigquery/duckdb added for cross-filtering (duckdb speaks Postgres
+ *  syntax to the parser); node-sql-parser has a native BigQuery mode. */
+export const DIALECT_MAP: Record<string, string> = {
   postgres: 'PostgresQL',
   mysql: 'MySQL',
   sqlite: 'Sqlite',
   mssql: 'TransactSQL',
+  bigquery: 'BigQuery',
+  duckdb: 'PostgresQL',
 };
 
 export const DRIVER_ROW_CAP = 10_000;
 
-/** Dimension names come from user input and are spliced into the AST — only
- *  plain identifiers are allowed (no quotes, dots, spaces, or expressions). */
-const DIM_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+/** Column/dimension names come from user input and are spliced into the AST —
+ *  only plain identifiers are allowed (no quotes, dots, spaces, or expressions). */
+export const DIM_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 /** `cap` is the row ceiling the caller must check against: rows.length >= cap
  *  means the driver data may be truncated → skip the breakdown. */

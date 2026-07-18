@@ -26,15 +26,25 @@ export function DashboardWidget({
   readOnly = false,
   onChanged,
   overrideResult,
+  crossFilterState = null,
+  onDatumClick,
   parametrized = false,
 }: {
   widget: WidgetData;
   dashboardId?: string;
   readOnly?: boolean;
   onChanged?: () => void;
-  /** Transient result from a dashboard date-range run — rendered instead of the
-   *  cache, never persisted (the share view must keep the default-range cache). */
+  /** Transient result from a dashboard date-range or cross-filter run — rendered
+   *  instead of the cache, never persisted (share view keeps the default cache). */
   overrideResult?: { columns: string[]; rows: unknown[][] } | null;
+  /** When a dashboard cross-filter is active: whether it applied to THIS widget.
+   *  `filtered:false` means the shown rows are unfiltered (column absent / not
+   *  rewritable) — the widget dims and shows the reason so stale numbers don't
+   *  masquerade as filtered. */
+  crossFilterState?: { active: boolean; filtered: boolean; reason?: string } | null;
+  /** A datapoint (bar/pie/scatter/heatmap) was clicked — raw column + value (the
+   *  raw cell value, coerced to a filter primitive by the handler). */
+  onDatumClick?: (column: string, value: unknown) => void;
   /** Widget SQL contains {{from}}/{{to}} — shows the 📅 responds-to-range badge. */
   parametrized?: boolean;
 }) {
@@ -98,16 +108,25 @@ export function DashboardWidget({
         </div>
       )}
       {msg && <p className="mb-1 text-xs text-red-600">{msg}</p>}
+      {crossFilterState?.active && !crossFilterState.filtered && (
+        <p className="mb-1 text-[10px] text-amber-600" data-testid="widget-not-filtered" title={crossFilterState.reason}>
+          ⊘ Not filtered — {crossFilterState.reason ?? 'this widget can’t apply the active filter'} (showing unfiltered data)
+        </p>
+      )}
       {pickerOpen && result && (
         <div className="mb-2"><ChartConfigPicker columns={result.columns} value={validSpec} onApply={saveSpec} /></div>
       )}
+      {/* Dim when a cross-filter is active but couldn't apply here, so the
+          unfiltered numbers don't read as if they honour the filter chips. */}
+      <div className={crossFilterState?.active && !crossFilterState.filtered ? 'opacity-50' : ''}>
       {!result ? (
         <p className="text-xs text-neutral-500">{readOnly ? 'No data yet — the owner hasn’t refreshed this widget.' : 'Not run yet — click Refresh.'}</p>
       ) : showChart ? (
-        <ResultChart columns={result.columns} rows={result.rows} spec={validSpec} />
+        <ResultChart columns={result.columns} rows={result.rows} spec={validSpec} onDatumClick={readOnly ? undefined : onDatumClick} />
       ) : (
         <ResultTable columns={result.columns} rows={result.rows} />
       )}
+      </div>
       {overrideResult ? (
         <p className="mt-1 text-[10px] text-amber-600" data-testid="range-transient-note">Custom range view — not saved (share keeps the default range)</p>
       ) : widget.lastRefreshedAt && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { DashboardWidget, type WidgetData } from '../../../components/dashboard-widget';
 import { FormModal } from '../../../components/form-modal';
@@ -33,6 +33,15 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   const [range, setRange] = useState({ from: '', to: '' });
   const [rangeResults, setRangeResults] = useState<Record<string, { columns: string[]; rows: unknown[][] }>>({});
   const [rangeMsg, setRangeMsg] = useState('');
+  // Cross-filters: view-state only, same as date-range. Each carries the source
+  // widget so it is never re-applied to the widget that produced it. A monotonic
+  // generation guards against a slow earlier response overwriting a newer one.
+  const [crossFilters, setCrossFilters] = useState<{ column: string; value: string | number | boolean | null; label: string; sourceWidgetId: string }[]>([]);
+  const [filterResults, setFilterResults] = useState<Record<string, { columns: string[]; rows: unknown[][]; filtered: boolean; reason?: string }>>({});
+  // Monotonic token in a ref (not state) so every apply/clear gets a DISTINCT
+  // value even when several fire in the same tick before React re-renders —
+  // a stale in-flight response then can't overwrite a newer one.
+  const filterGenRef = useRef(0);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/dashboards/${id}`);
@@ -112,6 +121,62 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
     setRangeMsg('');
   }
 
+  /** Re-run every widget EXCEPT the ones a filter came from, applying the given
+   *  cross-filter set transiently. A generation token drops stale responses.
+   *  Plain function (not a hook) — it runs on click, never in a dependency array,
+   *  and lives below the loading early-return. */
+  async function runCrossFilters(filters: typeof crossFilters) {
+    if (!dash) return;
+    // Distinct token per call, incremented imperatively — covers same-tick calls
+    // that a state-derived counter would collide on.
+    const gen = ++filterGenRef.current;
+    if (filters.length === 0) { setFilterResults({}); return; }
+    const payload = filters.map((f) => ({ column: f.column, value: f.value }));
+    const sourceIds = new Set(filters.map((f) => f.sourceWidgetId));
+    const targets = dash.widgets.filter((w) => !sourceIds.has(w.id));
+    const next: Record<string, { columns: string[]; rows: unknown[][]; filtered: boolean; reason?: string }> = {};
+    await Promise.allSettled(targets.map(async (w) => {
+      const res = await fetch(`/api/dashboards/${id}/widgets/${w.id}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ crossFilters: payload, ...(range.from && range.to ? { from: range.from, to: range.to } : {}) }),
+      });
+      const d = await res.json();
+      if (d.status === 'ok') next[w.id] = { columns: d.columns, rows: d.rows, filtered: d.filtered !== false, reason: d.filterReason };
+      else next[w.id] = { columns: [], rows: [], filtered: false, reason: d.message };
+    }));
+    // Only apply if no newer run (or clear) started while we awaited.
+    if (gen === filterGenRef.current) setFilterResults(next);
+  }
+
+  /** A datapoint was clicked in a widget → add/replace the filter for that column
+   *  (one filter per column) and re-run siblings. Coerces the raw cell value to a
+   *  filter primitive; a Date/object becomes its string form for the SQL literal. */
+  function addCrossFilter(sourceWidgetId: string, column: string, raw: unknown) {
+    const value: string | number | boolean | null =
+      raw === null || raw === undefined ? null
+      : typeof raw === 'number' || typeof raw === 'boolean' ? raw
+      : typeof raw === 'string' ? raw
+      : String(raw);
+    const label = `${column} = ${value === null ? 'NULL' : String(value)}`;
+    const next = [...crossFilters.filter((f) => f.column !== column), { column, value, label, sourceWidgetId }];
+    setCrossFilters(next);
+    runCrossFilters(next);
+  }
+
+  function removeCrossFilter(column: string) {
+    const next = crossFilters.filter((f) => f.column !== column);
+    setCrossFilters(next);
+    runCrossFilters(next);
+  }
+
+  function clearCrossFilters() {
+    // Bump the token so any in-flight apply that resolves after this can't
+    // repopulate filterResults.
+    filterGenRef.current++;
+    setCrossFilters([]);
+    setFilterResults({});
+  }
+
   async function setLayout(widgetId: string, patch: { size?: string; position?: number }) {
     await fetch(`/api/dashboards/${id}/widgets/${widgetId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) });
     load();
@@ -156,6 +221,19 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
           {rangeMsg && <span className="text-amber-600">{rangeMsg}</span>}
         </div>
       )}
+      {crossFilters.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded border border-blue-200 bg-blue-50/50 p-2 text-xs dark:border-blue-900 dark:bg-blue-950/20" data-testid="crossfilter-bar">
+          <span className="text-blue-600 dark:text-blue-400">🔎 Cross-filter</span>
+          {crossFilters.map((f) => (
+            <button key={f.column} onClick={() => removeCrossFilter(f.column)}
+              className="rounded-full border border-blue-300 bg-white px-2 py-0.5 hover:bg-blue-100 dark:border-blue-800 dark:bg-neutral-900" title="Remove this filter">
+              {f.label} ✕
+            </button>
+          ))}
+          <button onClick={clearCrossFilters} className="text-blue-600 hover:underline">Clear all</button>
+          <span className="text-neutral-400">· click a bar or slice to filter; view only, not saved</span>
+        </div>
+      )}
       {dash.widgets.length === 0 ? (
         <p className="text-sm text-neutral-500">No widgets. Pin a result from chat (📌 Pin to dashboard).</p>
       ) : (
@@ -171,7 +249,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
                 <button onClick={() => swapOrder(i, i + 1)} disabled={i === dash.widgets.length - 1} className="disabled:opacity-30" title="Move down">↓</button>
               </div>
               <DashboardWidget widget={w} dashboardId={id} onChanged={load}
-                overrideResult={rangeResults[w.id] ?? null}
+                overrideResult={filterResults[w.id] ?? rangeResults[w.id] ?? null}
+                crossFilterState={crossFilters.length > 0 ? { active: true, filtered: filterResults[w.id]?.filtered ?? true, reason: filterResults[w.id]?.reason } : null}
+                onDatumClick={(column, value) => addCrossFilter(w.id, column, value)}
                 parametrized={!!w.sql && hasDateRangePlaceholders(w.sql)} />
             </div>
           ))}
