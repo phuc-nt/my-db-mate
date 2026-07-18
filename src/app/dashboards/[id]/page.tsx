@@ -3,6 +3,7 @@
 import { use, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { DashboardWidget, type WidgetData } from '../../../components/dashboard-widget';
+import { DashboardGenerateModal } from '../../../components/dashboard-generate-modal';
 import { FormModal } from '../../../components/form-modal';
 import { hasDateRangePlaceholders, isValidIsoDate } from '../../../lib/sql-param';
 
@@ -27,6 +28,7 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   // connection — the schedules API is connection-scoped).
   const [refreshSched, setRefreshSched] = useState<{ id: string; cron: string } | null>(null);
   const [schedModal, setSchedModal] = useState(false);
+  const [genModal, setGenModal] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
   // Dashboard date range: view-state only (never persisted — reload returns to
   // the cached default-range results). Transient results keyed by widget id.
@@ -72,6 +74,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
   }
 
   if (!dash) return <main className="p-6 text-sm text-neutral-500">Loading…</main>;
+
+  // The dashboard's primary connection (first widget) — gates the AI "Add widgets" entry.
+  const primaryConnectionId = (dash.widgets[0] as { connectionId?: string } | undefined)?.connectionId;
 
 
   async function saveRefreshSchedule(cronExpr: string) {
@@ -200,6 +205,9 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
         <h1 className="text-lg font-semibold">{dash.name}</h1>
         <div className="flex items-center gap-3 text-sm">
           <button onClick={refreshAll} className="text-blue-600">Refresh all</button>
+          {primaryConnectionId && (
+            <button onClick={() => setGenModal(true)} className="text-blue-600" data-testid="add-widgets-ai">✨ Add widgets</button>
+          )}
           <button onClick={() => setSchedModal(true)} disabled={!dash.widgets.length} className="text-blue-600 disabled:opacity-40" title={dash.widgets.length ? 'Refresh on a cron schedule' : 'Pin a widget first'}>
             ⏰ Auto-refresh{refreshSched ? ' (on)' : ''}</button>
           <button onClick={() => toggleShare(!dash.shareSlug)} className="text-blue-600">{dash.shareSlug ? 'Regenerate share link' : 'Share'}</button>
@@ -263,6 +271,13 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
           onSubmit={(v) => { setSchedModal(false); saveRefreshSchedule(v.cron.trim()); }} onClose={() => setSchedModal(false)} />
       )}
       {refreshSched && <p className="mt-2 text-xs text-neutral-400">Auto-refresh: <span className="font-mono">{refreshSched.cron}</span> · <button onClick={removeRefreshSchedule} className="text-red-600 hover:underline">turn off</button> <span title="Xoá connection của widget đầu tiên sẽ xoá lịch này">ⓘ</span></p>}
+      {genModal && primaryConnectionId && (
+        <DashboardGenerateModal
+          connections={[]}
+          existingDashboardId={id}
+          existingConnectionId={primaryConnectionId}
+          onClose={() => { setGenModal(false); load(); }} />
+      )}
     </main>
   );
 }
