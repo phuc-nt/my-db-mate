@@ -85,6 +85,8 @@ async function run(msg) {
   return { ok: true, columns, rows };
 }
 
+// Mirror of src/lib/duckdb-value.ts `normalizeDuckDbValue` — kept inline because
+// this is a forked .cjs worker that can't import the TS lib. Keep the two in sync.
 // DuckDB's node-api returns several non-JSON-serializable value types that would
 // throw at the IPC boundary (process.send uses structured/JSON serialization):
 //   - BIGINT / HUGEINT / UBIGINT → native `bigint`

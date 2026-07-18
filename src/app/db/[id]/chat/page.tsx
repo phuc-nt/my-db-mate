@@ -240,16 +240,32 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }).then((r) => r.json()).then(setProvenance).catch(() => {});
   }, [status, messages, connectionId, artifacts]);
 
+  // True once an investigate-from-finding session started here — used to guard
+  // against navigating away mid-run.
+  const [isInvestigationSession, setIsInvestigationSession] = useState(false);
+
   // Fire the investigation kickoff exactly once, after the session id is bound.
   // Mode is advisory here — the chat route forces investigate mode + the 5-step
   // cap for any session that carries an investigation target.
   useEffect(() => {
     if (!pendingKickoff || !sessionId || kickoffFiredRef.current) return;
     kickoffFiredRef.current = true;
+    setIsInvestigationSession(true);
     send(pendingKickoff, 'investigate');
     setPendingKickoff(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKickoff, sessionId]);
+
+  // Warn before leaving while an investigation is still streaming. Persistence of
+  // the conclusion is only guaranteed while the client stays connected (the
+  // server's background drain can be cancelled on a hard disconnect under the
+  // dev/serverless request lifecycle), so keep the user here until it finishes.
+  useEffect(() => {
+    if (!(isInvestigationSession && busy)) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isInvestigationSession, busy]);
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
@@ -515,6 +531,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           />
           <button type="submit" disabled={busy} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Send</button>
         </form>
+        {isInvestigationSession && busy && (
+          <p className="mt-1 text-center text-[11px] text-amber-600" data-testid="investigation-running-notice">
+            🔎 Investigation running — stay on this page until it finishes so the conclusion is saved.
+          </p>
+        )}
       </div>
 
       {/* Workspace column (lg+). One instance — the tab strip hides itself at 2xl

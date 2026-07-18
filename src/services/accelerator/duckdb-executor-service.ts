@@ -7,6 +7,7 @@
  */
 import { DuckDBInstance } from '@duckdb/node-api';
 import type { QueryResult } from '../connection-providers/provider-interface';
+import { normalizeDuckDbValue } from '../../lib/duckdb-value';
 
 /** Quote a possibly schema-qualified identifier for DuckDB DDL — each dotted
  *  part quoted separately so `schema.table` becomes `"schema"."table"`. */
@@ -44,10 +45,10 @@ export async function runAcceleratedQuery(sql: string, tableToSnapshot: Map<stri
     const reader = await connection.runAndReadAll(sql);
     const columns = reader.columnNames();
     const rawRows = reader.getRows() as unknown[][];
-    // DuckDB returns native `bigint` for BIGINT columns (e.g. an INTEGER PRIMARY
-    // KEY snapshotted from SQLite) — JSON.stringify (NextResponse.json) throws on
-    // bigint, so normalize to number here rather than at every consumer.
-    const rows = rawRows.map((row) => row.map((v) => (typeof v === 'bigint' ? Number(v) : v)));
+    // DuckDB returns bigint (BIGINT/HUGEINT), DuckDBDecimalValue (DECIMAL), and
+    // other wrappers that JSON.stringify (NextResponse.json) rejects — normalize
+    // once here via the shared rule rather than at every consumer.
+    const rows = rawRows.map((row) => row.map(normalizeDuckDbValue));
     return { columns, rows, rowCount: rows.length };
   } finally {
     connection.closeSync();
