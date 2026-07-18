@@ -12,8 +12,18 @@ export function qualifiedTableRef(dialect: string, tableName: string, schemaName
   const safe = (s: string) => s.replace(/[^A-Za-z0-9_]/g, '');
   const t = safe(tableName);
   if (dialect === 'bigquery') {
-    // BigQuery uses backtick-quoting; qualify with the dataset when known.
-    return schemaName ? `\`${safe(schemaName)}\`.\`${t}\`` : `\`${t}\``;
+    // BigQuery uses backtick-quoting; qualify with the dataset when known. A schema
+    // name may be a plain dataset id (`samples`) OR a cross-project reference
+    // (`my-project.samples` / `bigquery-public-data.samples`), whose `.` and `-`
+    // are legal and load-bearing — strip them and the ref points nowhere. Sanitize
+    // per dot-separated part, preserving hyphens (legal in project ids), and quote
+    // each part so `project-id.dataset` becomes `` `project-id`.`dataset` ``.
+    const safeBqPart = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '');
+    if (schemaName) {
+      const qualified = schemaName.split('.').map((p) => `\`${safeBqPart(p)}\``).join('.');
+      return `${qualified}.\`${t}\``;
+    }
+    return `\`${t}\``;
   }
   if (dialect === 'mysql') return `\`${t}\``;
   if (dialect === 'mssql') return `[${t}]`;

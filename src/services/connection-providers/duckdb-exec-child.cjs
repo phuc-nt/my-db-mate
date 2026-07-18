@@ -85,9 +85,28 @@ async function run(msg) {
   return { ok: true, columns, rows };
 }
 
-// DuckDB returns native bigint for BIGINT columns; JSON.stringify (IPC) throws on
-// bigint, so normalize to number (matches the accelerator executor).
-function norm(v) { return typeof v === 'bigint' ? Number(v) : v; }
+// DuckDB's node-api returns several non-JSON-serializable value types that would
+// throw at the IPC boundary (process.send uses structured/JSON serialization):
+//   - BIGINT / HUGEINT / UBIGINT → native `bigint`
+//   - DECIMAL → DuckDBDecimalValue { value: bigint, scale, width }
+//   - other DuckDBValue wrappers expose `.toString()` / `.toDouble()`
+// Normalize every cell to a JSON-safe primitive. DECIMAL is converted to a number
+// via value / 10^scale so a currency column reads as 500.0, not 500n.
+function norm(v) {
+  if (v == null) return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (typeof v === 'object') {
+    // DuckDBDecimalValue: { value: bigint, scale, width }
+    if (typeof v.value === 'bigint' && typeof v.scale === 'number') {
+      return Number(v.value) / Math.pow(10, v.scale);
+    }
+    // Other DuckDB value wrappers (dates, timestamps, etc.) — stringify safely.
+    if (typeof v.toString === 'function' && v.constructor && v.constructor.name.startsWith('DuckDB')) {
+      return v.toString();
+    }
+  }
+  return v;
+}
 
 process.on('message', (msg) => {
   run(msg)

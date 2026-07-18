@@ -52,6 +52,12 @@ export async function POST(req: Request) {
     maxSqlSteps: target ? INVESTIGATE_FINDING_MAX_SQL : undefined,
   });
 
+  // Persist the finished assistant turn (transcript history + notebook-from-session
+  // read the UI parts). consumeStream() drives the model to completion server-side
+  // so onFinish still fires if the client disconnects — best-effort under the dev/
+  // serverless request lifecycle, which may cancel the background drain on a hard
+  // abort; a durable guarantee needs a long-running host / waitUntil (infra, not
+  // logic). A connected client (the normal navigate-back-later case) always persists.
   const response = result.toUIMessageStreamResponse({
     onFinish: async ({ responseMessage }) => {
       if (!sessionId) return;
@@ -62,10 +68,6 @@ export async function POST(req: Request) {
       await addMessage({ sessionId, role: 'assistant', content: text, parts: responseMessage.parts });
     },
   });
-  // Drain the stream server-side so onFinish (assistant-message persistence) runs
-  // even if the client disconnects mid-stream — e.g. the user navigates away from
-  // an investigation before it concludes. Without this the conclusion (and the
-  // BigQuery spend behind it) is lost when the browser fetch aborts.
   result.consumeStream();
   return response;
 }

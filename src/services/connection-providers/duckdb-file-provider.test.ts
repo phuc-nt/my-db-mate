@@ -27,6 +27,9 @@ beforeAll(async () => {
   const inst2 = await DuckDBInstance.create(`${ROOT}/shop.duckdb`);
   const c2 = await inst2.connect();
   await c2.run(`CREATE TABLE customers AS SELECT range AS id, 'c'||range AS name FROM range(50)`);
+  // A DECIMAL column (10.0 literal) — node-api returns DuckDBDecimalValue{value:bigint},
+  // which must be normalized or it throws "Do not know how to serialize a BigInt" at IPC.
+  await c2.run(`CREATE TABLE sales AS SELECT range AS id, range*10.0 AS revenue, range::HUGEINT AS big FROM range(20)`);
   await c2.run(`CHECKPOINT`);
   // Release the write lock so the provider's READ_ONLY attach can open the file.
   c2.closeSync?.();
@@ -53,6 +56,14 @@ describe('DuckDbFileProvider — source modes', () => {
     const p = new DuckDbFileProvider({ mode: 'duckdb', path: `${ROOT}/shop.duckdb` });
     const res = await p.executeReadOnly('SELECT count(*) AS n FROM customers');
     expect(Number(res.rows[0][0])).toBe(50);
+  });
+
+  it('serializes DECIMAL and HUGEINT columns without a BigInt error', async () => {
+    const p = new DuckDbFileProvider({ mode: 'duckdb', path: `${ROOT}/shop.duckdb` });
+    const res = await p.executeReadOnly('SELECT id, revenue, big FROM sales ORDER BY id LIMIT 3');
+    // revenue = id*10.0 (DECIMAL → number), big = id (HUGEINT → number). Both JSON-safe.
+    expect(res.rows).toEqual([[0, 0, 0], [1, 10, 1], [2, 20, 2]]);
+    expect(() => JSON.stringify(res.rows)).not.toThrow();
   });
 
   it('introspects columns', async () => {

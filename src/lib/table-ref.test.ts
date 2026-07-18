@@ -6,6 +6,14 @@ describe('qualifiedTableRef', () => {
     expect(qualifiedTableRef('bigquery', 'usa_1910_2013', 'usa_names')).toBe('`usa_names`.`usa_1910_2013`');
   });
 
+  it('BigQuery preserves a cross-project dataset ref (dots + hyphens are load-bearing)', () => {
+    // A public / cross-project dataset id keeps its project part; stripping the
+    // dots/hyphens would point the query at a nonexistent single-token dataset.
+    expect(qualifiedTableRef('bigquery', 'shakespeare', 'bigquery-public-data.samples'))
+      .toBe('`bigquery-public-data`.`samples`.`shakespeare`');
+    expect(qualifiedTableRef('bigquery', 't', 'my-proj.ds')).toBe('`my-proj`.`ds`.`t`');
+  });
+
   it('BigQuery without a dataset falls back to a bare backtick ref', () => {
     expect(qualifiedTableRef('bigquery', 'orders', null)).toBe('`orders`');
     expect(qualifiedTableRef('bigquery', 'orders', undefined)).toBe('`orders`');
