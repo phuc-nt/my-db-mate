@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { getConnection } from '../../../../../services/connection-service';
 import {
-  listTriggers, listFires, createTrigger, updateTrigger, deleteTrigger, testFire,
+  listTriggers, listFiresForConnection, createTrigger, updateTrigger, deleteTrigger, testFire,
 } from '../../../../../services/action-trigger-service';
 
 export const runtime = 'nodejs';
@@ -13,7 +13,9 @@ export const runtime = 'nodejs';
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const triggerId = new URL(req.url).searchParams.get('fires');
-  if (triggerId) return NextResponse.json(await listFires(triggerId));
+  // Scope fire history to this connection so a guessed trigger id can't read
+  // another connection's fires (matters only if auth is ever added).
+  if (triggerId) return NextResponse.json(await listFiresForConnection(id, triggerId));
   return NextResponse.json(await listTriggers(id));
 }
 

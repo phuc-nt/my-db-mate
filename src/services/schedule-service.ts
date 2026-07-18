@@ -234,6 +234,19 @@ async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
     : baselines === tables.length ? 'baseline captured' : 'healthy';
   const result = { columns: ['table', 'metric', 'before', 'after', 'deltaPct'], rows: findings.map((f) => [f.table, f.metric, f.before, f.after, f.deltaPct]) };
 
+  // Action triggers: webhook-out rules over this run's findings. Evaluated BEFORE
+  // the legacy per-schedule webhook so a legacy-delivery failure (which returns
+  // early below) can't skip an independent trigger targeting a different URL. Own
+  // try/catch — a trigger problem must never turn a healthy monitor run into a failure.
+  if (findings.length > 0) {
+    try {
+      const { evaluateTriggers } = await import('./action-trigger-service');
+      await evaluateTriggers(s.connectionId, 'monitor',
+        findings.map((f) => ({ name: f.table, detail: f.metric, before: f.before, after: f.after, deltaPct: f.deltaPct })),
+        conn.name);
+    } catch (e) { console.warn(`action triggers (monitor ${s.id}):`, e instanceof Error ? e.message : e); }
+  }
+
   if (findings.length && s.webhookUrl) {
     const vet = await vetWebhookUrl(s.webhookUrl);
     if (!vet.ok) { await record(s.id, 'delivery_failed', `webhook blocked: ${vet.reason}`, findings.length, result); return; }
@@ -247,17 +260,6 @@ async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
     } catch (e) { await record(s.id, 'delivery_failed', String(e), findings.length, result); return; }
   }
   await record(s.id, errors.length === tables.length ? 'error' : 'ok', [summary, ...errors].join(' | ').slice(0, 900), findings.length, result);
-
-  // Action triggers: webhook-out rules over this run's findings. Own try/catch —
-  // a trigger/delivery problem must never turn a healthy monitor run into a failure.
-  if (findings.length > 0) {
-    try {
-      const { evaluateTriggers } = await import('./action-trigger-service');
-      await evaluateTriggers(s.connectionId, 'monitor',
-        findings.map((f) => ({ name: f.table, detail: f.metric, before: f.before, after: f.after, deltaPct: f.deltaPct })),
-        conn.name);
-    } catch (e) { console.warn(`action triggers (monitor ${s.id}):`, e instanceof Error ? e.message : e); }
-  }
 }
 
 const DIGEST_MARKDOWN_CAP = 8_000;

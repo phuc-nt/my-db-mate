@@ -106,6 +106,16 @@ export async function listFires(triggerId: string, limit = 20) {
     .orderBy(desc(actionTriggerFires.firedAt)).limit(limit);
 }
 
+/** Fires for a trigger, scoped to a connection — so the fire-history endpoint
+ *  can't read another connection's trigger via a guessed id (latent authz gap if
+ *  auth is ever added; harmless under the current single-user model). */
+export async function listFiresForConnection(connectionId: string, triggerId: string, limit = 20) {
+  const [t] = await db.select({ id: actionTriggers.id }).from(actionTriggers)
+    .where(and(eq(actionTriggers.id, triggerId), eq(actionTriggers.connectionId, connectionId)));
+  if (!t) return [];
+  return listFires(triggerId, limit);
+}
+
 // ---------------------------------------------------------------------------
 // Matching + payload rendering (pure)
 // ---------------------------------------------------------------------------

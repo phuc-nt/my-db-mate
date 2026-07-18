@@ -10,7 +10,7 @@ import { actionTriggers, actionTriggerFires } from '../db/action-trigger-schema'
 import { encryptSecret } from './crypto/credential-cipher';
 import {
   validateCondition, matchesCondition, renderPayload, DEFAULT_TEMPLATE,
-  createTrigger, evaluateTriggers, testFire, listFires, type TriggerFinding,
+  createTrigger, evaluateTriggers, testFire, listFires, listFiresForConnection, type TriggerFinding,
 } from './action-trigger-service';
 
 describe('validateCondition', () => {
@@ -115,6 +115,15 @@ describe('evaluateTriggers (DB-backed)', () => {
     await newTrigger({ condition: { surface: 'digest', kind: 'any' } });
     await evaluateTriggers(connectionId, 'monitor', [{ name: 'orders', detail: 'rowCount', deltaPct: 35 }], 'trig-conn');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('listFiresForConnection returns nothing for a trigger of another connection', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200 });
+    const t = await newTrigger();
+    await evaluateTriggers(connectionId, 'monitor', [{ name: 'orders', detail: 'rowCount', deltaPct: 35 }], 'trig-conn');
+    expect((await listFiresForConnection(connectionId, t.id)).length).toBe(1);
+    // A different (non-owning) connection id must not see this trigger's fires.
+    expect((await listFiresForConnection('00000000-0000-0000-0000-0000000000aa', t.id)).length).toBe(0);
   });
 
   it('testFire delivers a clearly-marked sample payload', async () => {
