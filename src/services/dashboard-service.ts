@@ -98,6 +98,36 @@ export type PinResult =
   | { ok: false; reason: string };
 
 /**
+ * The gate every dashboard widget SQL must pass — validated read-only SQL, no
+ * sensitive-column read, no wildcard select on a connection with sensitive
+ * columns. Shared by pinWidget AND the NL-dashboard probe so a proposal that
+ * previews as OK can actually be pinned (previously the probe skipped these
+ * checks, so pins failed after preview). Returns the probe-substituted SQL to
+ * run (placeholders replaced) alongside whether the input was parametrized.
+ */
+export async function checkWidgetSql(connectionId: string, rawSql: string):
+  Promise<{ ok: true; sqlForChecks: string; isParametrized: boolean } | { ok: false; reason: string }> {
+  const conn = await getConnection(connectionId);
+  if (!conn) return { ok: false, reason: 'Connection not found' };
+
+  // {{from}}/{{to}} widgets: the parser fail-closes on `{{`, so validate a
+  // PROBE-substituted copy; callers keep the RAW placeholder SQL to store/run.
+  const isParametrized = hasDateRangePlaceholders(rawSql);
+  const sqlForChecks = isParametrized ? substituteDateRange(rawSql, PROBE_RANGE) : rawSql;
+
+  const verdict = validateSql(sqlForChecks, conn.dialect as Dialect);
+  if (verdict.status === 'blocked') return { ok: false, reason: `Unsafe query: ${verdict.reason}` };
+
+  if (await touchesSensitiveColumns(connectionId, verdict.sql)) {
+    return { ok: false, reason: 'This query reads a column marked sensitive — it cannot be pinned to a shareable dashboard.' };
+  }
+  if (/\bselect\s+\*/i.test(verdict.sql) && (await connectionHasSensitiveColumns(connectionId))) {
+    return { ok: false, reason: 'This connection has sensitive columns — use an explicit column list instead of SELECT * so no sensitive value is shared by accident.' };
+  }
+  return { ok: true, sqlForChecks: verdict.sql, isParametrized };
+}
+
+/**
  * Pin a query as a widget. Validates SQL through safety, blocks sensitive-column
  * queries (C4), assesses + stores the risk tier (H2), and stores a re-validated
  * chart spec. Does NOT run the query — the owner refreshes it afterwards.
@@ -106,25 +136,10 @@ export async function pinWidget(input: PinInput): Promise<PinResult> {
   const conn = await getConnection(input.connectionId);
   if (!conn) return { ok: false, reason: 'Connection not found' };
 
-  // {{from}}/{{to}} widgets: the parser fail-closes on `{{`, so validate/assess a
-  // PROBE-substituted copy while the widget stores the RAW placeholder SQL —
-  // every execution path substitutes a real (or default) range before running.
-  const isParametrized = hasDateRangePlaceholders(input.sql);
-  const sqlForChecks = isParametrized ? substituteDateRange(input.sql, PROBE_RANGE) : input.sql;
-
-  const verdict = validateSql(sqlForChecks, conn.dialect as Dialect);
-  if (verdict.status === 'blocked') return { ok: false, reason: `Unsafe query: ${verdict.reason}` };
-
-  // C4: never let a query over sensitive columns become a shareable widget.
-  if (await touchesSensitiveColumns(input.connectionId, verdict.sql)) {
-    return { ok: false, reason: 'This query reads a column marked sensitive — it cannot be pinned to a shareable dashboard.' };
-  }
-  // C4 (review M1): a `SELECT *` never names its columns, so the name-match above
-  // can't see a sensitive column it expands to. When the connection has ANY
-  // sensitive column, reject a wildcard select rather than risk leaking one.
-  if (/\bselect\s+\*/i.test(verdict.sql) && (await connectionHasSensitiveColumns(input.connectionId))) {
-    return { ok: false, reason: 'This connection has sensitive columns — pin an explicit column list instead of SELECT * so no sensitive value is shared by accident.' };
-  }
+  const check = await checkWidgetSql(input.connectionId, input.sql);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  const { sqlForChecks, isParametrized } = check;
+  const verdict = { sql: sqlForChecks };
 
   // Capture the risk tier now so the owner-refresh path can honor it (H2).
   const provider = buildProvider(conn as unknown as ConnectionRow);

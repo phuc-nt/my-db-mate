@@ -119,7 +119,7 @@ export interface RelevantContext {
   glossaryHits: { term: string; definition: string; sqlMapping: string | null }[];
   manualRelationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
   verifiedExamples: { question: string; sql: string }[];
-  metrics: { name: string; description: string | null; sql: string; dimensions: string[] | null; distance: number }[];
+  metrics: { id: string; name: string; description: string | null; sql: string; dimensions: string[] | null; distance: number }[];
 }
 
 /** Pull the context relevant to a question for one connection. */
@@ -176,6 +176,7 @@ export async function getRelevantContext(question: string, connectionId: string)
   // with no embedding yet (pre-backfill) is skipped by the IS NOT NULL guard, not crashed.
   const metricRows = await db
     .select({
+      id: metrics.id,
       name: metrics.name,
       description: metrics.description,
       sql: metrics.sql,
