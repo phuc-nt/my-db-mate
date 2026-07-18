@@ -23,7 +23,7 @@ import { runAgentAnswer } from './agent-service';
 import { generateText } from 'ai';
 import { getModel } from './llm-service';
 import { listMetrics, runMetric, runMetricDrivers } from './metric-service';
-import { computeInsights, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection } from '../lib/metric-math';
+import { computeInsights, computeForecast, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection, type TimeGrain } from '../lib/metric-math';
 
 const tasks = new Map<string, ScheduledTask>();
 const running = new Set<string>(); // concurrency lock per schedule id
@@ -282,7 +282,16 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
       drivers = dr.drivers;
       errors.push(...dr.errors.map((e) => `${m.name} driver ${e}`));
     }
-    lines.push({ name: m.name, latest: r.run.latest, insight: computeInsights(r.run.series, m.direction as MetricDirection, m.target), drivers });
+    lines.push({
+      name: m.name,
+      latest: r.run.latest,
+      insight: computeInsights(r.run.series, m.direction as MetricDirection, m.target),
+      // Deterministic next-bucket forecast (seasonal-naive ± MAD). NOT a change
+      // flag — quiet mode must never wake up for a prediction (only for things
+      // that actually happened), so this stays out of insight.changeFlags.
+      forecast: computeForecast(r.run.series, (m.timeGrain as TimeGrain) ?? 'month', m.direction as MetricDirection, m.target),
+      drivers,
+    });
   }
   if (lines.length === 0) { await record(s.id, 'error', `all metrics failed: ${errors.join('; ').slice(0, 700)}`); return; }
 
@@ -307,7 +316,7 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   // Compact "D −80%, C +15%" text per metric for the run table + fallback.
   const driverText = (drivers: DriverBreakdown[]) => drivers.map((d) =>
     `${d.dimension}: ${d.movers.map((mv) => `${mv.value} ${mv.delta >= 0 ? '+' : ''}${formatMetricValue(mv.delta)}${mv.sharePct != null ? ` (${mv.sharePct.toFixed(0)}%)` : ''}`).join(', ')}`).join('; ');
-  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags, targetStatus: l.insight.targetStatus, targetPct: l.insight.targetPct, drivers: l.drivers }));
+  const metricsPayload = lines.map((l) => ({ name: l.name, latest: l.latest, deltaPct: l.insight.deltaPct, flags: l.insight.flags, targetStatus: l.insight.targetStatus, targetPct: l.insight.targetPct, drivers: l.drivers, ...(l.forecast ? { forecast: l.forecast } : {}) }));
   // scheduled_runs.result is typed {columns, rows} — markdown goes in `detail` (capped like monitor).
   const runResult = { columns: ['metric', 'latest', 'deltaPct', 'flags', 'drivers'], rows: lines.map((l) => [l.name, formatMetricValue(l.latest), l.insight.deltaPct?.toFixed(1) ?? '', l.insight.flags.join(', '), driverText(l.drivers)]) };
 
@@ -335,7 +344,10 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
       const driverLine = l.drivers.length
         ? ` drivers=[${l.drivers.map((d) => `${d.dimension}: ${d.movers.map((mv) => `<data>${clean(mv.value)}</data> ${mv.delta >= 0 ? '+' : ''}${mv.delta.toFixed(1)}${mv.sharePct != null ? ` (${mv.sharePct.toFixed(0)}% of movement)` : ''}`).join(', ')}]`).join('; ')}]`
         : '';
-      return `- name: <data>${clean(l.name)}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}${l.insight.targetStatus ? ` target=${l.insight.targetStatus} (${l.insight.targetPct?.toFixed(0) ?? '?'}% of goal)` : ''}${driverLine}`;
+      const forecastLine = l.forecast
+        ? ` forecastNext=${l.forecast.point.toFixed(1)}±${l.forecast.band.toFixed(1)} (${l.forecast.method}, n=${l.forecast.n})${l.forecast.vsGoal ? ` forecastVsGoal=${l.forecast.vsGoal}` : ''}`
+        : '';
+      return `- name: <data>${clean(l.name)}</data> latest=${l.latest} deltaPct=${l.insight.deltaPct?.toFixed(1) ?? 'n/a'} vsAvg4Pct=${l.insight.vsAvg4Pct?.toFixed(1) ?? 'n/a'} flags=[${l.insight.flags.join(', ')}] goodness=${l.insight.goodness}${l.insight.targetStatus ? ` target=${l.insight.targetStatus} (${l.insight.targetPct?.toFixed(0) ?? '?'}% of goal)` : ''}${forecastLine}${driverLine}`;
     });
     const monitorText = monitorFindings.length ? `\nMonitor findings (data drift):\n<data>${JSON.stringify(monitorFindings).slice(0, 2000)}</data>` : '';
     const { text } = await generateText({

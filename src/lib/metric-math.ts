@@ -1,5 +1,6 @@
 /** Pure metric math: series parsing, delta computation, grain guessing.
  *  No DB imports — keeps this unit-testable without DATABASE_URL. */
+import { seasonalNaiveForecast, forecastVsGoal } from './robust-stats';
 
 export interface MetricPoint {
   /** Time bucket label as returned by the query (ISO-ish string). */
@@ -199,6 +200,35 @@ export interface DigestMetricLine {
   name: string;
   latest: number | null;
   insight: MetricInsight;
+  /** Deterministic next-bucket forecast; absent on cold-start (never guessed). */
+  forecast?: MetricForecast | null;
+}
+
+export interface MetricForecast {
+  point: number;
+  band: number;
+  method: 'seasonal' | 'global-median';
+  n: number;
+  /** Direction-aware goal verdict; null without a goal or for neutral metrics. */
+  vsGoal: 'on-track' | 'at-risk' | null;
+}
+
+/** Adapter: MetricPoint series → seasonal-naive forecast for the next bucket.
+ *  Pure and deterministic (robust-stats); the LLM only ever narrates this number.
+ *  Null on cold-start — callers must render nothing, not zero. */
+export function computeForecast(
+  series: MetricPoint[],
+  grain: TimeGrain,
+  direction: MetricDirection,
+  target?: number | null,
+): MetricForecast | null {
+  const pts = series
+    .map((p) => ({ value: p.v, at: new Date(p.t) }))
+    .filter((p) => !Number.isNaN(p.at.getTime()));
+  const f = seasonalNaiveForecast(pts, grain);
+  if (!f) return null;
+  const dir = direction === 'up_good' ? 'up' : direction === 'down_good' ? 'down' : 'neutral';
+  return { point: f.point, band: f.band, method: f.method, n: f.n, vsGoal: forecastVsGoal(f, target ?? null, dir) };
 }
 
 /** Numbers-only digest markdown — the LLM-failure fallback AND the source of
@@ -207,7 +237,10 @@ export function renderDigestFallback(lines: DigestMetricLine[]): string {
   const rows = lines.map((l) => {
     const d = l.insight.deltaPct;
     const badge = l.insight.goodness === 'good' ? '🟢' : l.insight.goodness === 'bad' ? '🔴' : '⚪';
-    return `- ${badge} **${l.name}**: ${formatMetricValue(l.latest)}${d != null ? ` (${d > 0 ? '+' : ''}${d.toFixed(1)}% vs prev)` : ''}${l.insight.flags.length ? ` — ${l.insight.flags.join(', ')}` : ''}`;
+    const fc = l.forecast
+      ? ` · next ~${formatMetricValue(l.forecast.point)}±${formatMetricValue(l.forecast.band)}${l.forecast.vsGoal ? ` (${l.forecast.vsGoal === 'at-risk' ? 'forecast misses goal' : 'forecast on track'})` : ''}`
+      : '';
+    return `- ${badge} **${l.name}**: ${formatMetricValue(l.latest)}${d != null ? ` (${d > 0 ? '+' : ''}${d.toFixed(1)}% vs prev)` : ''}${l.insight.flags.length ? ` — ${l.insight.flags.join(', ')}` : ''}${fc}`;
   });
   return `## Metrics digest\n\n${rows.join('\n')}`;
 }

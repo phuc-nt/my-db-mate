@@ -171,3 +171,77 @@ export function cusum(
   }
   return { shiftAt: null, regime: 'ok' };
 }
+
+/** Time grain of a tracked metric — drives which season bucket the forecast uses. */
+export type MetricGrain = 'day' | 'week' | 'month';
+
+export interface SeasonalForecast {
+  /** Forecast point for the next bucket. */
+  point: number;
+  /** ± band (MAD of the season bucket, falling back to global MAD). */
+  band: number;
+  method: 'seasonal' | 'global-median';
+  seasonBucket?: number;
+  /** How many observations backed the point (bucket size, or full series for global). */
+  n: number;
+}
+
+/** Deterministic seasonal-naive forecast for the bucket AFTER the last observation.
+ *  No ML: the point is the median of same-season-bucket values (e.g. prior same
+ *  weekday for a daily metric, prior same month for a monthly one), and the band is
+ *  that bucket's MAD. Week grain has no natural season → global median + global MAD.
+ *
+ *  Returns null on cold-start: below MIN_SEASON_BUCKET_OBS in the target bucket for a
+ *  seasonal grain (and below MIN_SEASON_BUCKET_OBS overall for week) → we stay silent
+ *  rather than forecast from too little history. Callers must treat null as "no
+ *  forecast", never as zero.
+ *
+ *  `series` must be sorted or unsorted point/at pairs; the next bucket's timestamp is
+ *  derived from the max `at` plus one grain step, so a gap in the series never shifts
+ *  the season mapping. */
+export function seasonalNaiveForecast(
+  series: { value: number; at: Date }[],
+  grain: MetricGrain,
+): SeasonalForecast | null {
+  if (series.length === 0) return null;
+  const lastAt = series.reduce((m, s) => (s.at > m ? s.at : m), series[0].at);
+  const nextAt = nextBucketDate(lastAt, grain);
+
+  if (grain === 'week') {
+    if (series.length < MIN_SEASON_BUCKET_OBS) return null;
+    const vals = series.map((s) => s.value);
+    return { point: median(vals), band: mad(vals), method: 'global-median', n: vals.length };
+  }
+
+  const season: Season = grain === 'day' ? 'dow' : 'month';
+  const bucket = seasonKey(nextAt, season);
+  const inBucket = series.filter((s) => seasonKey(s.at, season) === bucket).map((s) => s.value);
+  if (inBucket.length >= MIN_SEASON_BUCKET_OBS) {
+    return { point: median(inBucket), band: mad(inBucket), method: 'seasonal', seasonBucket: bucket, n: inBucket.length };
+  }
+  return null;
+}
+
+/** The timestamp of the bucket immediately after `at` for a given grain (UTC). */
+export function nextBucketDate(at: Date, grain: MetricGrain): Date {
+  const d = new Date(at.getTime());
+  if (grain === 'day') d.setUTCDate(d.getUTCDate() + 1);
+  else if (grain === 'week') d.setUTCDate(d.getUTCDate() + 7);
+  else d.setUTCMonth(d.getUTCMonth() + 1);
+  return d;
+}
+
+export type GoalDirection = 'up' | 'down' | 'neutral';
+
+/** Judge a forecast against a goal, direction-aware. Neutral metrics don't get an
+ *  on/off-track verdict (there's no "good" direction to be off). Returns null when
+ *  there's no goal or the direction is neutral. */
+export function forecastVsGoal(
+  forecast: SeasonalForecast,
+  goal: number | null | undefined,
+  direction: GoalDirection,
+): 'on-track' | 'at-risk' | null {
+  if (goal == null || direction === 'neutral') return null;
+  if (direction === 'up') return forecast.point >= goal ? 'on-track' : 'at-risk';
+  return forecast.point <= goal ? 'on-track' : 'at-risk';
+}

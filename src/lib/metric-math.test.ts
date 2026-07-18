@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDelta, computeDrivers, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
+import { computeDelta, computeDrivers, computeForecast, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
 
 describe('parseSeries', () => {
   it('sorts non-chronological input and drops invalid rows', () => {
@@ -238,6 +238,46 @@ describe('renderDigestFallback', () => {
     expect(md).toContain('## Metrics digest');
     expect(md).toContain('🔴 **Revenue**: 1.23M (-12.3% vs prev)');
     expect(md).toContain('⚪ **Errors**: 4');
+  });
+
+  it('appends the forecast when present, silent when absent', () => {
+    const insight = { deltaPct: null, vsAvg4Pct: null, isOutlier: false, flags: [], changeFlags: [], goodness: 'neutral' as const, targetStatus: null, targetPct: null };
+    const md = renderDigestFallback([
+      { name: 'Revenue', latest: 100, insight, forecast: { point: 120, band: 8, method: 'seasonal', n: 4, vsGoal: 'at-risk' } },
+      { name: 'Errors', latest: 4, insight },
+    ]);
+    expect(md).toContain('next ~120±8 (forecast misses goal)');
+    expect(md.split('\n').find((l) => l.includes('Errors'))).not.toContain('next ~');
+  });
+});
+
+describe('computeForecast', () => {
+  it('forecasts a monthly series from the same-month bucket and judges the goal', () => {
+    // 4 years of Januaries ~100 (plus other months ~50) → forecast for next Jan.
+    const series: { t: string; v: number }[] = [];
+    for (let y = 2022; y <= 2025; y++) {
+      for (let mo = 0; mo < 12; mo++) {
+        series.push({ t: new Date(Date.UTC(y, mo, 1)).toISOString(), v: mo === 0 ? 100 + (y - 2022) : 50 });
+      }
+    }
+    // Last point Dec 2025 → next bucket Jan 2026 (month bucket 0).
+    const f = computeForecast(series, 'month', 'up_good', 200);
+    expect(f).not.toBeNull();
+    expect(f!.method).toBe('seasonal');
+    expect(f!.point).toBe(101.5); // median of 100..103
+    expect(f!.vsGoal).toBe('at-risk'); // 101.5 < goal 200, up_good
+  });
+
+  it('returns null on cold-start and for unparsable timestamps', () => {
+    expect(computeForecast([{ t: '2026-01-01', v: 1 }], 'month', 'up_good', null)).toBeNull();
+    expect(computeForecast([{ t: 'not-a-date', v: 1 }], 'day', 'neutral', null)).toBeNull();
+  });
+
+  it('neutral direction never judges the goal', () => {
+    const series = Array.from({ length: 8 }, (_, i) => ({ t: new Date(Date.UTC(2026, 0, 1 + i * 7)).toISOString(), v: 10 }));
+    const f = computeForecast(series, 'week', 'neutral', 5);
+    expect(f).not.toBeNull();
+    expect(f!.vsGoal).toBeNull();
   });
 });
 
