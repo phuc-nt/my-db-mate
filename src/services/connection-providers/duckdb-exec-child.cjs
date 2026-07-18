@@ -65,7 +65,18 @@ async function run(msg) {
        ORDER BY table_name, ordinal_position`,
     );
     const rows = reader.getRows().map((r) => r.map(norm));
-    return { ok: true, columns: reader.columnNames(), rows };
+    // Row counts computed in the SAME locked session — the ingest already happened,
+    // so this is cheap (no re-ingest per table, avoiding an O(N²) fan-out for the
+    // parent that would otherwise run one full re-ingest per COUNT(*)).
+    const tableNames = [...new Set(rows.map((r) => String(r[0])))];
+    const counts = {};
+    for (const t of tableNames) {
+      try {
+        const cr = await conn.runAndReadAll(`SELECT count(*) FROM "${t.replace(/"/g, '""')}"`);
+        counts[t] = Number(norm(cr.getRows()[0][0]));
+      } catch { counts[t] = null; }
+    }
+    return { ok: true, columns: reader.columnNames(), rows, counts };
   }
 
   const reader = await conn.runAndReadAll(msg.sql);

@@ -90,10 +90,9 @@ export class DuckDbFileProvider implements ConnectionProvider {
       .map((f) => join(real, f));
     if (entries.length === 0) throw new Error('no .csv/.parquet files in the directory');
     // Each entry is inside `real` (already sandboxed), but re-check per file.
+    // Each file re-sandboxed; the reader (csv vs parquet) is chosen per file by
+    // extension in childSource() — a csv-dir may legitimately hold .parquet too.
     const tables = entries.map((p) => ({ name: tableNameFromFile(p), path: sandboxedRealpath(p) }));
-    // csv-dir may hold parquet too — the child ingests by extension, so split kind
-    // per file would need a richer message; keep it simple: csv_auto reads parquet
-    // fine? No — use read_parquet for .parquet. Encode kind in the table entry.
     return { kind: 'csv-dir', path: real, tables };
   }
 
@@ -109,7 +108,10 @@ export class DuckDbFileProvider implements ConnectionProvider {
   }
 
   async introspectSchema(): Promise<IntrospectedSchema> {
-    const res = await this.runChild({ mode: 'introspect', source: this.childSource() });
+    // Single locked child call returns columns AND per-table row counts — the
+    // ingest happens once, so counts are cheap (no re-ingest per table).
+    const res = await this.runChild({ mode: 'introspect', source: this.childSource() }) as { rows: unknown[][]; counts?: Record<string, number | null> };
+    const counts = res.counts ?? {};
     // rows: [table_name, column_name, data_type]
     const columnsByTable = new Map<string, { columnName: string; dataType: string; ord: number }[]>();
     let ord = 0;
@@ -124,12 +126,7 @@ export class DuckDbFileProvider implements ConnectionProvider {
     const columns = [];
     const tables = [];
     for (const [tableName, cols] of columnsByTable) {
-      let rowCount: number | null = null;
-      try {
-        const c = await this.runChild({ mode: 'query', source: this.childSource(), sql: `SELECT count(*) FROM "${tableName.replace(/"/g, '""')}"` });
-        rowCount = Number(c.rows[0]?.[0] ?? 0);
-      } catch { /* keep null */ }
-      tables.push({ schemaName: null, tableName, rowCount });
+      tables.push({ schemaName: null, tableName, rowCount: counts[tableName] ?? null });
       for (const col of cols) {
         columns.push({ tableName, schemaName: null, columnName: col.columnName, dataType: col.dataType, isNullable: true, isPrimaryKey: false, ordinalPosition: col.ord });
       }
@@ -171,7 +168,7 @@ export class DuckDbFileProvider implements ConnectionProvider {
   private runChild(
     msg: { mode: 'query' | 'introspect'; source: unknown; sql?: string },
     timeoutMs = DEFAULT_EXEC_TIMEOUT_MS,
-  ): Promise<{ ok: boolean; columns?: string[]; rows: unknown[][]; error?: string }> {
+  ): Promise<{ ok: boolean; columns?: string[]; rows: unknown[][]; counts?: Record<string, number | null>; error?: string }> {
     return new Promise((resolvePromise, reject) => {
       const child = fork(CHILD_URL, { stdio: 'ignore' });
       let settled = false;
@@ -183,8 +180,8 @@ export class DuckDbFileProvider implements ConnectionProvider {
         fn();
       };
       const timer = setTimeout(() => finish(() => reject(new Error(`DuckDB query exceeded ${timeoutMs}ms and was terminated`))), timeoutMs);
-      child.on('message', (m: { ok: boolean; columns?: string[]; rows?: unknown[][]; error?: string }) => {
-        if (m.ok) finish(() => resolvePromise({ ok: true, columns: m.columns, rows: m.rows ?? [] }));
+      child.on('message', (m: { ok: boolean; columns?: string[]; rows?: unknown[][]; counts?: Record<string, number | null>; error?: string }) => {
+        if (m.ok) finish(() => resolvePromise({ ok: true, columns: m.columns, rows: m.rows ?? [], counts: m.counts }));
         else finish(() => reject(new Error(m.error ?? 'DuckDB child error')));
       });
       child.on('error', (e) => finish(() => reject(e)));

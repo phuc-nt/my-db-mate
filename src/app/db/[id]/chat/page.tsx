@@ -40,7 +40,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [deep, setDeep] = useState(false);
   const [sessionId, setSessionId] = useState<string>();
   const [distillMsg, setDistillMsg] = useState('');
-  const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite' | 'mssql'>();
+  const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb'>();
 
   // Workspace selection. followLatest = terminal-style auto-follow: new results
   // select themselves unless the user has clicked back to an older artifact.
