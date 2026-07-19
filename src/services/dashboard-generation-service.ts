@@ -168,8 +168,12 @@ export async function probeWidget(connectionId: string, sql: string, isBq: boole
 
   if (isBq) {
     // Dry-run: validate + estimate cost without executing (schema/cost check only).
+    // The cost-preview path returns `needs_cost_confirmation` on success (the
+    // estimate is ready, awaiting a human's cost OK) — for a probe that IS the
+    // pass signal (the query parsed and priced against real BigQuery). A genuine
+    // problem surfaces as blocked/error.
     const res = await executeQuery({ connectionId, sql: check.sqlForChecks, actor: 'dashboard-generate', allowCostEstimatePreview: true });
-    if (res.status === 'ok' || res.status === 'needs_confirmation') return { ok: true, dryRun: true };
+    if (res.status === 'ok' || res.status === 'needs_confirmation' || res.status === 'needs_cost_confirmation') return { ok: true, dryRun: true };
     return { ok: false, error: res.status === 'blocked' ? (res.blockedReason ?? 'blocked') : (res.errorMessage ?? 'dry-run failed') };
   }
 
