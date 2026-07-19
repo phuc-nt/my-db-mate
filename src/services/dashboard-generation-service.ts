@@ -156,13 +156,13 @@ async function resolveWidget(
  *  cleanly. A legitimate string literal that is exactly `'{{from}}'` would be
  *  de-quoted too, but that never appears as real analytics data, and the result
  *  still re-passes validateSql — a bad rewrite fails safe (probe fails), not unsafe. */
-function normalizePlaceholderQuotes(sql: string): string {
+export function normalizePlaceholderQuotes(sql: string): string {
   return sql.replace(/'(\{\{\s*(?:from|to)\s*\}\})'/gi, '$1');
 }
 
 /** Probe one widget through the pin gate + a trial run. BigQuery uses a free
  *  dry-run (a LIMIT does not reduce BigQuery bytes billed). */
-async function probeWidget(connectionId: string, sql: string, isBq: boolean): Promise<WidgetProbe> {
+export async function probeWidget(connectionId: string, sql: string, isBq: boolean): Promise<WidgetProbe> {
   const check = await checkWidgetSql(connectionId, sql);
   if (!check.ok) return { ok: false, error: check.reason };
 

@@ -11,7 +11,7 @@
  *   an anonymous viewer cannot trigger a query or read the SQL (H1/H2).
  */
 import { generateShareSlug } from '../lib/share';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
 import { connections } from '../db/schema';
@@ -83,6 +83,69 @@ export async function updateWidgetLayout(widgetId: string, patch: { size?: strin
   }
   if (Object.keys(set).length === 0) return;
   await db.update(dashboardWidgets).set(set).where(eq(dashboardWidgets.id, widgetId));
+}
+
+export type WidgetSqlUpdateResult =
+  | { status: 'ok'; columns: string[]; rows: unknown[][]; refreshedAt: string }
+  | { status: 'blocked' | 'error' | 'needs_confirmation' | 'conflict'; message: string; risk?: { tier: string; score: number; reason: string } };
+
+/**
+ * Replace a widget's SQL (AI-edit accept path). RUN-BEFORE-SWAP: the new SQL is
+ * gated (checkWidgetSql) and EXECUTED first; only a successful run swaps
+ * sql + riskTier + chartSpec + title + lastResult in ONE update — so the share
+ * view never sees a cleared/half-updated widget, and a run that needs
+ * confirmation (or fails, or is budget-denied) leaves the old widget fully
+ * intact. The swap carries a fingerprint (WHERE sql = old sql) so an in-flight
+ * refresh of the OLD sql or a concurrent edit can't be silently overwritten.
+ */
+export async function updateWidgetSql(
+  widgetId: string,
+  input: { sql: string; chartSpec?: unknown; title?: string; confirmed?: boolean },
+): Promise<WidgetSqlUpdateResult> {
+  const [w] = await db.select().from(dashboardWidgets).where(eq(dashboardWidgets.id, widgetId));
+  if (!w) return { status: 'error', message: 'Widget not found' };
+  const conn = await getConnection(w.connectionId);
+  if (!conn) return { status: 'error', message: 'Connection not found' };
+
+  const check = await checkWidgetSql(w.connectionId, input.sql);
+  if (!check.ok) return { status: 'blocked', message: check.reason };
+  const { sqlForChecks, isParametrized } = check;
+
+  // Risk tier for the NEW sql (same pattern as pinWidget).
+  const provider = buildProvider(conn as unknown as ConnectionRow);
+  let riskTier = 'low';
+  try {
+    const risk = await assessRisk(provider, sqlForChecks, { sensitiveColumnsTouched: false });
+    riskTier = risk.tier;
+  } catch { /* leave low; the run below still gates */ } finally {
+    await provider.close();
+  }
+
+  // Run BEFORE swap. Parametrized widgets run the default range (the canonical
+  // cache every no-range path uses); the stored SQL keeps the raw placeholders.
+  const sqlToRun = isParametrized ? substituteDateRange(input.sql, defaultDateRange()) : sqlForChecks;
+  const res = await executeQuery({ connectionId: w.connectionId, sql: sqlToRun, actor: 'dashboard', confirmed: input.confirmed ?? false, backgroundBudgeted: true });
+  if (res.status === 'blocked') return { status: 'blocked', message: res.blockedReason ?? 'blocked' };
+  if (res.status === 'needs_confirmation') return { status: 'needs_confirmation', message: 'The edited query is estimated as medium-risk. Confirm to apply.', risk: res.risk };
+  if (res.status === 'error' || !res.result) return { status: 'error', message: res.status === 'error' ? (res.errorMessage ?? 'error') : 'query did not complete' };
+
+  const rows = res.result.rows.slice(0, LAST_RESULT_ROW_CAP);
+  const refreshedAt = new Date();
+  const chartSpec = input.chartSpec !== undefined ? validateChartSpec(input.chartSpec) : (w.chartSpec as unknown);
+  const swapped = await db.update(dashboardWidgets)
+    .set({
+      sql: isParametrized ? input.sql.trim() : sqlForChecks,
+      riskTier,
+      chartSpec: chartSpec ?? null,
+      ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+      lastResult: { columns: res.result.columns, rows },
+      lastRefreshedAt: refreshedAt,
+    })
+    // Fingerprint: only swap if the widget still holds the sql we read.
+    .where(and(eq(dashboardWidgets.id, widgetId), eq(dashboardWidgets.sql, w.sql)))
+    .returning({ id: dashboardWidgets.id });
+  if (swapped.length === 0) return { status: 'conflict', message: 'Widget changed while editing — reload and try again.' };
+  return { status: 'ok', columns: res.result.columns, rows, refreshedAt: refreshedAt.toISOString() };
 }
 
 export interface PinInput {
@@ -237,9 +300,11 @@ export async function runWidget(widgetId: string, confirmed = false, range?: Dat
   const rows = (res.result!.rows ?? []).slice(0, LAST_RESULT_ROW_CAP);
   const refreshedAt = new Date();
   if (!transient) {
+    // Fingerprint: don't let a refresh that started against the OLD sql (cron /
+    // Refresh-all racing an AI-edit swap) overwrite the cache of the NEW sql.
     await db.update(dashboardWidgets)
       .set({ lastResult: { columns: res.result!.columns, rows }, lastRefreshedAt: refreshedAt })
-      .where(eq(dashboardWidgets.id, widgetId));
+      .where(and(eq(dashboardWidgets.id, widgetId), eq(dashboardWidgets.sql, w.sql)));
   }
   // Surface snapshot staleness for BigQuery offline mode (and any accelerated result)
   // so the widget can badge "as of <extraction time>" rather than implying live data.
