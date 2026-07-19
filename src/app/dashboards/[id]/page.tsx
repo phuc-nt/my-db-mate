@@ -260,6 +260,14 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
                 overrideResult={filterResults[w.id] ?? rangeResults[w.id] ?? null}
                 crossFilterState={crossFilters.length > 0 ? { active: true, filtered: filterResults[w.id]?.filtered ?? true, reason: filterResults[w.id]?.reason } : null}
                 onDatumClick={(column, value) => addCrossFilter(w.id, column, value)}
+                sql={w.sql}
+                onEdited={(wid) => {
+                  // The widget's SQL just changed — drop any transient override
+                  // (date-range / cross-filter results) computed from the OLD sql,
+                  // or it would render stale data over the new lastResult.
+                  setRangeResults((m) => { const { [wid]: _drop, ...rest } = m; return rest; });
+                  setFilterResults((m) => { const { [wid]: _drop, ...rest } = m; return rest; });
+                }}
                 parametrized={!!w.sql && hasDateRangePlaceholders(w.sql)} />
             </div>
           ))}
