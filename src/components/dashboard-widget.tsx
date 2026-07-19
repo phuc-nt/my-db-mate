@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ResultTable } from './result-table';
 import { ResultChart } from './result-chart';
 import { ChartConfigPicker } from './chart-config-picker';
+import { WidgetEditModal } from './widget-edit-modal';
 import { validateChartSpec } from '../services/chart-spec-service';
 
 export interface WidgetData {
@@ -29,6 +30,8 @@ export function DashboardWidget({
   crossFilterState = null,
   onDatumClick,
   parametrized = false,
+  sql,
+  onEdited,
 }: {
   widget: WidgetData;
   dashboardId?: string;
@@ -47,11 +50,17 @@ export function DashboardWidget({
   onDatumClick?: (column: string, value: unknown) => void;
   /** Widget SQL contains {{from}}/{{to}} — shows the 📅 responds-to-range badge. */
   parametrized?: boolean;
+  /** Current SQL (owner page only) — enables the ✏️ AI-edit entry. */
+  sql?: string;
+  /** Fired after an AI edit swapped the widget — the page clears its transient
+   *  override maps for this widget so old-SQL data can't linger on screen. */
+  onEdited?: (widgetId: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [confirm, setConfirm] = useState<{ reason: string } | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   // Snapshot extraction time when this refresh was served from a cached snapshot
   // (BigQuery offline mode / DuckDB accelerator) rather than live — badges staleness.
   const [acceleratedAsOf, setAcceleratedAsOf] = useState<string | undefined>();
@@ -97,6 +106,7 @@ export function DashboardWidget({
           <div className="flex items-center gap-2 text-xs">
             <button onClick={() => refresh(false)} disabled={busy} className="text-blue-600 disabled:opacity-40">{busy ? '…' : 'Refresh'}</button>
             {result && <button onClick={() => setPickerOpen(!pickerOpen)} className="text-blue-600" title="Chart type / axes / series" data-testid="widget-chart-config">⚙</button>}
+            {sql && <button onClick={() => setEditOpen(true)} className="text-blue-600" title="Edit this widget with AI" data-testid="widget-edit-ai">✏️</button>}
             <button onClick={remove} className="text-red-600">Remove</button>
           </div>
         )}
@@ -131,6 +141,11 @@ export function DashboardWidget({
         <p className="mt-1 text-[10px] text-amber-600" data-testid="range-transient-note">Custom range view — not saved (share keeps the default range)</p>
       ) : widget.lastRefreshedAt && (
         <p className="mt-1 text-[10px] text-neutral-400">Last refreshed {new Date(widget.lastRefreshedAt).toLocaleString()}</p>
+      )}
+      {editOpen && sql && dashboardId && (
+        <WidgetEditModal dashboardId={dashboardId} widgetId={widget.id} oldSql={sql}
+          onClose={() => setEditOpen(false)}
+          onEdited={(id) => { onEdited?.(id); onChanged?.(); }} />
       )}
       {acceleratedAsOf && (
         <p className="mt-1 text-[10px] text-neutral-400" data-testid="widget-accelerated-badge" title="Served from a cached snapshot (BigQuery offline mode / accelerator), not live data">

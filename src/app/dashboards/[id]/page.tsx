@@ -109,6 +109,10 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
     if (!isValidIsoDate(r.from) || !isValidIsoDate(r.to)) { setRangeMsg('Dates must be YYYY-MM-DD'); return; }
     const targets = dash.widgets.filter((w) => w.sql && hasDateRangePlaceholders(w.sql));
     if (targets.length === 0) { setRangeMsg('No widget uses {{from}}/{{to}} — add the placeholders to a widget SQL to make it range-aware.'); return; }
+    // Same stale-response guard as runCrossFilters: an AI-edit (or newer apply)
+    // bumps the token, so an in-flight old-SQL range run can't repopulate the
+    // override map after the widget was swapped.
+    const gen = ++filterGenRef.current;
     const next: Record<string, { columns: string[]; rows: unknown[][] }> = {};
     await Promise.allSettled(targets.map(async (w) => {
       const res = await fetch(`/api/dashboards/${id}/widgets/${w.id}`, {
@@ -117,7 +121,7 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
       const d = await res.json();
       if (d.status === 'ok') next[w.id] = { columns: d.columns, rows: d.rows };
     }));
-    setRangeResults(next);
+    if (gen === filterGenRef.current) setRangeResults(next);
   }
 
   function clearRange() {
@@ -260,6 +264,18 @@ export default function DashboardDetailPage({ params }: { params: Promise<{ id: 
                 overrideResult={filterResults[w.id] ?? rangeResults[w.id] ?? null}
                 crossFilterState={crossFilters.length > 0 ? { active: true, filtered: filterResults[w.id]?.filtered ?? true, reason: filterResults[w.id]?.reason } : null}
                 onDatumClick={(column, value) => addCrossFilter(w.id, column, value)}
+                sql={w.sql}
+                onEdited={(wid) => {
+                  // The widget's SQL just changed. Invalidate in-flight range/filter
+                  // runs (they were computed from the OLD sql), drop this widget's
+                  // range override, and clear active cross-filters entirely — the
+                  // edited widget would otherwise show unfiltered numbers under
+                  // still-active filter chips with no "not filtered" badge.
+                  filterGenRef.current++;
+                  setRangeResults((m) => { const { [wid]: _drop, ...rest } = m; return rest; });
+                  setCrossFilters([]);
+                  setFilterResults({});
+                }}
                 parametrized={!!w.sql && hasDateRangePlaceholders(w.sql)} />
             </div>
           ))}
