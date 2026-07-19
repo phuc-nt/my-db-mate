@@ -6,61 +6,57 @@ const ok = (r: { sql: string } | { error: string }): string => {
   return r.sql;
 };
 
-describe('rewriteWithWhereFilter — happy paths', () => {
-  it('adds WHERE when none exists (postgres)', () => {
+describe('rewriteWithWhereFilter — subquery wrap', () => {
+  it('wraps the widget SQL as a derived table filtered on the outer query', () => {
     const s = ok(rewriteWithWhereFilter('SELECT a, SUM(b) FROM t GROUP BY a', 'a', 'Consumer', 'postgres'));
-    expect(s).toMatch(/WHERE/i);
-    expect(s).toMatch(/'Consumer'/);
-    // WHERE precedes GROUP BY → positional refs unaffected
-    expect(s.toUpperCase().indexOf('WHERE')).toBeLessThan(s.toUpperCase().indexOf('GROUP BY'));
+    expect(s).toMatch(/SELECT \* FROM \(/i);
+    expect(s).toMatch(/\) AS _cf WHERE/i);
+    expect(s).toContain("'Consumer'");
+    // The inner GROUP BY is untouched inside the derived table.
+    expect(s).toMatch(/GROUP BY a/i);
   });
 
-  it('ANDs onto an existing WHERE', () => {
-    const s = ok(rewriteWithWhereFilter("SELECT a FROM t WHERE x > 1 GROUP BY a", 'a', 'X', 'postgres'));
-    expect(s).toMatch(/AND/i);
+  it('filters a SELECT ALIAS — the real fix (fails as a top-level WHERE on Postgres)', () => {
+    // `month` is an alias of an expression; only a wrap makes it filterable on
+    // standard-conforming dialects.
+    const s = ok(rewriteWithWhereFilter("SELECT date_trunc('month', ts) AS month, COUNT(*) c FROM t GROUP BY 1", 'month', '2026-01-01', 'postgres'));
+    expect(s).toMatch(/\) AS _cf WHERE "month" = '2026-01-01'/i);
   });
 
-  it('preserves positional GROUP BY / ORDER BY / LIMIT', () => {
+  it('preserves positional GROUP BY / ORDER BY / LIMIT inside the wrap', () => {
     const s = ok(rewriteWithWhereFilter('SELECT a, SUM(b) FROM t GROUP BY 1 ORDER BY 1 LIMIT 60', 'a', 'X', 'postgres'));
     expect(s).toMatch(/GROUP BY 1/i);
     expect(s).toMatch(/ORDER BY 1/i);
     expect(s).toMatch(/LIMIT 60/i);
   });
 
-  it('number value → numeric literal (no quotes)', () => {
+  it('number value → bare numeric literal', () => {
     const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', 2024, 'postgres'));
     expect(s).toMatch(/=\s*2024/);
     expect(s).not.toMatch(/'2024'/);
   });
 
   it('boolean value → bool literal', () => {
-    const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'flag', true, 'postgres'));
-    expect(s).toMatch(/TRUE/i);
+    expect(ok(rewriteWithWhereFilter('SELECT a FROM t', 'flag', true, 'postgres'))).toMatch(/= TRUE/i);
   });
 
-  it('null value → IS NULL (not = \'null\')', () => {
+  it("null value → IS NULL (not = 'null')", () => {
     const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', null, 'postgres'));
     expect(s).toMatch(/IS NULL/i);
     expect(s).not.toMatch(/'null'/i);
   });
 
-  it("escapes a quote in the value (no injection)", () => {
-    const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', "O'Brien", 'postgres'));
-    // Must be the doubled-quote form; a bare `'O'Brien'` would break the string.
-    expect(s).toContain("'O''Brien'");
+  it('escapes a quote in the value (no injection)', () => {
+    expect(ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', "O'Brien", 'postgres'))).toContain("'O''Brien'");
   });
 
-  it("neutralizes a quote-breakout injection attempt", () => {
-    const evil = "x' OR '1'='1";
-    const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', evil, 'postgres'));
-    // The whole payload stays one escaped string literal — no stray operator.
-    expect(s).toContain("'x'' OR ''1''=''1'");
+  it('neutralizes a quote-breakout injection attempt', () => {
+    expect(ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', "x' OR '1'='1", 'postgres'))).toContain("'x'' OR ''1''=''1'");
   });
 
-  // MySQL/BigQuery treat `\` as a string escape, so a bare `\'` payload would
-  // break out under quote-doubling alone. Backslashes are doubled there; re-parse
-  // the emitted SQL in the SAME dialect and assert the predicate stayed `=`
-  // (the injected `OR 1=1` never becomes the top-level WHERE operator).
+  // MySQL/BigQuery treat `\` as a string escape; a bare `\'` under quote-doubling
+  // alone would break out. Re-parse the emitted SQL and assert the injected
+  // `OR 1=1` did not become a live operator in the outer WHERE.
   for (const dialect of ['mysql', 'bigquery'] as const) {
     it(`neutralizes a backslash-quote breakout on ${dialect}`, async () => {
       const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', "\\' OR 1=1 -- ", dialect));
@@ -71,9 +67,7 @@ describe('rewriteWithWhereFilter — happy paths', () => {
     });
   }
 
-  // On standard-conforming dialects (PG/SQLite/MSSQL) `\` is an ordinary char, so
-  // a backslash in the value must be preserved verbatim (NOT doubled) — doubling
-  // would change which rows match.
+  // Standard-conforming dialects keep a literal backslash unchanged.
   for (const dialect of ['postgres', 'sqlite', 'mssql'] as const) {
     it(`preserves a literal backslash (not doubled) on ${dialect}`, () => {
       const s = ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', 'C:\\path', dialect));
@@ -83,41 +77,36 @@ describe('rewriteWithWhereFilter — happy paths', () => {
   }
 });
 
-describe('rewriteWithWhereFilter — all dialects', () => {
-  for (const dialect of ['postgres', 'mysql', 'sqlite', 'mssql', 'bigquery', 'duckdb']) {
-    it(`rewrites for ${dialect}`, () => {
-      const s = ok(rewriteWithWhereFilter('SELECT a, SUM(b) FROM t GROUP BY a', 'a', 'X', dialect));
-      expect(s).toMatch(/WHERE/i);
+describe('rewriteWithWhereFilter — all dialects wrap + quote correctly', () => {
+  for (const dialect of ['postgres', 'sqlite', 'mssql', 'duckdb'] as const) {
+    it(`double-quotes the column on ${dialect}`, () => {
+      expect(ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', 'X', dialect))).toContain('WHERE "a" =');
+    });
+  }
+  for (const dialect of ['mysql', 'bigquery'] as const) {
+    it(`backtick-quotes the column on ${dialect}`, () => {
+      expect(ok(rewriteWithWhereFilter('SELECT a FROM t', 'a', 'X', dialect))).toContain('WHERE `a` =');
     });
   }
 
-  it('BigQuery round-trips a hyphenated cross-project ref', () => {
-    const sql = 'SELECT a FROM `proj-id`.`ds`.`tbl` GROUP BY a';
-    const s = ok(rewriteWithWhereFilter(sql, 'a', 'X', 'bigquery'));
-    expect(s).toMatch(/proj-id/);
-    expect(s).toMatch(/WHERE/i);
+  it('a CTE widget is now filterable (lives inside the derived table)', () => {
+    const s = ok(rewriteWithWhereFilter('WITH c AS (SELECT 1 AS x) SELECT x FROM c', 'x', 1, 'postgres'));
+    expect(s).toMatch(/SELECT \* FROM \(WITH c/i);
+    expect(s).toMatch(/\) AS _cf WHERE "x" = 1/i);
   });
 });
 
 describe('rewriteWithWhereFilter — refusals (degrade, not wrong SQL)', () => {
-  it('rejects a CTE', () => {
-    const r = rewriteWithWhereFilter('WITH c AS (SELECT 1 x) SELECT x FROM c', 'x', 1, 'postgres');
-    expect('error' in r).toBe(true);
-  });
-  it('rejects a UNION', () => {
-    const r = rewriteWithWhereFilter('SELECT a FROM t UNION SELECT a FROM u', 'a', 'X', 'postgres');
-    expect('error' in r).toBe(true);
+  it('rejects a UNION (no single column list to wrap)', () => {
+    expect('error' in rewriteWithWhereFilter('SELECT a FROM t UNION SELECT a FROM u', 'a', 'X', 'postgres')).toBe(true);
   });
   it('rejects multi-statement', () => {
-    const r = rewriteWithWhereFilter('SELECT 1; SELECT 2', 'a', 'X', 'postgres');
-    expect('error' in r).toBe(true);
+    expect('error' in rewriteWithWhereFilter('SELECT 1; SELECT 2', 'a', 'X', 'postgres')).toBe(true);
   });
   it('rejects an invalid column name', () => {
-    const r = rewriteWithWhereFilter('SELECT a FROM t', 'a; DROP', 'X', 'postgres');
-    expect('error' in r).toBe(true);
+    expect('error' in rewriteWithWhereFilter('SELECT a FROM t', 'a; DROP', 'X', 'postgres')).toBe(true);
   });
   it('rejects non-SELECT', () => {
-    const r = rewriteWithWhereFilter('UPDATE t SET a=1', 'a', 'X', 'postgres');
-    expect('error' in r).toBe(true);
+    expect('error' in rewriteWithWhereFilter('UPDATE t SET a=1', 'a', 'X', 'postgres')).toBe(true);
   });
 });
