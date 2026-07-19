@@ -27,6 +27,13 @@ export function metricBelongsToConnection(metric: { connectionId: string } | nul
   return !!metric && metric.connectionId === connectionId;
 }
 
+/** Project a metric row to the MCP-visible fields — id/name/description/grain/
+ *  dimensions only. Deliberately DROPS `sql` (the definition is the contract,
+ *  not something an external agent needs) and `embedding`. */
+export function toMcpMetricSummary(m: { id: string; name: string; description: string | null; timeGrain: string | null; dimensions: string[] | null }) {
+  return { id: m.id, name: m.name, description: m.description, timeGrain: m.timeGrain, dimensions: m.dimensions };
+}
+
 export async function startMcpServer() {
   const token = process.env.MDM_API_KEY;
   if (!token) throw new Error('MDM_API_KEY required to start the MCP server');
@@ -87,8 +94,7 @@ export async function startMcpServer() {
     {},
     async () => {
       const ms = await listMetrics(connectionId);
-      // Names/definitions only — never the raw SQL (the metric is the contract).
-      const list = ms.map((m) => ({ id: m.id, name: m.name, description: m.description, timeGrain: m.timeGrain, dimensions: m.dimensions }));
+      const list = ms.map(toMcpMetricSummary);
       return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     });
 
