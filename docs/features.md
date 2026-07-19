@@ -47,7 +47,7 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Column profiling** (real enum values), schema pruning for large schemas, chart rendering.
 
 ### Ecosystem — MCP
-- **MCP server** — expose the context + safety layer to Claude/Cursor over stdio. `ask_database`, `run_sql`, `get_schema_context`, `search_verified_queries` all route through the same safety choke point, so a write attempt via MCP is blocked just like in chat, and `ask_database` answers using your glossary + annotations. *This is the differentiator over a bare DB MCP server: glossary + governance + audit.*
+- **MCP server** — expose the context + safety layer to Claude/Cursor over stdio. `ask_database`, `run_sql`, `get_schema_context`, `search_verified_queries`, `list_governed_metrics`, `run_governed_metric` all route through the same safety choke point, so a write attempt via MCP is blocked just like in chat, and `ask_database` answers using your glossary + annotations. **Governed metrics over MCP** let an external agent reuse your authoritative definitions instead of writing its own aggregation: `list_governed_metrics` returns id/name/description/grain/dimensions (never the raw SQL — the metric is the contract), and `run_governed_metric` runs one by id and returns its series + delta (read-only; BigQuery via the daily byte budget; a metric id is scoped to the API key's own connection so a guessed id from another connection can't run). *This is the differentiator over a bare DB MCP server: glossary + governance + audit — the same "universal translator" idea, self-hosted.*
 - **API keys** (hashed, scoped to a connection + max risk tier), **scheduled queries** (cron, SSRF-guarded webhooks, unattended-risk policy).
 
 ### Analyst, Dashboards & Reports
