@@ -39,18 +39,32 @@ docker compose --profile full up    # app + DB + tự migrate → http://localho
 
 ## Cho người dùng Tableau
 
-Nếu bạn dùng Tableau chủ yếu để *theo dõi chỉ số và nhận bản tin insight* (kiểu **Tableau Pulse**) chứ không phải để kéo-thả dựng visual phức tạp, My DB Mate self-host làm được phần đó với chi phí $0:
+Ý tưởng: những **output** Tableau tạo ra — chart, dashboard, metric, insight — nhưng dựng bằng **AI-assist** (mô tả một câu) thay vì kéo-thả. My DB Mate self-host làm phần đó với chi phí $0:
 
-| Bạn cần | Tableau | My DB Mate |
+| Bạn cần | Tableau (thao tác tay) | My DB Mate (AI-assist) |
 |---|---|---|
-| Theo dõi metric: sparkline + % thay đổi + goal | Pulse | ✅ Tab Metrics — tạo 1-click từ kết quả chat, kèm 🎯 target on/off-track |
-| Bản tin insight định kỳ (delta, outlier, **top-driver theo dimension**) | Pulse (AI) | ✅ Digest theo lịch → webhook markdown; số tính tất định (kể cả "slice nào kéo metric xuống"), LLM chỉ diễn giải; quiet mode chỉ gửi khi có biến động |
-| Hỏi dữ liệu bằng ngôn ngữ tự nhiên | Ask Data / Agent | ✅ Chat + lớp context bạn bồi đắp theo thời gian |
-| Dashboard + auto-refresh + share chỉ-đọc | ✅ | ✅ kèm date-range (`{{from}}`/`{{to}}`), KPI tile, stacked bar, multi-series |
+| Tạo dashboard | kéo từng sheet vào canvas | ✅ **Mô tả một câu → sinh 4–8 widget** (mỗi query được probe trước khi hiện; widget khớp governed metric thì tái dùng đúng định nghĩa) |
+| Sửa một chart | kéo lại shelf, đổi filter/agg | ✅ **✏️ nói một câu** ("chỉ top 10", "thêm filter vùng", "đổi sang stacked bar") → xem diff → áp dụng (run-before-swap, an toàn) |
+| Loại chart | ~24 loại + custom | ✅ **11 loại**: bar/line/area/pie, KPI, stacked bar/100%, multi-series, **scatter, combo, treemap, heatmap** — đổi loại không cần query lại |
+| Lọc tương tác trên dashboard | dashboard actions | ✅ **Click datapoint → lọc các widget khác** (chạy đúng trên mọi dialect: PG/MySQL/MSSQL/BigQuery/SQLite) |
+| Theo dõi metric: sparkline + % + goal | Pulse | ✅ Tab Metrics — 1-click từ kết quả chat, 🎯 target on/off-track |
+| Bản tin insight định kỳ (delta, outlier, **top-driver theo dimension**) | Pulse (AI) | ✅ Digest theo lịch → webhook markdown; số tính tất định, LLM chỉ diễn giải; quiet mode |
+| Hỏi dữ liệu bằng ngôn ngữ tự nhiên | Ask Data / Agent | ✅ Chat + lớp context bồi đắp theo thời gian |
+| Dùng metric đã govern từ AI ngoài (Claude/ChatGPT) | MCP (TC26) | ✅ **MCP tools**: liệt kê + chạy governed metric qua connector, read-only |
 | Cảnh báo dữ liệu bất thường | Alerts | ✅ Data-drift monitor (snapshot-diff, ngưỡng tường minh, không ML mờ) |
 | Giá | ~$75/user/tháng (Creator) | $0 self-host — chỉ trả API key LLM của chính bạn |
-| **Kéo-thả dựng visual (VizQL)** | ✅ | ❌ **Không có và không định làm** — hướng đi là chat-first; cần viz canvas hãy dùng [Apache Superset](https://superset.apache.org/) |
+| **Kéo-thả canvas thủ công (VizQL)** | ✅ | ❌ Có chủ đích không làm — thay bằng AI-assist ở trên; cần canvas thủ công hãy dùng [Apache Superset](https://superset.apache.org/) |
 | Prep/ETL · governance doanh nghiệp · multi-user RBAC | ✅ | ❌ Chưa có (đang ở phạm vi single-user self-host) |
+
+![Dashboard: heatmap, combo (bar + line), bar — 11 loại chart, spec = render mapping](docs/images/dashboard-chart-types.png)
+
+**Sinh dashboard từ một câu** — mô tả điều muốn xem, model đề xuất 4–8 widget từ schema + governed context; mỗi query được chạy thử (probe) trước khi hiện preview, chọn cái nào giữ rồi tạo:
+
+![Generate dashboard: prompt → preview widget đã probe → tạo](docs/images/generate-dashboard.png)
+
+**Sửa widget bằng một câu** — ✏️ trên widget, nói điều cần đổi; model viết lại SQL (và chart/tiêu đề khi cần), bạn xem diff cạnh nhau rồi áp dụng. Áp dụng theo *run-before-swap*: chạy query mới trước, thành công mới thay — share view không bao giờ thấy trạng thái dở:
+
+![AI-edit widget: một câu → diff SQL cũ/mới → Accept](docs/images/ai-edit-widget.png)
 
 ![Metrics: sparkline cards + delta badge](docs/images/metrics.png)
 

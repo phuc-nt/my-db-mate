@@ -39,18 +39,32 @@ docker compose --profile full up    # app + DB + auto-migrate → http://localho
 
 ## For Tableau users
 
-If what you use Tableau for is mostly *tracking metrics and getting insight digests* (the **Tableau Pulse** workflow) rather than hand-building complex visuals, a self-hosted My DB Mate covers that part for $0:
+The idea: the **outputs** Tableau produces — charts, dashboards, metrics, insights — built by **AI assistance** (describe it in a sentence) instead of drag-and-drop. A self-hosted My DB Mate covers that for $0:
 
-| You need | Tableau | My DB Mate |
+| You need | Tableau (by hand) | My DB Mate (AI-assist) |
 |---|---|---|
-| Metric tracking: sparkline + % change + goals | Pulse | ✅ Metrics tab — created 1-click from a chat result, with 🎯 on/off-track targets |
-| Recurring insight digest (deltas, outliers, **top drivers by dimension**) | Pulse (AI) | ✅ Scheduled digest → markdown webhook; numbers computed deterministically (including *which slices drove the move*), the LLM only narrates; quiet mode sends only on real changes |
+| Build a dashboard | drag each sheet onto a canvas | ✅ **Describe it in one sentence → 4–8 widgets generated** (each query probed before you see it; a widget matching a governed metric reuses its exact definition) |
+| Edit a chart | re-drag shelves, change filter/agg | ✅ **✏️ say one sentence** ("only the top 10", "add a region filter", "switch to a stacked bar") → review the diff → apply (run-before-swap, safe) |
+| Chart types | ~24 + custom | ✅ **11 types**: bar/line/area/pie, KPI, stacked bar/100%, multi-series, **scatter, combo, treemap, heatmap** — switch type without re-querying |
+| Interactive dashboard filtering | dashboard actions | ✅ **Click a datapoint → filter the other widgets** (works on every dialect: Postgres/MySQL/MSSQL/BigQuery/SQLite) |
+| Metric tracking: sparkline + % + goals | Pulse | ✅ Metrics tab — 1-click from a chat result, with 🎯 on/off-track targets |
+| Recurring insight digest (deltas, outliers, **top drivers by dimension**) | Pulse (AI) | ✅ Scheduled digest → markdown webhook; numbers computed deterministically, the LLM only narrates; quiet mode |
 | Ask your data in natural language | Ask Data / Agent | ✅ Chat + a context layer you grow over time |
-| Dashboards + auto-refresh + read-only share | ✅ | ✅ plus date range (`{{from}}`/`{{to}}`), KPI tiles, stacked bars, multi-series lines |
+| Use your governed metrics from an external AI (Claude/ChatGPT) | MCP (TC26) | ✅ **MCP tools**: list + run a governed metric over the connector, read-only |
 | Data anomaly alerts | Alerts | ✅ Data-drift monitor (snapshot diff, explicit thresholds, no opaque ML) |
 | Price | ~$75/user/month (Creator) | $0 self-hosted — you only pay for your own LLM API key |
-| **Drag-and-drop viz builder (VizQL)** | ✅ | ❌ **Not there, and not planned** — this product is chat-first; if you need a viz canvas, use [Apache Superset](https://superset.apache.org/) |
+| **Hand-built drag-and-drop canvas (VizQL)** | ✅ | ❌ Deliberately not built — replaced by the AI-assist rows above; if you need a manual canvas, use [Apache Superset](https://superset.apache.org/) |
 | Prep/ETL · enterprise governance · multi-user RBAC | ✅ | ❌ Not yet (currently single-user, self-hosted scope) |
+
+![Dashboard: heatmap, combo (bar + line), bar — 11 chart types, spec = render mapping](docs/images/dashboard-chart-types.png)
+
+**Generate a dashboard from one sentence** — describe what you want; the model proposes 4–8 widgets from your schema + governed context, each query trial-run (probed) before the preview, then you pick which to keep and create:
+
+![Generate dashboard: prompt → probed widget preview → create](docs/images/generate-dashboard.png)
+
+**Edit a widget with one sentence** — ✏️ on a widget, say what to change; the model rewrites the SQL (and the chart/title when warranted), you review a side-by-side diff and apply. Apply is *run-before-swap*: the new query runs first and only then replaces the old one — the share view never sees a half-updated widget:
+
+![AI-edit widget: one sentence → old/new SQL diff → Accept](docs/images/ai-edit-widget.png)
 
 ![Metrics: sparkline cards + delta badges](docs/images/metrics.png)
 
