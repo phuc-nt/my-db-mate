@@ -18,7 +18,14 @@ import { executeQuery } from './query-executor-service';
 import { getSchemaSummary } from './schema-sync-service';
 import { getRelevantContext } from './context-service';
 import { getConnection } from './connection-service';
+import { listMetrics, getMetric, runMetric } from './metric-service';
 import { toJsonSafe } from '../lib/json-safe';
+
+/** A metric id is client-supplied; only run metrics that belong to THIS key's
+ *  connection so a guessed id from another connection can't be executed. */
+export function metricBelongsToConnection(metric: { connectionId: string } | null, connectionId: string): boolean {
+  return !!metric && metric.connectionId === connectionId;
+}
 
 export async function startMcpServer() {
   const token = process.env.MDM_API_KEY;
@@ -74,6 +81,27 @@ export async function startMcpServer() {
     async ({ question }) => {
       const ctx = await getRelevantContext(question, connectionId);
       return { content: [{ type: 'text', text: JSON.stringify(ctx.verifiedExamples, null, 2) }] };
+    });
+
+  server.tool('list_governed_metrics', 'List this connection\'s governed metrics (the authoritative, pre-validated definitions). Returns id/name/description/time grain/dimensions — reuse these instead of writing your own aggregation. Run one with run_governed_metric.',
+    {},
+    async () => {
+      const ms = await listMetrics(connectionId);
+      // Names/definitions only — never the raw SQL (the metric is the contract).
+      const list = ms.map((m) => ({ id: m.id, name: m.name, description: m.description, timeGrain: m.timeGrain, dimensions: m.dimensions }));
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    });
+
+  server.tool('run_governed_metric', 'Run a governed metric by id and return its time series + latest/previous/delta. The metric SQL was validated (and sensitive-column-checked) when it was created and runs read-only through the safety layer; BigQuery goes through the daily byte budget.',
+    { metric_id: z.string() },
+    async ({ metric_id }) => {
+      const metric = await getMetric(metric_id);
+      if (!metricBelongsToConnection(metric, connectionId)) {
+        return { content: [{ type: 'text', text: 'NOT_FOUND: no governed metric with that id on this connection.' }], isError: true };
+      }
+      const r = await runMetric(metric_id);
+      if (r.error || !r.run) return { content: [{ type: 'text', text: `ERROR: ${r.error ?? 'metric run failed'}` }], isError: true };
+      return { content: [{ type: 'text', text: JSON.stringify(toJsonSafe(r.run), null, 2) }] };
     });
 
   await server.connect(new StdioServerTransport());
