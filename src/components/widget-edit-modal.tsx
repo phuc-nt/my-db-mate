@@ -32,28 +32,38 @@ export function WidgetEditModal({ dashboardId, widgetId, oldSql, onClose, onEdit
   async function propose() {
     if (!instruction.trim()) return;
     setBusy(true); setError(''); setProposal(null);
-    const r = await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}/edit`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instruction }),
-    });
-    const d = await r.json();
-    setBusy(false);
-    if (!d.ok) { setError(d.error); return; }
-    setProposal(d.proposal);
+    try {
+      const r = await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}/edit`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instruction }),
+      });
+      const d = await r.json();
+      if (!d.ok) { setError(d.error); return; }
+      setProposal(d.proposal);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'request failed');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function apply(confirmed = false) {
     if (!proposal) return;
     setBusy(true); setError('');
-    const r = await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}/edit`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sql: proposal.sql, chartSpec: proposal.chartSpec ?? undefined, title: proposal.title, confirmed }),
-    });
-    const d = await r.json();
-    setBusy(false);
-    if (d.status === 'needs_confirmation') { setConfirmRisk(d.risk?.reason ?? 'medium risk'); return; }
-    if (d.status !== 'ok') { setError(d.message ?? 'apply failed'); return; }
-    onEdited(widgetId);
-    onClose();
+    try {
+      const r = await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}/edit`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sql: proposal.sql, chartSpec: proposal.chartSpec ?? undefined, title: proposal.title, confirmed }),
+      });
+      const d = await r.json();
+      if (d.status === 'needs_confirmation') { setConfirmRisk(d.risk?.reason ?? 'medium risk'); return; }
+      if (d.status !== 'ok') { setError(d.message ?? 'apply failed'); return; }
+      onEdited(widgetId);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'request failed');
+    } finally {
+      setBusy(false);
+    }
   }
 
   const sqlBox = 'block max-h-40 overflow-auto whitespace-pre rounded bg-neutral-50 p-2 text-[11px] text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300';
