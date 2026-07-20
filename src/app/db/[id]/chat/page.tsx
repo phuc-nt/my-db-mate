@@ -13,6 +13,7 @@ import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
+import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -105,7 +106,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId]);
 
-  const { messages, sendMessage, addToolResult, status, setMessages } = useChat({
+  // The assistant message the user interrupted with Stop (keyed by message id),
+  // set from onFinish's authoritative isAbort flag — NOT from `status`, which is
+  // 'ready' on both a natural finish and an abort.
+  const [interruptedMsgId, setInterruptedMsgId] = useState<string | null>(null);
+  const { messages, sendMessage, addToolResult, status, setMessages, stop } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
       body: { connectionId, sessionId },
@@ -113,6 +118,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     // When the model calls ask_user (a no-execute tool), the stream stops at that
     // tool-call; we render the question and resume via addToolResult below.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onFinish: ({ message, isAbort }) => {
+      // Authoritative interrupt signal: mark the aborted turn so the UI can offer
+      // keep/edit/discard; a genuine finish clears any stale flag for that id.
+      setInterruptedMsgId((cur) => (isAbort ? message.id : cur === message.id ? null : cur));
+    },
   });
 
   const busy = status === 'submitted' || status === 'streaming';
@@ -268,6 +278,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     return () => window.removeEventListener('beforeunload', warn);
   }, [isInvestigationSession, busy]);
 
+  // The mode of the in-flight turn — Discard needs it: an investigate turn was
+  // drained server-side (persisted) so it needs a server delete; a chat turn was
+  // truly aborted (never persisted) so client removal is enough.
+  const lastSentModeRef = useRef<'chat' | 'investigate' | 'investigate-deep'>('chat');
+
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
@@ -276,7 +291,35 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setProvenance(null);
     followupAbortRef.current?.abort();
     setFollowLatest(true);
+    lastSentModeRef.current = mode;
     sendMessage({ text }, { body: { connectionId, sessionId, mode } });
+  }
+
+  /** Keep the interrupted partial as the answer — just clear the interrupt flag,
+   *  pruning the dangling tool-call so the NEXT send doesn't throw. */
+  function keepInterrupted(msgId: string) {
+    setMessages((ms) => ms.map((m) => (m.id === msgId ? (pruneDanglingToolCalls(m as UIMsg) as typeof m) : m)));
+    setInterruptedMsgId(null);
+  }
+
+  /** Edit & resend: prefill the input with the original question, drop the
+   *  interrupted assistant turn, and let the user edit + press Send (no auto-send). */
+  function editResendInterrupted(msgId: string) {
+    const prior = userTurnBefore(messages as UIMsg[], msgId);
+    setInput(extractUserText(prior));
+    setMessages((ms) => ms.filter((m) => m.id !== msgId));
+    setInterruptedMsgId(null);
+  }
+
+  /** Discard the interrupted turn. Chat turns were never persisted (truly
+   *  aborted) so client removal suffices; investigate turns were drained + saved
+   *  server-side, so also delete the persisted assistant message. */
+  async function discardInterrupted(msgId: string) {
+    setMessages((ms) => ms.filter((m) => m.id !== msgId));
+    setInterruptedMsgId(null);
+    if (lastSentModeRef.current !== 'chat' && sessionId) {
+      await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
+    }
   }
 
   function toggleFollowups() {
@@ -378,6 +421,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           {messages.map((m) => (
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
               <div className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
+                {m.role === 'assistant' && <ChatPlanCard parts={m.parts as unknown as UIPart[]} />}
                 {m.parts.map((part, i) => {
                   if (part.type === 'text') {
                     if (m.role === 'user') return <span key={i} className="whitespace-pre-wrap">{part.text}</span>;
@@ -477,6 +521,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                   }
                   return null;
                 })}
+                {m.id === interruptedMsgId && (
+                  <div className="mt-2 border-t border-amber-300 pt-2 text-xs dark:border-amber-800" data-testid="interrupt-actions">
+                    <span className="text-amber-600">⏹ Interrupted — </span>
+                    <button onClick={() => keepInterrupted(m.id)} data-testid="interrupt-keep" className="mx-1 underline hover:text-blue-600">Keep</button>
+                    <button onClick={() => editResendInterrupted(m.id)} data-testid="interrupt-edit" className="mx-1 underline hover:text-blue-600">Edit &amp; resend</button>
+                    <button onClick={() => discardInterrupted(m.id)} data-testid="interrupt-discard" className="mx-1 underline hover:text-red-600">Discard</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -530,7 +582,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />
-          <button type="submit" disabled={busy} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Send</button>
+          {busy ? (
+            <button type="button" onClick={() => stop()} data-testid="chat-stop"
+              className="rounded border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/30"
+              title={lastSentModeRef.current === 'chat' ? 'Stop — halts the query' : 'Stop showing (the investigation finishes in the background)'}>
+              ⏹ Stop
+            </button>
+          ) : (
+            <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Send</button>
+          )}
         </form>
         {isInvestigationSession && busy && (
           <p className="mt-1 text-center text-[11px] text-amber-600" data-testid="investigation-running-notice">
@@ -579,6 +639,33 @@ function toolStatus(state?: string): { icon: string; done: 'ok' | 'error' | 'run
   if (state === 'output-available') return { icon: '✓', done: 'ok' };
   if (state === 'output-error') return { icon: '✗', done: 'error' };
   return { icon: '⏳', done: 'running' };
+}
+
+/** Chat-mode plan card: a live checklist derived from the assistant turn's
+ *  tool-call parts (no extra LLM call). Only shown for genuine multi-step turns
+ *  (≥2 tool-calls) so a one-shot answer stays uncluttered. A step in flight is
+ *  dimmed with a spinner; a completed step shows ✓; an errored step shows ✗.
+ *  Separate surface from the investigate-only 📋 plan_analysis card. */
+function ChatPlanCard({ parts }: { parts: UIPart[] }) {
+  // Investigate turns already render the dedicated "📋 Analysis plan" card
+  // (the plan_analysis tool). Suppress this chat-mode Steps card there so the
+  // two 📋 surfaces never stack in one bubble — this stays a distinct surface.
+  if (parts.some((p) => p.type === 'tool-plan_analysis')) return null;
+  const steps = summarizeToolParts(parts);
+  if (steps.length < 2) return null;
+  const doneCount = steps.filter((s) => s.done).length;
+  return (
+    <details open className="mb-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs dark:border-blue-900 dark:bg-blue-950" data-testid="chat-plan-card">
+      <summary className="cursor-pointer font-medium">📋 Steps ({doneCount}/{steps.length})</summary>
+      <ol className="mt-1 space-y-0.5 pl-1">
+        {steps.map((s, j) => (
+          <li key={j} className={s.done || s.errored ? '' : 'text-neutral-400'}>
+            {s.errored ? '✗' : s.done ? '✓' : '⏳'} {s.label}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
 }
 
 /** Inline clarifying-question box for the ask_user tool (red-team C1). */

@@ -410,8 +410,11 @@ export async function streamAgentAnswer(params: {
   /** Per-session SQL-step cap for a finding investigation. Clamped to
    *  INVESTIGATE_FINDING_MAX_SQL; requires sessionId (persisted counter). */
   maxSqlSteps?: number;
+  /** Request abort signal — when wired (chat mode), a client Stop halts the
+   *  server-side agent loop instead of letting it run to the step cap. */
+  abortSignal?: AbortSignal;
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -451,6 +454,7 @@ export async function streamAgentAnswer(params: {
     messages,
     tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap),
     stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
+    ...(abortSignal ? { abortSignal } : {}),
   });
 }
 

@@ -1,5 +1,5 @@
 /** Chat session persistence: sessions, messages, and the query-run audit view. */
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { chatSessions, chatMessages, queryRuns } from '../db/schema';
 
@@ -41,6 +41,23 @@ export async function addMessage(params: {
     })
     .returning();
   return row;
+}
+
+/** Delete the most recent assistant message in a session — used by the chat
+ *  interrupt's Discard action when the server already persisted a (completed)
+ *  turn the user chose to throw away (investigate mode). Single-user, no
+ *  concurrent turns, so "latest assistant" unambiguously targets that turn.
+ *  Returns the deleted row's id, or null if there was none. */
+export async function deleteLatestAssistantMessage(sessionId: string): Promise<string | null> {
+  const [latest] = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(and(eq(chatMessages.sessionId, sessionId), eq(chatMessages.role, 'assistant')))
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(1);
+  if (!latest) return null;
+  await db.delete(chatMessages).where(eq(chatMessages.id, latest.id));
+  return latest.id;
 }
 
 /** Audit trail for a session (or a connection). */
