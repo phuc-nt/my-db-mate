@@ -38,6 +38,17 @@ describe('normalizeResultForVote — canonical result signature (red-team C3)', 
     expect(a).toBe(b);
   });
 
+  it('keeps zero-padded / format-carrying codes as distinct strings (not numbers)', () => {
+    // "007" is an identifier, not the quantity 7 — must NOT collapse.
+    expect(sig(['code'], [['007']])).not.toBe(sig(['code'], [[7]]));
+    expect(sig(['code'], [['007']])).not.toBe(sig(['code'], [['7']]));
+    // "7.0" and "+7" carry formatting → stay strings, distinct from 7.
+    expect(sig(['code'], [['7.0']])).not.toBe(sig(['code'], [[7]]));
+    expect(sig(['code'], [['+7']])).not.toBe(sig(['code'], [[7]]));
+    // A plain canonical numeric string still collapses (the useful case).
+    expect(sig(['n'], [['7']])).toBe(sig(['n'], [[7]]));
+  });
+
   it('distinguishes NULL from 0 and from empty string', () => {
     const nul = sig(['x'], [[null]]);
     const zero = sig(['x'], [[0]]);
