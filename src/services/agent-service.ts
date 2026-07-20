@@ -29,6 +29,8 @@ import { missingGovernedFilters } from '../lib/metric-filter-lint';
 import { runAnswerChecks } from '../lib/answer-verify-checks';
 import { DEFAULT_LIMIT } from './safety/safety-service';
 import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from './finding-investigation-service';
+import { generateCandidateSqls, normalizeResultForVote, tallyVote, hasTotalOrderBy, VOTE_LIMIT } from './candidate-sql-service';
+import type { CandidateRun, VoteResult, BqCostCandidate } from '../lib/candidate-vote-types';
 
 export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
 /** Both investigate tiers share tools/addendum; only budgets differ. Using a
@@ -48,6 +50,10 @@ const MAX_SQL_PER_INVESTIGATION = Number(process.env.INVESTIGATE_MAX_SQL ?? 30);
 // 2 (not 3): by the third identical failure the model is rarely converging — stop
 // and report instead of burning another round-trip.
 const MAX_CONSECUTIVE_SQL_FAILURES = 2;
+// High-stakes voting: total candidate probes allowed across a whole chat turn
+// (not per run_sql call). Bounds fan-out so a looping model can't spawn unbounded
+// cross-check queries (red-team H6). Each real run_sql may add up to 2 candidates.
+const MAX_CANDIDATE_PROBES = Number(process.env.HIGH_STAKES_MAX_PROBES ?? 8);
 
 const SYSTEM = (schema: string, dialect: string) =>
   `You are My DB Mate, a careful data assistant for a ${dialect} database.
@@ -96,6 +102,10 @@ interface InvestigationState {
   /** verify-check ids already surfaced to the agent this request — a warn is
    *  hinted at most once so an unfixable warn (e.g. row-cap) can't loop the model. */
   verifyHinted: Set<string>;
+  /** High-stakes candidate probes run this turn. Bounded separately from
+   *  sqlRunCount so cross-checking neither starves the model's real budget nor
+   *  runs unbounded when the model loops (red-team H6). */
+  candidateProbeCount: number;
 }
 
 /** A governed metric matched to the question, with its cosine distance — used by the
@@ -126,6 +136,83 @@ function wrapData(payload: unknown): string {
 }
 
 /**
+ * High-stakes candidate voting for one run_sql result. Generates low-temp
+ * rewrites and cross-checks their RESULTS against the base answer, all through
+ * the standard choke point. Returns a vote payload for the chat UI.
+ *
+ * Red-team invariants:
+ * - BigQuery is NEVER executed for voting — only dry-run cost is compared (C2),
+ *   via executeQuery's allowCostEstimatePreview (single choke point + audit).
+ * - Non-BQ candidates run WITH the risk gate (H7); a candidate that is high-risk,
+ *   blocked, or errors is DROPPED from the vote, never force-run.
+ * - Governance-violating candidates (dropping a governed metric's filter) are
+ *   excluded (M8) so the diff panel never offers a wrong-by-definition query.
+ * - Large + unordered results are inconclusive, not diverge (H4).
+ */
+async function runCandidateVote(args: {
+  connectionId: string;
+  actor: string;
+  sessionId?: string;
+  dialect: Dialect;
+  question: string;
+  baseSql: string;
+  baseColumns: string[];
+  baseRows: unknown[][];
+  baseRowCount: number;
+  lintMetrics: MatchedMetric[];
+  state: InvestigationState;
+}): Promise<VoteResult | undefined> {
+  const { connectionId, actor, sessionId, dialect, question, baseSql, baseColumns, baseRows, baseRowCount, lintMetrics, state } = args;
+
+  const generated = await generateCandidateSqls(connectionId, baseSql, question, dialect);
+  if (generated.length === 0) return { kind: 'inconclusive', reason: 'Could not generate alternative queries to cross-check.' };
+
+  // BigQuery: compare dry-run cost estimates, never execute (bytes = money).
+  if (dialect === 'bigquery') {
+    const candidates: BqCostCandidate[] = [];
+    for (const sql of [baseSql, ...generated]) {
+      if (state.candidateProbeCount >= MAX_CANDIDATE_PROBES) break;
+      state.candidateProbeCount++;
+      const res = await executeQuery({ connectionId, sql, actor, sessionId, allowCostEstimatePreview: true });
+      const est = res.costEstimate;
+      if (est) candidates.push({ sql, estimatedBytes: est.estimatedBytes, estimatedCostUsd: est.estimatedCostUsd, reliable: est.reliable });
+    }
+    if (candidates.length < 2) return { kind: 'inconclusive', reason: 'Could not estimate enough candidates to compare cost.' };
+    return { kind: 'bq-cost', candidates };
+  }
+
+  // Non-BQ: execute candidates through the choke point (risk gate ON), compare results.
+  // The base result is already computed; only re-fingerprint it for comparison.
+  const runs: CandidateRun[] = [];
+  const baseSig = normalizeResultForVote(baseColumns, baseRows);
+  runs.push({ sql: baseSql, isBase: true, signature: baseSig, columns: baseColumns, rowsPreview: baseRows.slice(0, VOTE_LIMIT) });
+
+  for (const sql of generated) {
+    if (state.candidateProbeCount >= MAX_CANDIDATE_PROBES) break;
+    // M8: drop a candidate that omits a closely-matched governed metric's filter.
+    const violates = lintMetrics.some((m) => missingGovernedFilters(sql, m.sql, dialect).length > 0);
+    if (violates) { runs.push({ sql, isBase: false, signature: null, excludedReason: 'omits a governed metric filter' }); continue; }
+    state.candidateProbeCount++;
+    const res = await executeQuery({ connectionId, sql, actor, sessionId }); // risk gate ON (H7)
+    if (res.status !== 'ok' || !res.result) {
+      runs.push({ sql, isBase: false, signature: null, excludedReason: res.status });
+      continue;
+    }
+    runs.push({
+      sql, isBase: false,
+      signature: normalizeResultForVote(res.result.columns, res.result.rows),
+      columns: res.result.columns,
+      rowsPreview: res.result.rows.slice(0, VOTE_LIMIT),
+    });
+  }
+
+  // H4: a large result with no total ORDER BY can't be compared row-for-row across
+  // candidates that scan in different physical orders → inconclusive, not diverge.
+  const bigUnordered = baseRowCount >= VOTE_LIMIT && !hasTotalOrderBy(baseSql);
+  return tallyVote(runs, { bigUnordered });
+}
+
+/**
  * Build the agent tool set bound to a connection. Exposed separately so the same
  * tools back both the chat route and the MCP server. `mode` gates the extra
  * investigate-only tools (plan_analysis, ask_user) so headless consumers
@@ -142,8 +229,13 @@ export function buildAgentTools(
   // counter (atomic reserve) instead of only the per-request budget — reopening the
   // session cannot reset it, and a client value can only lower the ceiling (red-team).
   findingCap?: { sessionId: string; cap: number },
+  // High-stakes voting (chat-only): when true, run_sql cross-checks its answer with
+  // low-temp candidate rewrites. `question` is the user's question, needed so
+  // candidates can explore an alternate interpretation, not just re-spell one.
+  highStakes = false,
+  question = '',
 ) {
-  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set() };
+  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set(), candidateProbeCount: 0 };
   const findingSqlCap = findingCap ? Math.min(Math.max(1, findingCap.cap), INVESTIGATE_FINDING_MAX_SQL) : null;
   // Investigate-from-finding: actor is derived HERE (server side, from the presence
   // of the session's validated target) — never from the request body — and the
@@ -305,7 +397,29 @@ export function buildAgentTools(
             verify.verifyHint = `A sanity check flagged this result: ${newWarn.note} Reconsider before concluding; if it is expected, say so with evidence.`;
           }
         }
-        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, lineage: res.lineage ?? undefined, accelerated: res.result!.accelerated, ...sanityNote, ...verify };
+
+        // High-stakes candidate voting (chat-only, never on the finding path — M9).
+        // Generate low-temp rewrites, run each through the SAME choke point (keeping
+        // the risk gate — H7), and cross-check RESULTS. Attaches a `vote` payload for
+        // the chat UI. Bounded by candidateProbeCount (H6); degrades silently on any
+        // failure (voting is advisory, never blocks the answer).
+        const voteWrap: { vote?: VoteResult } = {};
+        if (highStakes && mode === 'chat' && !findingCap && state.candidateProbeCount < MAX_CANDIDATE_PROBES) {
+          try {
+            voteWrap.vote = await runCandidateVote({
+              connectionId, actor: execActor, sessionId, dialect, question,
+              baseSql: sql,
+              baseColumns: res.result!.columns,
+              baseRows: res.result!.rows,
+              baseRowCount: res.result!.rowCount,
+              lintMetrics,
+              state,
+            });
+          } catch {
+            // never let cross-checking break the answer
+          }
+        }
+        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, lineage: res.lineage ?? undefined, accelerated: res.result!.accelerated, ...sanityNote, ...verify, ...voteWrap };
       },
     }),
     glossary_lookup: tool({
@@ -413,8 +527,12 @@ export async function streamAgentAnswer(params: {
   /** Request abort signal — when wired (chat mode), a client Stop halts the
    *  server-side agent loop instead of letting it run to the step cap. */
   abortSignal?: AbortSignal;
+  /** High-stakes chat mode — cross-check each answer with low-temp candidate SQL.
+   *  Chat-only; the route force-clears it outside chat so the finding path can't
+   *  trigger it. */
+  highStakes?: boolean;
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -452,7 +570,7 @@ export async function streamAgentAnswer(params: {
     model: await getModel(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap),
+    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap, highStakes && mode === 'chat' && !findingCap, question),
     stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
     ...(abortSignal ? { abortSignal } : {}),
   });
