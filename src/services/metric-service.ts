@@ -185,6 +185,9 @@ export async function updateMetric(metricId: string, patch: Partial<MetricInput>
     ...(target !== undefined ? { target: target.value } : {}),
     ...(dims !== undefined ? { dimensions: dims } : {}),
     ...(embedding !== undefined ? { embedding } : {}),
+    // A changed SQL invalidates the cached run — the number it holds was computed
+    // from the OLD definition and would mislead the verify layer for up to 48h.
+    ...(sqlChanged ? { lastRun: null, lastRunAt: null } : {}),
   }).where(eq(metrics.id, metricId)).returning();
   return { metric: stripEmbedding(row) };
 }
@@ -250,5 +253,23 @@ export async function runMetric(metricId: string): Promise<{ run?: MetricRun; er
     return { error: res.blockedReason ?? res.errorMessage ?? 'metric query failed' };
   }
   const series = parseSeries(res.result.rows);
-  return { run: { series, ...computeDelta(series) } };
+  const delta = computeDelta(series);
+  await cacheMetricLastRun(metricId, series, delta);
+  return { run: { series, ...delta } };
+}
+
+/** Compact cache of a metric's most recent run, for the chat answer-verify layer
+ *  (sanity-check a number against this metric's own history, no query spent).
+ *  Fire-and-forget — a cache write failure must never fail the run. */
+async function cacheMetricLastRun(
+  metricId: string,
+  series: MetricPoint[],
+  delta: { latest: number | null; prev: number | null; deltaPct: number | null },
+): Promise<void> {
+  try {
+    const latestT = series.length ? series[series.length - 1].t : null;
+    await db.update(metrics)
+      .set({ lastRun: { latest: delta.latest, prev: delta.prev, deltaPct: delta.deltaPct, latestT }, lastRunAt: new Date() })
+      .where(eq(metrics.id, metricId));
+  } catch { /* cache is best-effort */ }
 }

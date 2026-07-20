@@ -119,7 +119,14 @@ export interface RelevantContext {
   glossaryHits: { term: string; definition: string; sqlMapping: string | null }[];
   manualRelationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
   verifiedExamples: { question: string; sql: string }[];
-  metrics: { id: string; name: string; description: string | null; sql: string; dimensions: string[] | null; distance: number }[];
+  metrics: {
+    id: string; name: string; description: string | null; sql: string; dimensions: string[] | null; distance: number;
+    // For the chat answer-verify layer only (never rendered into the prompt):
+    // the metric's grain + its cached recent run, to sanity-check a number.
+    timeGrain: string;
+    lastRun: { latest: number | null; prev: number | null; deltaPct: number | null; latestT: string | null } | null;
+    lastRunAt: Date | null;
+  }[];
 }
 
 /** Pull the context relevant to a question for one connection. */
@@ -185,6 +192,10 @@ export async function getRelevantContext(question: string, connectionId: string)
       // TIGHTER gate than injection: a metric injected as context (≤ floor) is not
       // necessarily one the answer MUST obey filter-for-filter.
       distance: sql<number>`(${metrics.embedding} <=> ${vecLiteral}::vector)`,
+      // For the answer-verify magnitude check only (not rendered into the prompt).
+      timeGrain: metrics.timeGrain,
+      lastRun: metrics.lastRun,
+      lastRunAt: metrics.lastRunAt,
     })
     .from(metrics)
     .where(and(

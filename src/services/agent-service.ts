@@ -26,6 +26,8 @@ import { detectAnomalies } from './anomaly-service';
 import { getModel } from './llm-service';
 import { renderDateContext } from '../lib/date-context';
 import { missingGovernedFilters } from '../lib/metric-filter-lint';
+import { runAnswerChecks } from '../lib/answer-verify-checks';
+import { DEFAULT_LIMIT } from './safety/safety-service';
 import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from './finding-investigation-service';
 
 export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
@@ -91,6 +93,9 @@ const bigTablePolicy = (bigTables: { name: string; rows: number }[]) =>
 interface InvestigationState {
   sqlRunCount: number;
   consecutiveFailures: number;
+  /** verify-check ids already surfaced to the agent this request — a warn is
+   *  hinted at most once so an unfixable warn (e.g. row-cap) can't loop the model. */
+  verifyHinted: Set<string>;
 }
 
 /** A governed metric matched to the question, with its cosine distance — used by the
@@ -99,6 +104,11 @@ export interface MatchedMetric {
   name: string;
   sql: string;
   distance: number;
+  // For the answer-verify magnitude check (chat mode) — optional so the MCP
+  // server and older callers stay compatible.
+  timeGrain?: string;
+  lastRun?: { latest: number | null; prev: number | null; deltaPct: number | null; latestT: string | null } | null;
+  lastRunAt?: Date | null;
 }
 
 /** Only metrics matched at least this close (cosine distance) enforce their filters via
@@ -133,7 +143,7 @@ export function buildAgentTools(
   // session cannot reset it, and a client value can only lower the ceiling (red-team).
   findingCap?: { sessionId: string; cap: number },
 ) {
-  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0 };
+  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set() };
   const findingSqlCap = findingCap ? Math.min(Math.max(1, findingCap.cap), INVESTIGATE_FINDING_MAX_SQL) : null;
   // Investigate-from-finding: actor is derived HERE (server side, from the presence
   // of the session's validated target) — never from the request body — and the
@@ -270,7 +280,32 @@ export function buildAgentTools(
         const sanityNote = res.result!.rowCount === 0
           ? { sanityNote: 'Query returned 0 rows. Before concluding "there is none", verify the filter values/join actually exist (e.g. check DISTINCT values of the filtered column). If you already did, answer with that evidence.' }
           : {};
-        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, lineage: res.lineage ?? undefined, accelerated: res.result!.accelerated, ...sanityNote };
+
+        // Answer-verify layer (chat mode only): deterministic sanity checks on the
+        // result, incl. comparing the number against the nearest governed metric's
+        // OWN cached history. Checks are attached for the chat UI to render; a warn
+        // is fed back to the model ONCE per id so it can reconsider without looping.
+        const verify: { verifyChecks?: ReturnType<typeof runAnswerChecks>['checks']; verifyHint?: string } = {};
+        if (mode === 'chat' && res.result!.rowCount > 0) {
+          const fresh = matchedMetrics
+            .filter((m) => m.distance <= LINT_DISTANCE_FLOOR && m.lastRun && m.lastRunAt && (Date.now() - new Date(m.lastRunAt).getTime()) < 48 * 3600_000)
+            .sort((a, b) => a.distance - b.distance)[0];
+          const { checks } = runAnswerChecks({
+            sql,
+            columns: res.result!.columns,
+            rows: res.result!.rows,
+            metric: fresh ? { lastRun: fresh.lastRun!, timeGrain: fresh.timeGrain ?? 'month' } : null,
+            enforcedLimit: DEFAULT_LIMIT,
+            limitInjected: !/\blimit\b/i.test(sql),
+          });
+          verify.verifyChecks = checks;
+          const newWarn = checks.find((c) => c.status === 'warn' && c.note && !state.verifyHinted.has(c.id));
+          if (newWarn) {
+            state.verifyHinted.add(newWarn.id);
+            verify.verifyHint = `A sanity check flagged this result: ${newWarn.note} Reconsider before concluding; if it is expected, say so with evidence.`;
+          }
+        }
+        return { columns: res.result!.columns, rows: res.result!.rows, rowCount: res.result!.rowCount, executedSql: res.executedSql, lineage: res.lineage ?? undefined, accelerated: res.result!.accelerated, ...sanityNote, ...verify };
       },
     }),
     glossary_lookup: tool({

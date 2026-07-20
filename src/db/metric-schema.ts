@@ -25,5 +25,12 @@ export const metrics = pgTable('metrics', {
    *  so a chat question can retrieve this metric's governed definition for the
    *  text-to-SQL prompt. Nullable — existing rows null until re-saved/backfilled. */
   embedding: vector384('embedding'),
+  /** Compact cache of the metric's most recent computed run — {latest, prev,
+   *  deltaPct, latestT}. Populated whenever runMetric executes (card view /
+   *  digest cron / MCP), cleared when the metric's SQL changes. Lets the chat
+   *  answer-verify layer sanity-check a number against this metric's own history
+   *  without spending a query. Null until first run/backfill. */
+  lastRun: jsonb('last_run').$type<{ latest: number | null; prev: number | null; deltaPct: number | null; latestT: string | null }>(),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

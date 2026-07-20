@@ -27,7 +27,7 @@ export type SafetyVerdict =
   | { status: 'needs_confirmation'; sql: string; risk: number; reason: string } // P3
   | { status: 'blocked'; reason: string };
 
-const DEFAULT_LIMIT = 500;
+export const DEFAULT_LIMIT = 500;
 
 export const PARSER_DIALECT: Record<Dialect, string> = {
   postgres: 'postgresql',
