@@ -27,6 +27,20 @@ function latestUserText(messages: UIMessage[]): string {
   return last?.parts?.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ') ?? '';
 }
 
+/** Drop a merged stream's own message-boundary chunks so its content joins the
+ *  CURRENT assistant message instead of opening a new one (A4: the synthesis is
+ *  the same turn as the sub-investigation cards). */
+function stripMessageBoundaries<T extends { type?: string }>(stream: ReadableStream<T>): ReadableStream<T> {
+  return stream.pipeThrough(
+    new TransformStream<T, T>({
+      transform(chunk, controller) {
+        if (chunk?.type === 'start' || chunk?.type === 'finish') return;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
 /** A compact digest of the last few turns so a breadth follow-up can resolve its
  *  references at decompose time (red-team H3). */
 function historyDigest(messages: UIMessage[]): string {
@@ -102,7 +116,11 @@ export async function POST(req: Request) {
           });
           if (hasSurvivors(snapshots)) {
             const synth = await synthesizeSections(question, snapshots, conn.dialect);
-            writer.merge(synth.toUIMessageStream());
+            // Merge WITHOUT the synthesis stream's own message-boundary chunks: a
+            // nested `start`/`finish` makes the client open a SECOND assistant
+            // bubble, so the sub-cards and the synthesis would split across two
+            // messages (and the cards render twice). Keep it one turn.
+            writer.merge(stripMessageBoundaries(synth.toUIMessageStream()));
           } else {
             // red-team M2: never hand the model empty evidence to narrate.
             const reasons = snapshots.map((s) => `${s.title}: ${s.error ?? s.status}`).join('; ');

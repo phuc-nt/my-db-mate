@@ -13,7 +13,7 @@ import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
-import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
+import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, lastSubqIndex, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
 import { CandidateVoteBlock } from '../../../../components/candidate-vote-block';
 import type { VoteResult } from '../../../../lib/candidate-vote-types';
 import { SubInvestigationCard } from '../../../../components/sub-investigation-card';
@@ -441,12 +441,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               )}
             </div>
           )}
-          {messages.map((m) => (
+          {messages.map((m) => {
+            // Newest snapshot per sub id — the stream appends one part per update.
+            const subqLast = lastSubqIndex(m.parts as unknown as UIPart[]);
+            return (
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
               <div className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
                 {m.role === 'assistant' && <ChatPlanCard parts={m.parts as unknown as UIPart[]} />}
-                {m.role === 'assistant' && m.parts.some((p) => p.type === 'data-subq') && (
-                  <p className="mb-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">🧵 Investigating {m.parts.filter((p) => p.type === 'data-subq').length} angles in parallel</p>
+                {m.role === 'assistant' && subqLast.size > 0 && (
+                  <p className="mb-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">🧵 Investigating {subqLast.size} angles in parallel</p>
                 )}
                 {m.parts.map((part, i) => {
                   if (part.type === 'text') {
@@ -457,11 +460,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                       </div>
                     );
                   }
-                  // A4: a sub-investigation progress card (id-reconciled data part).
+                  // A4: a sub-investigation progress card. The stream is append-only,
+                  // so the same sub id arrives many times as it advances — render only
+                  // the LAST snapshot per id (dedupe by id, keep newest).
                   if (part.type === 'data-subq') {
-                    const p = part as unknown as { data?: SubInvestigationSnapshot };
+                    const p = part as unknown as { id?: string; data?: SubInvestigationSnapshot };
                     if (!p.data) return null;
-                    return <SubInvestigationCard key={i} snapshot={p.data} />;
+                    if (subqLast.get(p.data.id ?? p.id ?? '') !== i) return null;
+                    return <SubInvestigationCard key={p.data.id ?? i} snapshot={p.data} />;
                   }
                   if (part.type === 'tool-run_sql') {
                     const p = part as unknown as RunSqlPart;
@@ -566,7 +572,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
           {busy && <p className="text-sm text-neutral-400">…thinking</p>}
         </div>
 
