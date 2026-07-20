@@ -4,6 +4,35 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [Unreleased]
+
+### Investigate — parallel sub-investigations
+
+- **Breadth questions run as parallel sub-investigations** — an investigate-mode
+  question spanning several angles ("why did revenue drop? by segment, over time,
+  by product") is decomposed into 2-4 focused sub-questions that run as genuinely
+  concurrent agent loops, each with a static slice of the same query budget (the
+  total never exceeds the existing investigate cap, and the split reduces the
+  sub-count rather than the per-sub floor when caps are lowered). Each sub streams
+  a live thread card — status, its queries with row counts, then its finding — and
+  a final synthesis merges them section-by-section, cross-referencing the results.
+  Narrow questions are never decomposed. Sub-loops carry no planning or
+  clarifying-question tools (they state assumptions and proceed), route BigQuery
+  through the budgeted admission path, and report a gated query as unexecuted
+  instead of citing a UI path that doesn't exist for them. A failed or gated sub
+  degrades to a card and the synthesis continues with the survivors; with no
+  survivors you get an explicit failure rather than a narrated guess. Follow-up
+  turns resolve their references against the conversation, so "now dig into what
+  caused it" investigates the right subject.
+- **A breadth turn now survives navigating away** — the orchestration persists the
+  *completed* turn from the server, instead of relying on the stream-close
+  callback, which fires the instant a client disconnects and previously saved a
+  half-finished turn (cards frozen mid-run, no synthesis).
+- **Discarding an in-flight turn no longer resurrects it** — discarding while the
+  server is still draining writes a tombstone that the persist path honors, fixing
+  a pre-existing race where the discarded turn came back and the *previous* answer
+  was deleted instead.
+
 ## [0.10.0] — 2026-07-20
 
 Trust and control for the agentic chat loop. Three upgrades that make the

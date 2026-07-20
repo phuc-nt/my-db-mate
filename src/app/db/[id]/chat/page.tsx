@@ -13,9 +13,11 @@ import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
-import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
+import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, lastSubqIndex, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
 import { CandidateVoteBlock } from '../../../../components/candidate-vote-block';
 import type { VoteResult } from '../../../../lib/candidate-vote-types';
+import { SubInvestigationCard } from '../../../../components/sub-investigation-card';
+import type { SubInvestigationSnapshot } from '../../../../lib/sub-investigation-types';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -317,12 +319,28 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   /** Discard the interrupted turn. Chat turns were never persisted (truly
    *  aborted) so client removal suffices; investigate turns were drained + saved
-   *  server-side, so also delete the persisted assistant message. */
+   *  server-side, so also delete the persisted assistant message. For an
+   *  investigate turn that may STILL be draining server-side (A4 H4: breadth
+   *  sub-investigations run long), write a tombstone so the finish-persist skips
+   *  it — the immediate DELETE alone would wrongly remove the PREVIOUS turn (this
+   *  one isn't persisted yet) and the discarded turn would resurrect on finish. */
   async function discardInterrupted(msgId: string) {
     setMessages((ms) => ms.filter((m) => m.id !== msgId));
     setInterruptedMsgId(null);
     if (lastSentModeRef.current !== 'chat' && sessionId) {
-      await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
+      // Stamp the tombstone with the discard moment (now) — it must land AFTER the
+      // server recorded the turn's start for the persist guard to fire.
+      const tombstoned = await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ at: new Date().toISOString() }),
+      }).then((r) => r.ok).catch(() => false);
+      // Only delete once the tombstone is safely recorded. Without it, a still-
+      // draining turn is not yet persisted, so "delete latest assistant" would
+      // remove the PREVIOUS turn's answer AND the discarded one would come back
+      // when the server finishes — the exact pair of bugs the tombstone prevents.
+      if (tombstoned) {
+        await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
+      }
     }
   }
 
@@ -427,10 +445,16 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               )}
             </div>
           )}
-          {messages.map((m) => (
+          {messages.map((m) => {
+            // Newest snapshot per sub id — the stream appends one part per update.
+            const subqLast = lastSubqIndex(m.parts as unknown as UIPart[]);
+            return (
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
               <div className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
                 {m.role === 'assistant' && <ChatPlanCard parts={m.parts as unknown as UIPart[]} />}
+                {m.role === 'assistant' && subqLast.size > 0 && (
+                  <p className="mb-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">🧵 Investigating {subqLast.size} angles in parallel</p>
+                )}
                 {m.parts.map((part, i) => {
                   if (part.type === 'text') {
                     if (m.role === 'user') return <span key={i} className="whitespace-pre-wrap">{part.text}</span>;
@@ -439,6 +463,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
                       </div>
                     );
+                  }
+                  // A4: a sub-investigation progress card. The stream is append-only,
+                  // so the same sub id arrives many times as it advances — render only
+                  // the LAST snapshot per id (dedupe by id, keep newest).
+                  if (part.type === 'data-subq') {
+                    const p = part as unknown as { id?: string; data?: SubInvestigationSnapshot };
+                    if (!p.data) return null;
+                    if (subqLast.get(p.data.id ?? p.id ?? '') !== i) return null;
+                    return <SubInvestigationCard key={p.data.id ?? i} snapshot={p.data} />;
                   }
                   if (part.type === 'tool-run_sql') {
                     const p = part as unknown as RunSqlPart;
@@ -543,7 +576,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
           {busy && <p className="text-sm text-neutral-400">…thinking</p>}
         </div>
 

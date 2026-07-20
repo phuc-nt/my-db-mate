@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractUserText, userTurnBefore, pruneDanglingToolCalls, hasDanglingToolCall, summarizeToolParts, toolStepLabel, type UIMsg } from './chat-interrupt-helpers';
+import { extractUserText, userTurnBefore, pruneDanglingToolCalls, hasDanglingToolCall, summarizeToolParts, toolStepLabel, lastSubqIndex, type UIMsg } from './chat-interrupt-helpers';
 
 describe('extractUserText', () => {
   it('joins the text parts of a user turn', () => {
@@ -102,5 +102,35 @@ describe('summarizeToolParts', () => {
       { type: 'tool-run_sql', state: 'output-available' },
     ]);
     expect(steps.map((s) => s.label)).toEqual(['Planning the analysis', 'Running SQL']);
+  });
+  // A4: data-* parts (the sub-investigation cards) must be inert for every tool
+  // helper — they are not tool-* parts, so summarize/prune/dangling ignore them.
+  it('lastSubqIndex keeps only the newest snapshot index per sub id (A4)', () => {
+    // The stream is append-only: a sub that advances leaves many parts per id.
+    const parts = [
+      { type: 'data-subq', data: { id: 'sq1', status: 'running' } },
+      { type: 'data-subq', data: { id: 'sq2', status: 'running' } },
+      { type: 'data-subq', data: { id: 'sq1', status: 'done' } }, // newer sq1
+      { type: 'text', text: 'synthesis' },
+    ] as unknown as Parameters<typeof lastSubqIndex>[0];
+    const last = lastSubqIndex(parts);
+    expect(last.size).toBe(2);          // two distinct subs, not four cards
+    expect(last.get('sq1')).toBe(2);    // the LAST sq1 part wins
+    expect(last.get('sq2')).toBe(1);
+  });
+  it('lastSubqIndex is empty when there are no data-subq parts', () => {
+    expect(lastSubqIndex([{ type: 'text', text: 'x' }]).size).toBe(0);
+    expect(lastSubqIndex(undefined).size).toBe(0);
+  });
+
+  it('ignores data-* parts (A4 sub-investigation cards)', () => {
+    const parts = [
+      { type: 'data-subq', text: undefined },
+      { type: 'tool-run_sql', state: 'output-available' },
+    ];
+    expect(summarizeToolParts(parts).map((s) => s.label)).toEqual(['Running SQL']);
+    expect(hasDanglingToolCall({ id: 'a', role: 'assistant', parts })).toBe(false);
+    // prune keeps the data part (not a tool-call) and the resolved run_sql.
+    expect(pruneDanglingToolCalls({ id: 'a', role: 'assistant', parts }).parts).toHaveLength(2);
   });
 });

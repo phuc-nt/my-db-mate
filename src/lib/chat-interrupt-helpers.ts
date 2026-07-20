@@ -53,6 +53,20 @@ export function hasDanglingToolCall(msg: UIMsg): boolean {
   return (msg.parts ?? []).some((p) => p.type.startsWith('tool-') && p.state !== 'output-available' && p.state !== 'output-error');
 }
 
+/** Index of the LAST part carrying each sub-investigation id (A4). The UI message
+ *  stream is append-only, so a sub that advances 20 times leaves 20 `data-subq`
+ *  parts; only the newest snapshot per id should render. Maps sub id → part index.
+ *  Pure so the chat page can memoize it per message. */
+export function lastSubqIndex(parts: UIPart[] | undefined): Map<string, number> {
+  const last = new Map<string, number>();
+  (parts ?? []).forEach((p, i) => {
+    if (p.type !== 'data-subq') return;
+    const id = (p as { data?: { id?: string }; id?: string }).data?.id ?? (p as { id?: string }).id;
+    if (id) last.set(id, i);
+  });
+  return last;
+}
+
 /** One derived step in the chat-mode plan card. `done` mirrors the AI SDK tool
  *  lifecycle: a step is only complete at state 'output-available'. */
 export interface ToolStep {
