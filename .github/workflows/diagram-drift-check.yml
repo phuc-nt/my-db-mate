@@ -37,10 +37,27 @@ jobs:
       - name: Export diagram as JSON
         run: node tools/mywb/dist/cli.js file read "$BOARD_PATH" --json > diagram.json
 
+      # Fork PRs never receive secrets, so the agent steps below would fail on
+      # them through no fault of the diagram. Skip instead: the export above
+      # still proves the board and the CLI are healthy.
+      - name: Decide whether the agent can run
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ] && [ "${{ github.event.pull_request.head.repo.fork }}" != "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Drift agent skipped: no ANTHROPIC_API_KEY (or fork PR). Export succeeded."
+          fi
+
       - name: Install Claude Code
+        if: steps.agent.outputs.enabled == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Drift check (agent writes findings.json)
+        if: steps.agent.outputs.enabled == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -53,11 +70,14 @@ jobs:
             --allowedTools "Bash,Read,Grep,Glob,Write"
 
       - name: Validate findings.json
+        if: steps.agent.outputs.enabled == 'true'
         run: |
           jq -e '
             .version == 1
             and (.claims | type == "array")
             and ([.claims[].status] - ["ok","drifted","unverifiable","skipped-out-of-scope"] == [])
+            and ([.summary.ok, .summary.drifted, .summary.unverifiable, .summary.skipped]
+                 | all(tostring | test("^[0-9]+$")))
             and (.summary.ok == ([.claims[] | select(.status == "ok")] | length))
             and (.summary.drifted == ([.claims[] | select(.status == "drifted")] | length))
             and (.summary.unverifiable == ([.claims[] | select(.status == "unverifiable")] | length))
@@ -65,6 +85,7 @@ jobs:
           ' findings.json
 
       - name: Comment on the PR (rendered from findings)
+        if: steps.agent.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -93,7 +114,7 @@ jobs:
           gh pr comment "$PR_NUMBER" --body-file comment.md
 
       - name: Upload findings artifact
-        if: always()
+        if: always() && steps.agent.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: drift-findings
