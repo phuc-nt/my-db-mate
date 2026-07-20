@@ -1,0 +1,49 @@
+# Diagram drift check — keeps docs/architecture.mywb honest against the code.
+# The mywb CLI is vendored under tools/mywb/ (built dist, no npm install
+# needed). Requires the ANTHROPIC_API_KEY repo secret for the agent step.
+# Template source: my-whiteboard examples/ci-drift-check/.
+
+name: diagram-drift-check
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'docs/architecture.mywb'
+      - 'tools/mywb/**'
+      - '.github/workflows/diagram-drift-check.yml'
+
+env:
+  BOARD_PATH: docs/architecture.mywb
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Export diagram as JSON
+        run: node tools/mywb/dist/cli.js file read "$BOARD_PATH" --json > diagram.json
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Drift check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          claude -p "Follow tools/mywb/drift-skill.md. diagram.json in the repo \
+            root is the exported architecture board. Compare its claims against \
+            this repository's source tree. Post the result as a PR comment with \
+            'gh pr comment $PR_NUMBER --body-file <file>': report only drifted \
+            and unverifiable claims with evidence; if everything is in sync, \
+            say the diagram is in sync in one line." \
+            --allowedTools "Bash,Read,Grep,Glob"
