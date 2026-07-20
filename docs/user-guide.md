@@ -135,6 +135,7 @@ Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh se
 
 ### Analyst, Dashboards & Reports
 - **Investigate mode** — với câu hỏi "tại sao / so sánh / xu hướng", agent viết kế hoạch phân tích, chạy chuỗi truy vấn drill-down, và kết luận kèm bằng chứng (không trả lời một-phát). Có nút **"Analyze deeper"** biến bất kỳ kết quả nào thành một cuộc điều tra; agent tự **hỏi lại khi mơ hồ** và tự sửa SQL lỗi.
+- **Điều tra song song** — câu hỏi rộng ("doanh thu giảm do đâu? theo segment, theo thời gian, theo sản phẩm") tự tách thành 2-4 điều tra con **chạy song song**, mỗi cái một thẻ tiến độ trực tiếp (query đã chạy + kết luận riêng), rồi gộp lại thành một câu trả lời có mục cho từng góc. Ngân sách query tổng vẫn nằm trong giới hạn investigate bình thường; câu hỏi hẹp không bị tách. Điều tra chạy xong ở server nên rời trang giữa chừng vẫn giữ được kết quả.
 - **Pin & Dashboards** — ghim kết quả chat thành widget; gom widget lên dashboard; **chia sẻ chỉ-đọc** qua link ký. Người xem ẩn danh chỉ thấy kết quả cache, **không** chạy query, **không** thấy SQL.
 - **Reports** — gom widget/verified query làm nguồn, để model soạn một report markdown có cấu trúc (executive summary → sections → phụ lục SQL), có version, tạo lại được, in ra PDF.
 

@@ -4,7 +4,13 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
-## [Unreleased]
+## [0.11.0] — 2026-07-20
+
+Investigate mode goes wide: a breadth question runs as several focused
+investigations at once, then merges them. Built after runtime-verifying the
+AI SDK stream primitives, red-teamed as a plan, and UAT'd end-to-end on real
+data — which caught six bugs static review could not, including a persistence
+race that silently dropped a whole investigation when the user navigated away.
 
 ### Investigate — parallel sub-investigations
 
