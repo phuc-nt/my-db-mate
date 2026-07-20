@@ -39,11 +39,20 @@ Decide which claims to actually evaluate before reading any code:
 
 - If the environment provides `BASE_REF` (CI pull request): run
   `git fetch origin "$BASE_REF" --depth=1 && git diff --name-only "origin/$BASE_REF"...HEAD`.
-  A claim is **in scope** when the changed paths touch it: a `service-node`'s
-  `repoUrl` directory, a `code-ref`'s `path`, or either endpoint of an edge.
-  Everything else gets `status: "skipped-out-of-scope"` — still listed in
-  `claims` (so coverage is countable), never evaluated.
+  - **If the board file itself is among the changed paths, escalate to
+    `scope: "full"`** — someone edited the diagram, so every claim it makes
+    must be re-checked. This overrides the per-claim rules below.
+  - Otherwise a claim is **in scope** when the changed paths touch it: a
+    `service-node`'s `repoUrl` directory (when `repoUrl` is not a
+    repo-relative path — e.g. a URL — match by component name instead), a
+    `code-ref`'s `path`, or either endpoint of an edge. Everything else gets
+    `status: "skipped-out-of-scope"` — still listed in `claims` (so coverage
+    is countable), never evaluated.
+  - The reverse missing-edge check (step 3) is also diff-scoped: only look
+    for omitted dependencies involving the changed paths, do not full-scan.
 - No `BASE_REF` (local run): scope is `full` — evaluate every claim.
+- Keep `claim` and `note` free of `|` and newlines — they render into a
+  markdown table.
 
 ## Drift procedure
 

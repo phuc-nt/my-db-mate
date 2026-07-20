@@ -79,13 +79,16 @@ jobs:
               echo "|---|---|---|---|---|"
               jq -r '.claims[]
                 | select(.status == "drifted" or .status == "unverifiable")
-                | "| \(.status) | \(.type) | \(.claim) | \(.evidence // [] | join("<br>")) | \(.note // "") |"' \
+                | [.status, .type, .claim, (.evidence // [] | join("<br>")), (.note // "")]
+                | map(tostring | gsub("\\|"; "\\|") | gsub("\n"; " "))
+                | "| " + join(" | ") + " |"' \
                 findings.json
             } > comment.md
           else
             TOTAL=$(jq '.claims | length' findings.json)
+            SKIPPED=$(jq '.summary.skipped' findings.json)
             SCOPE=$(jq -r '.run.scope' findings.json)
-            echo "Diagram drift check: in sync ($TOTAL claims, scope=$SCOPE)." > comment.md
+            echo "Diagram drift check: in sync ($((TOTAL - SKIPPED))/$TOTAL claims evaluated, scope=$SCOPE)." > comment.md
           fi
           gh pr comment "$PR_NUMBER" --body-file comment.md
 
