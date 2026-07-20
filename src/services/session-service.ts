@@ -1,5 +1,5 @@
 /** Chat session persistence: sessions, messages, and the query-run audit view. */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { chatSessions, chatMessages, queryRuns } from '../db/schema';
 
@@ -41,6 +41,29 @@ export async function addMessage(params: {
     })
     .returning();
   return row;
+}
+
+/** Metadata key for the Discard-mid-run tombstone (A4 H4). */
+const META_DISCARD_AFTER_KEY = 'discardAfter';
+
+/** Mark that the user discarded the in-flight turn (investigate/breadth mode
+ *  keeps draining server-side and would otherwise persist a turn the user threw
+ *  away — a zombie). The persist path checks this: if a tombstone at/after the
+ *  turn's start exists, it skips persisting. Stores an ISO timestamp. */
+export async function setDiscardTombstone(sessionId: string, atIso: string): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ metadata: sql`jsonb_set(coalesce(${chatSessions.metadata}, '{}'::jsonb), ${`{${META_DISCARD_AFTER_KEY}}`}::text[], ${JSON.stringify(atIso)}::jsonb)` })
+    .where(eq(chatSessions.id, sessionId));
+}
+
+/** Whether the current turn (started at `turnStartIso`) was discarded while in
+ *  flight — true when a tombstone timestamp ≥ the turn's start exists. Used by
+ *  the persist path to skip a discarded turn (A4 H4). */
+export async function wasTurnDiscarded(sessionId: string, turnStartIso: string): Promise<boolean> {
+  const [row] = await db.select({ metadata: chatSessions.metadata }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+  const at = (row?.metadata as Record<string, unknown> | null)?.[META_DISCARD_AFTER_KEY];
+  return typeof at === 'string' && at >= turnStartIso;
 }
 
 /** Delete the most recent assistant message in a session — used by the chat

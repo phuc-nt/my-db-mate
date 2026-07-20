@@ -1,12 +1,44 @@
-import { convertToModelMessages, type UIMessage } from 'ai';
+import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from 'ai';
 import { streamAgentAnswer } from '../../../services/agent-service';
 import { getConnection } from '../../../services/connection-service';
-import { addMessage } from '../../../services/session-service';
+import { addMessage, wasTurnDiscarded } from '../../../services/session-service';
 import {
   getSessionInvestigationTarget,
   buildFindingContext,
   INVESTIGATE_FINDING_MAX_SQL,
 } from '../../../services/finding-investigation-service';
+import { getSchemaSummary } from '../../../services/schema-sync-service';
+import {
+  decomposeQuestion,
+  splitBudget,
+  runSubInvestigations,
+  synthesizeSections,
+  hasSurvivors,
+} from '../../../services/sub-investigation-service';
+import type { Dialect } from '../../../services/connection-providers/provider-interface';
+
+/** Parent investigate caps (mirror agent-service constants; envs override there). */
+const PARENT_SQL = { investigate: Number(process.env.INVESTIGATE_MAX_SQL ?? 30), 'investigate-deep': Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60) };
+const PARENT_STEPS = { investigate: Number(process.env.INVESTIGATE_MAX_STEPS ?? 24), 'investigate-deep': Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48) };
+
+/** The latest user turn's plain text (mirrors agent-service extraction). */
+function latestUserText(messages: UIMessage[]): string {
+  const last = [...messages].reverse().find((m) => m.role === 'user');
+  return last?.parts?.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ') ?? '';
+}
+
+/** A compact digest of the last few turns so a breadth follow-up can resolve its
+ *  references at decompose time (red-team H3). */
+function historyDigest(messages: UIMessage[]): string {
+  return messages
+    .slice(-6)
+    .map((m) => {
+      const t = m.parts?.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ') ?? '';
+      return t ? `${m.role}: ${t.slice(0, 300)}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
 
 export const runtime = 'nodejs';
 // Investigate mode runs up to 24 steps → allow more wall-clock. On the localhost
@@ -45,6 +77,52 @@ export async function POST(req: Request) {
 
   const resolvedMode = target ? 'investigate' : mode === 'investigate' ? 'investigate' : mode === 'investigate-deep' ? 'investigate-deep' : 'chat';
   const isInvestigate = resolvedMode !== 'chat';
+  const turnStartIso = new Date().toISOString();
+
+  // A4: breadth decomposition — investigate mode only, NEVER on the finding path
+  // (findingCap keeps its strict single-loop per-session cap) and never in chat.
+  if (isInvestigate && !target) {
+    const question = latestUserText(messages);
+    const schema = await getSchemaSummary(connectionId);
+    const decomposed = question
+      ? await decomposeQuestion(question, historyDigest(messages), schema, conn.dialect as Dialect)
+      : { decompose: false as const };
+
+    if (decomposed.decompose) {
+      const parentSql = PARENT_SQL[resolvedMode as 'investigate' | 'investigate-deep'];
+      const parentSteps = PARENT_STEPS[resolvedMode as 'investigate' | 'investigate-deep'];
+      const budget = splitBudget(parentSql, parentSteps, decomposed.subQuestions.length);
+      const subs = decomposed.subQuestions.slice(0, budget.n);
+
+      const stream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const snapshots = await runSubInvestigations({
+            connectionId, dialect: conn.dialect as Dialect, subs,
+            budget: { maxSql: budget.maxSql, maxSteps: budget.maxSteps }, writer, sessionId,
+          });
+          if (hasSurvivors(snapshots)) {
+            const synth = await synthesizeSections(question, snapshots, conn.dialect);
+            writer.merge(synth.toUIMessageStream());
+          } else {
+            // red-team M2: never hand the model empty evidence to narrate.
+            const reasons = snapshots.map((s) => `${s.title}: ${s.error ?? s.status}`).join('; ');
+            writer.write({ type: 'text-start', id: 'fail' });
+            writer.write({ type: 'text-delta', id: 'fail', delta: `All ${subs.length} sub-investigations failed to produce a result (${reasons}). Please retry or narrow the question.` });
+            writer.write({ type: 'text-end', id: 'fail' });
+          }
+        },
+        onError: (e) => (e instanceof Error ? e.message : 'sub-investigation error'),
+        onFinish: async ({ responseMessage }) => {
+          if (!sessionId) return;
+          if (await wasTurnDiscarded(sessionId, turnStartIso)) return; // A4 H4
+          const text = responseMessage.parts?.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('') ?? '';
+          await addMessage({ sessionId, role: 'assistant', content: text, parts: responseMessage.parts });
+        },
+      });
+      return createUIMessageStreamResponse({ stream });
+    }
+    // decompose:false → fall through to the standard single-loop investigate path.
+  }
 
   const result = await streamAgentAnswer({
     connectionId,
@@ -73,6 +151,9 @@ export async function POST(req: Request) {
   const response = result.toUIMessageStreamResponse({
     onFinish: async ({ responseMessage }) => {
       if (!sessionId) return;
+      // A4 H4: an investigate turn drains server-side; if the user discarded it
+      // mid-run, skip persisting so it doesn't resurrect as a zombie.
+      if (isInvestigate && (await wasTurnDiscarded(sessionId, turnStartIso))) return;
       const text = responseMessage.parts
         ?.filter((p) => p.type === 'text')
         .map((p) => (p as { text: string }).text)

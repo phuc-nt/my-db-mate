@@ -87,6 +87,20 @@ This is a deeper analysis (a "why", comparison, or trend question), not a one-sh
 6. Conclude with an evidence-backed answer: state the finding AND the numbers/${dialect} SQL that support it.
 Prefer aggregates over row dumps. Never SELECT * a large table.`;
 
+// A4: a sub-investigation worker answers ONE focused sub-question of a larger
+// breadth investigation. It has NO plan_analysis or ask_user (the sub-question is
+// its plan; it is run in the background and no human can answer it), so its
+// instructions must not reference them (red-team H2).
+const SUB_INVESTIGATE_ADDENDUM = (dialect: string) => `
+
+## Sub-investigation
+You are answering ONE focused sub-question of a larger investigation. Do NOT write a plan — the sub-question IS your plan step.
+1. Go straight to run_sql: gather the specific evidence this sub-question needs (compare periods, decompose by the relevant dimension, find outliers).
+2. If the sub-question is ambiguous, state your assumption briefly and proceed — never wait for the user; you are running in the background.
+3. Use detect_anomalies for outlier/data-quality angles when relevant.
+4. Conclude concisely with the finding for THIS sub-question AND the numbers/${dialect} SQL that support it. This conclusion becomes one section of a merged answer, so make it self-contained.
+Prefer aggregates over row dumps. Never SELECT * a large table.`;
+
 // Big-table policy appended when the connection has large tables (red-team C2/C3).
 const bigTablePolicy = (bigTables: { name: string; rows: number }[]) =>
   bigTables.length === 0
@@ -234,16 +248,28 @@ export function buildAgentTools(
   // candidates can explore an alternate interpretation, not just re-spell one.
   highStakes = false,
   question = '',
+  // Sub-investigation (A4): a bounded worker loop for ONE decomposed sub-question.
+  // Strips plan_analysis/ask_user (a background-consumed loop can't get a human
+  // answer, and the sub-question IS its plan), runs BQ via agentBudgeted, and
+  // caps SQL/steps by an explicit per-sub override (red-team H1: `findingCap`-less
+  // `maxSqlSteps` is a no-op; this override is enforced in run_sql directly).
+  sub?: { maxSql: number },
 ) {
   const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set(), candidateProbeCount: 0 };
   const findingSqlCap = findingCap ? Math.min(Math.max(1, findingCap.cap), INVESTIGATE_FINDING_MAX_SQL) : null;
+  // Per-sub SQL ceiling (A4 H1) — a real per-request cap, distinct from the
+  // persisted findingCap counter. Overrides the mode-derived default below.
+  const subSqlCap = sub ? Math.max(1, sub.maxSql) : null;
   // Investigate-from-finding: actor is derived HERE (server side, from the presence
   // of the session's validated target) — never from the request body — and the
   // BigQuery admission uses the agentBudgeted path (full-priority budget, no
   // per-step confirm). Plain chat keeps actor/flags unchanged, so BQ chat still
   // fail-closes at the choke point.
-  const execActor = findingCap ? 'investigate-finding' : actor;
-  const bqFlags = findingCap ? { agentBudgeted: true as const } : {};
+  const execActor = findingCap ? 'investigate-finding' : sub ? 'sub-investigation' : actor;
+  // BQ goes through the budgeted admission (dry-run estimate → daily-budget reserve
+  // → capped run) for both the finding path and A4 sub-loops — a background-consumed
+  // loop can never answer an interactive cost confirmation, so it must never hit one.
+  const bqFlags = findingCap || sub ? { agentBudgeted: true as const } : {};
   // Metrics matched CLOSELY enough that the answer must obey their governed filters —
   // a tighter gate than injection (a metric injected as context isn't necessarily one
   // the SQL must adhere to filter-for-filter). See the run_sql adherence lint below.
@@ -298,7 +324,8 @@ export function buildAgentTools(
       execute: async ({ sql }) => {
         // Hard per-request run_sql cap — the real cost ceiling (H3): the risk gate
         // bounds cost-per-query but not the number of queries the model can fire.
-        const sqlBudget = mode === 'investigate-deep' ? MAX_SQL_DEEP : MAX_SQL_PER_INVESTIGATION;
+        // A sub-investigation loop uses its explicit per-sub cap (A4 H1).
+        const sqlBudget = subSqlCap ?? (mode === 'investigate-deep' ? MAX_SQL_DEEP : MAX_SQL_PER_INVESTIGATION);
         if (state.sqlRunCount >= sqlBudget) {
           return { stopped: true, reason: `Query budget reached (${sqlBudget} queries this turn). Conclude with the evidence gathered so far.` };
         }
@@ -347,6 +374,12 @@ export function buildAgentTools(
           state.consecutiveFailures = 0;
           // The reserved investigation step was not spent — give it back.
           if (findingSqlCap && findingCap) await releaseInvestigationStep(findingCap.sessionId);
+          // A sub-investigation loop is consumed in the background \u2014 its tool parts
+          // are never rendered, so the "press view / Re-run / Confirm" UI path does
+          // not exist for it (A4 M4). Report the query as unexecuted instead.
+          if (sub) {
+            return { needsConfirmation: true, risk: res.risk, note: 'This query is estimated as medium-risk (heavy) and did NOT run. Report it as unexecuted in your conclusion (state the query and that it needs manual confirmation) and continue with the evidence you can gather. Do not retry.' };
+          }
           return { needsConfirmation: true, risk: res.risk, note: 'This query is estimated as medium-risk (heavy) and did NOT run. Tell the user (in their language) the exact UI path to run it themselves: press "view \u2192" on the query chip, then "Re-run", then the amber "Confirm & run anyway" button in the SQL panel. Confirming in chat has no effect; do not retry automatically. After they confirm, the result is recorded into the conversation for you.' };
         }
         // The query actually ran (ok/error/blocked) → it counts against the budget.
@@ -457,9 +490,11 @@ export function buildAgentTools(
   if (!isInvestigative(mode)) return baseTools;
 
   // Investigate-only tools. Gated by mode so headless consumers never get a tool
-  // that stalls waiting for a human (M5).
-  return {
-    ...baseTools,
+  // that stalls waiting for a human (M5). A sub-investigation loop (A4) also drops
+  // plan_analysis (the sub-question IS its plan step) and ask_user (it has no
+  // execute → a server-consumed sub-stream would END at the call, truncating the
+  // sub; and no human can answer a background loop). detect_anomalies stays.
+  const investigateExtras = {
     plan_analysis: tool({
       description: 'Record your analysis plan BEFORE running queries: 3-6 concrete steps naming the tables/dimensions you will examine. Call this first in an investigation.',
       inputSchema: z.object({ steps: z.array(z.string()).min(1).describe('Ordered analysis steps') }),
@@ -476,6 +511,9 @@ export function buildAgentTools(
       // renders the question and returns the answer via addToolResult, which
       // resumes the loop. The verified spike confirmed v7 surfaces this correctly.
     }),
+  };
+
+  const detectAnomaliesTool = {
     detect_anomalies: tool({
       description: 'Check a column for unusual values: NULL rate, and for numeric columns the mean/stddev + a count of values beyond 3σ. Returns aggregates only (no row dump). Use when the user asks about anomalies, outliers, or data quality. Results are hints — interpret them for the user.',
       inputSchema: z.object({ table: z.string(), column: z.string() }),
@@ -488,6 +526,11 @@ export function buildAgentTools(
       },
     }),
   };
+
+  // Sub-loops get the investigate toolset MINUS plan_analysis + ask_user.
+  return sub
+    ? { ...baseTools, ...detectAnomaliesTool }
+    : { ...baseTools, ...investigateExtras, ...detectAnomaliesTool };
 }
 
 /** Structured self-repair hint after a failed run_sql, bounded so it cannot loop (H3). */
@@ -531,8 +574,13 @@ export async function streamAgentAnswer(params: {
    *  Chat-only; the route force-clears it outside chat so the finding path can't
    *  trigger it. */
   highStakes?: boolean;
+  /** A4: run this as a bounded sub-investigation worker for ONE decomposed
+   *  sub-question. Forces investigate behavior with the SUB addendum + toolset
+   *  (no plan_analysis/ask_user), BQ agentBudgeted, and an explicit per-sub SQL
+   *  cap. `maxSql` is the sub's slice of the parent budget (red-team H1/M1). */
+  subInvestigation?: { maxSql: number; maxSteps: number };
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false, subInvestigation } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -559,19 +607,28 @@ export async function streamAgentAnswer(params: {
 
   const system =
     SYSTEM(schema, dialect) +
-    (isInvestigative(mode) ? INVESTIGATE_ADDENDUM(dialect) : '') +
+    // Sub-loops get the SUB addendum (no plan_analysis/ask_user references); other
+    // investigative turns get the standard one; chat gets neither.
+    (subInvestigation ? SUB_INVESTIGATE_ADDENDUM(dialect) : isInvestigative(mode) ? INVESTIGATE_ADDENDUM(dialect) : '') +
     (findingContext ? `\n\n${findingContext}` : '') +
     bigTablePolicy(bigTables) +
     (contextBlock ? `\n\n## Curated context for this database\n${contextBlock}` : '');
 
   const findingCap = findingContext && sessionId && maxSqlSteps ? { sessionId, cap: maxSqlSteps } : undefined;
 
+  // Per-sub step cap (A4): a sub-loop stops at its slice of the parent step budget,
+  // enforced by stopWhen just like the mode caps. Its SQL slice is enforced inside
+  // run_sql via the `sub` override passed to buildAgentTools.
+  const stepCap = subInvestigation
+    ? subInvestigation.maxSteps
+    : mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT;
+
   return streamText({
     model: await getModel(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap, highStakes && mode === 'chat' && !findingCap, question),
-    stopWhen: stepCountIs(mode === 'investigate-deep' ? MAX_STEPS_INVESTIGATE_DEEP : mode === 'investigate' ? MAX_STEPS_INVESTIGATE : MAX_STEPS_CHAT),
+    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap, highStakes && mode === 'chat' && !findingCap, question, subInvestigation ? { maxSql: subInvestigation.maxSql } : undefined),
+    stopWhen: stepCountIs(stepCap),
     ...(abortSignal ? { abortSignal } : {}),
   });
 }
