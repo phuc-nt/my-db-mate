@@ -287,7 +287,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // drained server-side (persisted) so it needs a server delete; a chat turn was
   // truly aborted (never persisted) so client removal is enough.
   const lastSentModeRef = useRef<'chat' | 'investigate' | 'investigate-deep'>('chat');
-  const turnStartRef = useRef<string>('');
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
@@ -298,9 +297,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     followupAbortRef.current?.abort();
     setFollowLatest(true);
     lastSentModeRef.current = mode;
-    // Turn-start marker for the A4 Discard tombstone (H4): a Discard of a still-
-    // draining investigate turn is honored only for a turn started at/before this.
-    turnStartRef.current = new Date().toISOString();
     // highStakes is orthogonal to mode but server-honored only in chat mode.
     sendMessage({ text }, { body: { connectionId, sessionId, mode, highStakes: mode === 'chat' && highStakes } });
   }
@@ -332,9 +328,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setMessages((ms) => ms.filter((m) => m.id !== msgId));
     setInterruptedMsgId(null);
     if (lastSentModeRef.current !== 'chat' && sessionId) {
+      // Stamp the tombstone with the discard moment (now) — it must land AFTER the
+      // server recorded the turn's start for the persist guard to fire.
       await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ at: turnStartRef.current }),
+        body: JSON.stringify({ at: new Date().toISOString() }),
       }).catch(() => {});
       await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
     }

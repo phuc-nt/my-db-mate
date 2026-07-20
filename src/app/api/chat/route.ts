@@ -16,6 +16,7 @@ import {
   hasSurvivors,
 } from '../../../services/sub-investigation-service';
 import type { Dialect } from '../../../services/connection-providers/provider-interface';
+import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
 
 /** Parent investigate caps (mirror agent-service constants; envs override there). */
 const PARENT_SQL = { investigate: Number(process.env.INVESTIGATE_MAX_SQL ?? 30), 'investigate-deep': Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60) };
@@ -114,6 +115,7 @@ export async function POST(req: Request) {
             connectionId, dialect: conn.dialect as Dialect, subs,
             budget: { maxSql: budget.maxSql, maxSteps: budget.maxSteps }, writer, sessionId,
           });
+          let synthesisText = '';
           if (hasSurvivors(snapshots)) {
             const synth = await synthesizeSections(question, snapshots, conn.dialect);
             // Merge WITHOUT the synthesis stream's own message-boundary chunks: a
@@ -121,21 +123,34 @@ export async function POST(req: Request) {
             // bubble, so the sub-cards and the synthesis would split across two
             // messages (and the cards render twice). Keep it one turn.
             writer.merge(stripMessageBoundaries(synth.toUIMessageStream()));
+            // Await the full text so persistence below sees the FINISHED turn.
+            synthesisText = await synth.text;
           } else {
             // red-team M2: never hand the model empty evidence to narrate.
             const reasons = snapshots.map((s) => `${s.title}: ${s.error ?? s.status}`).join('; ');
+            synthesisText = `All ${subs.length} sub-investigations failed to produce a result (${reasons}). Please retry or narrow the question.`;
             writer.write({ type: 'text-start', id: 'fail' });
-            writer.write({ type: 'text-delta', id: 'fail', delta: `All ${subs.length} sub-investigations failed to produce a result (${reasons}). Please retry or narrow the question.` });
+            writer.write({ type: 'text-delta', id: 'fail', delta: synthesisText });
             writer.write({ type: 'text-end', id: 'fail' });
           }
+          // Persist HERE, not in onFinish: onFinish fires when the response stream
+          // closes, which a client disconnect does immediately — it would save a
+          // half-finished turn (sub-cards frozen at "running", no synthesis) and
+          // silently lose the work this mode exists to protect. Persisting after
+          // the orchestration completes is what makes a breadth investigation
+          // survive the user navigating away.
+          if (sessionId && !(await wasTurnDiscarded(sessionId, turnStartIso))) {
+            const parts = [
+              ...snapshots.map((s) => ({ type: SUBQ_PART_TYPE, id: s.id, data: s })),
+              ...(synthesisText ? [{ type: 'text', text: synthesisText }] : []),
+            ];
+            await addMessage({ sessionId, role: 'assistant', content: synthesisText, parts });
+          }
         },
+        // NO onFinish persistence here — see the comment above: it fires on stream
+        // close (i.e. immediately on a client disconnect) and would save a partial
+        // turn. The execute closure persists the completed one.
         onError: (e) => (e instanceof Error ? e.message : 'sub-investigation error'),
-        onFinish: async ({ responseMessage }) => {
-          if (!sessionId) return;
-          if (await wasTurnDiscarded(sessionId, turnStartIso)) return; // A4 H4
-          const text = responseMessage.parts?.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('') ?? '';
-          await addMessage({ sessionId, role: 'assistant', content: text, parts: responseMessage.parts });
-        },
       });
       return createUIMessageStreamResponse({ stream });
     }
