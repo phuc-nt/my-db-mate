@@ -42,22 +42,30 @@ export async function POST(req: Request) {
   const target = sessionId ? await getSessionInvestigationTarget(sessionId) : null;
   const findingContext = target ? await buildFindingContext(connectionId, target) : undefined;
 
+  const resolvedMode = target ? 'investigate' : mode === 'investigate' ? 'investigate' : mode === 'investigate-deep' ? 'investigate-deep' : 'chat';
+  const isInvestigate = resolvedMode !== 'chat';
+
   const result = await streamAgentAnswer({
     connectionId,
     dialect: conn.dialect,
     messages: await convertToModelMessages(messages),
     sessionId,
-    mode: target ? 'investigate' : mode === 'investigate' ? 'investigate' : mode === 'investigate-deep' ? 'investigate-deep' : 'chat',
+    mode: resolvedMode,
     findingContext,
     maxSqlSteps: target ? INVESTIGATE_FINDING_MAX_SQL : undefined,
+    // Wiring the request signal makes a client Stop actually halt the server-side
+    // agent — no more tokens/queries/budget spent after the user stops. Investigate
+    // mode deliberately does NOT get this: its conclusion must survive the user
+    // navigating away, so it keeps draining via consumeStream() below.
+    abortSignal: isInvestigate ? undefined : req.signal,
   });
 
   // Persist the finished assistant turn (transcript history + notebook-from-session
-  // read the UI parts). consumeStream() drives the model to completion server-side
-  // so onFinish still fires if the client disconnects — best-effort under the dev/
-  // serverless request lifecycle, which may cancel the background drain on a hard
-  // abort; a durable guarantee needs a long-running host / waitUntil (infra, not
-  // logic). A connected client (the normal navigate-back-later case) always persists.
+  // read the UI parts). In investigate mode consumeStream() drives the model to
+  // completion server-side so onFinish still fires if the client disconnects (the
+  // navigate-back-later case). In chat mode we do NOT drain: a Stop propagates
+  // through abortSignal and truly halts the run — the trade-off is that a chat turn
+  // interrupted mid-flight is not persisted (cheap to re-ask), which is intended.
   const response = result.toUIMessageStreamResponse({
     onFinish: async ({ responseMessage }) => {
       if (!sessionId) return;
@@ -68,6 +76,6 @@ export async function POST(req: Request) {
       await addMessage({ sessionId, role: 'assistant', content: text, parts: responseMessage.parts });
     },
   });
-  result.consumeStream();
+  if (isInvestigate) result.consumeStream();
   return response;
 }
