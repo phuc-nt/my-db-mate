@@ -1,5 +1,11 @@
 import { convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from 'ai';
-import { streamAgentAnswer } from '../../../services/agent-service';
+import {
+  streamAgentAnswer,
+  MAX_SQL_PER_INVESTIGATION,
+  MAX_SQL_DEEP,
+  MAX_STEPS_INVESTIGATE,
+  MAX_STEPS_INVESTIGATE_DEEP,
+} from '../../../services/agent-service';
 import { getConnection } from '../../../services/connection-service';
 import { addMessage, wasTurnDiscarded } from '../../../services/session-service';
 import {
@@ -18,9 +24,11 @@ import {
 import type { Dialect } from '../../../services/connection-providers/provider-interface';
 import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
 
-/** Parent investigate caps (mirror agent-service constants; envs override there). */
-const PARENT_SQL = { investigate: Number(process.env.INVESTIGATE_MAX_SQL ?? 30), 'investigate-deep': Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60) };
-const PARENT_STEPS = { investigate: Number(process.env.INVESTIGATE_MAX_STEPS ?? 24), 'investigate-deep': Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48) };
+/** Parent investigate caps — imported from agent-service, which OWNS them. The
+ *  budget split must divide the real cap: a local copy would silently drift if
+ *  the owner's value changed, letting the sub-caps exceed the parent. */
+const PARENT_SQL = { investigate: MAX_SQL_PER_INVESTIGATION, 'investigate-deep': MAX_SQL_DEEP };
+const PARENT_STEPS = { investigate: MAX_STEPS_INVESTIGATE, 'investigate-deep': MAX_STEPS_INVESTIGATE_DEEP };
 
 /** The latest user turn's plain text (mirrors agent-service extraction). */
 function latestUserText(messages: UIMessage[]): string {

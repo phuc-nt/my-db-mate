@@ -2,6 +2,24 @@ import { describe, it, expect } from 'vitest';
 import { splitBudget, hasSurvivors, looksLikeConclusion } from './sub-investigation-service';
 import type { SubInvestigationSnapshot } from '../lib/sub-investigation-types';
 
+describe('parent caps stay bound to their owner', () => {
+  it('splits the SAME numbers agent-service enforces', async () => {
+    // The route divides the parent budget; agent-service enforces it. If these
+    // ever drift, the per-sub caps could sum past the real cap (review H1).
+    const agent = await import('./agent-service');
+    expect(typeof agent.MAX_SQL_PER_INVESTIGATION).toBe('number');
+    expect(typeof agent.MAX_SQL_DEEP).toBe('number');
+    expect(typeof agent.MAX_STEPS_INVESTIGATE).toBe('number');
+    expect(typeof agent.MAX_STEPS_INVESTIGATE_DEEP).toBe('number');
+    // A split of the owner's real cap never exceeds it.
+    for (const n of [2, 3, 4]) {
+      const b = splitBudget(agent.MAX_SQL_PER_INVESTIGATION, agent.MAX_STEPS_INVESTIGATE, n);
+      expect(b.maxSql * b.n).toBeLessThanOrEqual(agent.MAX_SQL_PER_INVESTIGATION);
+      expect(b.maxSteps * b.n).toBeLessThanOrEqual(agent.MAX_STEPS_INVESTIGATE);
+    }
+  });
+});
+
 describe('splitBudget — static, race-free budget division (red-team M1)', () => {
   it('divides the default investigate cap without exceeding it', () => {
     // 30 SQL / 24 steps, N=2..4

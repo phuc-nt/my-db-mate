@@ -40,12 +40,12 @@ const isInvestigative = (mode: AgentMode) => mode !== 'chat';
 
 const MAX_STEPS_CHAT = 8;
 // Investigate mode plans then executes a drill-down series → higher budget (red-team H3).
-const MAX_STEPS_INVESTIGATE = Number(process.env.INVESTIGATE_MAX_STEPS ?? 24);
-const MAX_STEPS_INVESTIGATE_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48);
-const MAX_SQL_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60);
+export const MAX_STEPS_INVESTIGATE = Number(process.env.INVESTIGATE_MAX_STEPS ?? 24);
+export const MAX_STEPS_INVESTIGATE_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48);
+export const MAX_SQL_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_SQL ?? 60);
 // Hard cap on run_sql calls per investigation, independent of steps — the real
 // cost ceiling, since the risk gate bounds cost-per-query but not query COUNT (H3).
-const MAX_SQL_PER_INVESTIGATION = Number(process.env.INVESTIGATE_MAX_SQL ?? 30);
+export const MAX_SQL_PER_INVESTIGATION = Number(process.env.INVESTIGATE_MAX_SQL ?? 30);
 // Self-repair: how many consecutive failed run_sql attempts before we stop retrying.
 // 2 (not 3): by the third identical failure the model is rarely converging — stop
 // and report instead of burning another round-trip.
