@@ -25,6 +25,8 @@ export interface ChatArtifact {
    *  `skewWarning` is present when a JOIN's per-table snapshots were extracted
    *  more than half the TTL apart. */
   accelerated?: { asOf: string; skewWarning?: { spreadMs: number } };
+  /** Deterministic answer-verify checks from the chat loop (see QueryResultBlock). */
+  verifyChecks?: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[];
 }
 
 export function ChatArtifactChip({ artifact, active, onClick }: {

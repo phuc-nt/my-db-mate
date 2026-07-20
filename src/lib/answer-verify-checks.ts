@@ -66,8 +66,15 @@ function metricMagnitudeCheck(input: AnswerCheckInput): VerifyCheck {
   const m = input.metric;
   if (!m || (m.lastRun.latest == null && m.lastRun.prev == null)) return { id: 'metric-magnitude', status: 'skip' };
 
-  const numericCols = input.columns.map((_, i) => input.rows.every((r) => r[i] == null || !Number.isNaN(Number(r[i]))));
-  const numericIdx = numericCols.findIndex(Boolean);
+  // Prefer the LAST numeric column: in `SELECT year, revenue …` the measure is
+  // rightmost; a leading integer year/id would otherwise be compared against the
+  // metric's magnitude and warn spuriously (M2). Also skip a column whose name
+  // reads like a key/date part rather than a measure.
+  const KEY_COL = /^(id|.*_id|year|yr|month|day|week|quarter|qtr)$/i;
+  const numericCols = input.columns
+    .map((c, i) => ({ i, numeric: input.rows.every((r) => r[i] == null || !Number.isNaN(Number(r[i]))), name: c }))
+    .filter((c) => c.numeric && !KEY_COL.test(c.name));
+  const numericIdx = numericCols.length ? numericCols[numericCols.length - 1].i : -1;
   if (numericIdx === -1) return { id: 'metric-magnitude', status: 'skip' };
 
   // latest is often a partial current bucket (mid-month) → compare against the
@@ -121,10 +128,12 @@ function dateCoverageCheck(input: AnswerCheckInput, truncated: boolean): VerifyC
 }
 
 /** A JOIN that fans out silently duplicates rows and inflates SUM/COUNT. Only
- *  flag when the SQL actually joins — a projection with repeated rows is normal. */
+ *  flag when the SQL joins AND aggregates — a bare projection repeating tuples is
+ *  harmless (M2: fan-out only corrupts an aggregate). */
 function duplicateRowsCheck(input: AnswerCheckInput, truncated: boolean): VerifyCheck {
   if (truncated) return { id: 'duplicate-rows', status: 'skip' };
   if (!/\bjoin\b/i.test(input.sql)) return { id: 'duplicate-rows', status: 'skip' };
+  if (!/\b(sum|count|avg|min|max|group\s+by)\b/i.test(input.sql)) return { id: 'duplicate-rows', status: 'skip' };
   const seen = new Set<string>();
   let dups = 0;
   for (const r of input.rows) {

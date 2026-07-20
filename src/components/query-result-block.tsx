@@ -18,6 +18,10 @@ interface RunResult {
    *  `skewWarning` is present when a JOIN's per-table snapshots were extracted
    *  more than half the TTL apart. */
   accelerated?: { asOf: string; skewWarning?: { spreadMs: number } };
+  /** Deterministic answer-verify checks from the chat loop (present only on the
+   *  agent's own run, not a manual re-run — a re-run clears them so a stale
+   *  "verified" badge never sits over a new result). */
+  verifyChecks?: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[];
 }
 
 /**
@@ -327,6 +331,7 @@ export function QueryResultBlock({
           {result.lineage.groupBy.length > 0 && <> · grouped by {result.lineage.groupBy.join(', ')}</>}
         </p>
       )}
+      {result?.verifyChecks && <VerifyChecksLine checks={result.verifyChecks} />}
       {result && <ResultTable columns={result.columns} rows={result.rows} dialect={dialect} />}
 
       {(() => {
@@ -400,5 +405,29 @@ export function QueryResultBlock({
           onSubmit={(v) => { setTeachSaveOpen(false); saveTeachFix(v.question.trim()); }} onClose={() => setTeachSaveOpen(false)} />
       )}
     </div>
+  );
+}
+
+/** One-line answer-verify summary under a chat result: a compact "verified"
+ *  badge when every check passed, an amber caution when one warned. Skips render
+ *  entirely if there is nothing meaningful (all skipped). */
+function VerifyChecksLine({ checks }: { checks: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[] }) {
+  const warns = checks.filter((c) => c.status === 'warn');
+  const passed = checks.filter((c) => c.status === 'pass');
+  if (warns.length === 0 && passed.length === 0) return null;
+  if (warns.length > 0) {
+    return (
+      <div className="mt-1 space-y-0.5" data-testid="verify-warn">
+        {warns.map((w) => (
+          <p key={w.id} className="text-[11px] text-amber-600 dark:text-amber-500">⚠ {w.note}</p>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <p className="mt-1 text-[11px] text-green-600 dark:text-green-500" data-testid="verify-badge"
+      title={passed.map((c) => c.id).join(', ')}>
+      ✓ verified · {passed.length} check{passed.length === 1 ? '' : 's'}
+    </p>
   );
 }

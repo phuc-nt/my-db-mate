@@ -19,7 +19,7 @@ interface RunSqlPart {
   state?: string;
   toolCallId: string;
   input?: { sql?: string };
-  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string; skewWarning?: { spreadMs: number } } };
+  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string; skewWarning?: { spreadMs: number } }; verifyChecks?: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[] };
 }
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
@@ -147,6 +147,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           question: lastUserText || undefined,
           lineage: p.output?.lineage ?? null,
           accelerated: p.output?.accelerated,
+          verifyChecks: p.output?.verifyChecks,
         });
       }
     }
@@ -412,7 +413,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             dialect={dialect}
                             sessionId={sessionId}
                             initialSql={out?.executedSql ?? p.input?.sql ?? ''}
-                            initialResult={ok ? { columns: out!.columns!, rows: out!.rows ?? [], executedSql: out!.executedSql, lineage: out!.lineage, accelerated: out!.accelerated } : undefined}
+                            initialResult={ok ? { columns: out!.columns!, rows: out!.rows ?? [], executedSql: out!.executedSql, lineage: out!.lineage, accelerated: out!.accelerated, verifyChecks: out!.verifyChecks } : undefined}
                             initialBlockedReason={out?.blocked ? out.reason : undefined}
                             initialError={out?.error}
                             onConfirmedRun={(info) => recordConfirmedRun(`Q${artifact?.index ?? '?'}`, info)}

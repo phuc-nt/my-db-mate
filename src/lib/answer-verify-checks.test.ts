@@ -42,6 +42,11 @@ describe('metric-magnitude', () => {
     const r = runAnswerChecks({ ...base, metric, sql: 'SELECT month, SUM(x) FROM t GROUP BY 1', columns: ['month', 's'], rows: [['2026-06', 2_500_000], ['2026-07', 3_000_000]] });
     expect(find(r, 'metric-magnitude').status).toBe('warn');
   });
+  it('a leading integer year column is NOT compared as the measure (M2)', () => {
+    // year=2026 is numeric but a key; the measure is `revenue`, right-sized → pass
+    const r = runAnswerChecks({ ...base, metric, sql: 'SELECT year, SUM(x) AS revenue FROM t GROUP BY 1', columns: ['year', 'revenue'], rows: [[2026, 190000]] });
+    expect(find(r, 'metric-magnitude').status).toBe('pass');
+  });
 });
 
 describe('date-coverage', () => {
@@ -60,16 +65,20 @@ describe('date-coverage', () => {
 });
 
 describe('duplicate-rows', () => {
-  it('warns on duplicates when SQL has a JOIN', () => {
-    const r = runAnswerChecks({ ...base, sql: 'SELECT a.x, b.y FROM a JOIN b ON a.id=b.id', columns: ['x', 'y'], rows: [[1, 2], [1, 2], [3, 4]] });
+  it('warns on duplicates when a JOIN aggregates (fan-out inflates the aggregate)', () => {
+    const r = runAnswerChecks({ ...base, sql: 'SELECT a.x, SUM(b.y) FROM a JOIN b ON a.id=b.id GROUP BY a.x', columns: ['x', 'y'], rows: [[1, 2], [1, 2], [3, 4]] });
     expect(find(r, 'duplicate-rows').status).toBe('warn');
   });
   it('skips duplicates without a JOIN (projection repeats are normal)', () => {
     const r = runAnswerChecks({ ...base, sql: 'SELECT status FROM orders', columns: ['status'], rows: [['C'], ['C'], ['D']] });
     expect(find(r, 'duplicate-rows').status).toBe('skip');
   });
+  it('skips a JOIN projection with NO aggregate (fan-out only corrupts aggregates)', () => {
+    const r = runAnswerChecks({ ...base, sql: 'SELECT o.status, c.region FROM orders o JOIN customers c ON o.cid=c.id', columns: ['status', 'region'], rows: [['C', 'N'], ['C', 'N']] });
+    expect(find(r, 'duplicate-rows').status).toBe('skip');
+  });
   it('BigInt row values do not throw', () => {
-    const r = runAnswerChecks({ ...base, sql: 'SELECT a.x FROM a JOIN b ON a.id=b.id', columns: ['x'], rows: [[1n], [1n]] });
+    const r = runAnswerChecks({ ...base, sql: 'SELECT COUNT(a.x) FROM a JOIN b ON a.id=b.id', columns: ['x'], rows: [[1n], [1n]] });
     expect(find(r, 'duplicate-rows').status).toBe('warn');
   });
 });
@@ -77,7 +86,7 @@ describe('duplicate-rows', () => {
 describe('truncated result skips whole-row checks', () => {
   it('date-coverage and duplicate-rows skip when truncated', () => {
     const rows = Array.from({ length: 500 }, (_, i) => [`2026-01`, i]);
-    const r = runAnswerChecks({ ...base, sql: "SELECT month, x FROM a JOIN b ON a.id=b.id WHERE d BETWEEN '2026-01-01' AND '2026-12-31'", columns: ['month', 'x'], rows, limitInjected: true });
+    const r = runAnswerChecks({ ...base, sql: "SELECT month, SUM(x) FROM a JOIN b ON a.id=b.id WHERE d BETWEEN '2026-01-01' AND '2026-12-31' GROUP BY 1", columns: ['month', 'x'], rows, limitInjected: true });
     expect(find(r, 'date-coverage').status).toBe('skip');
     expect(find(r, 'duplicate-rows').status).toBe('skip');
     expect(find(r, 'row-cap').status).toBe('warn');
