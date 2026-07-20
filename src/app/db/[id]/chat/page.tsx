@@ -16,6 +16,8 @@ import { InboxPopover } from '../../../../components/inbox-popover';
 import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
 import { CandidateVoteBlock } from '../../../../components/candidate-vote-block';
 import type { VoteResult } from '../../../../lib/candidate-vote-types';
+import { SubInvestigationCard } from '../../../../components/sub-investigation-card';
+import type { SubInvestigationSnapshot } from '../../../../lib/sub-investigation-types';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -285,6 +287,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // drained server-side (persisted) so it needs a server delete; a chat turn was
   // truly aborted (never persisted) so client removal is enough.
   const lastSentModeRef = useRef<'chat' | 'investigate' | 'investigate-deep'>('chat');
+  const turnStartRef = useRef<string>('');
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
@@ -295,6 +298,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     followupAbortRef.current?.abort();
     setFollowLatest(true);
     lastSentModeRef.current = mode;
+    // Turn-start marker for the A4 Discard tombstone (H4): a Discard of a still-
+    // draining investigate turn is honored only for a turn started at/before this.
+    turnStartRef.current = new Date().toISOString();
     // highStakes is orthogonal to mode but server-honored only in chat mode.
     sendMessage({ text }, { body: { connectionId, sessionId, mode, highStakes: mode === 'chat' && highStakes } });
   }
@@ -317,11 +323,19 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   /** Discard the interrupted turn. Chat turns were never persisted (truly
    *  aborted) so client removal suffices; investigate turns were drained + saved
-   *  server-side, so also delete the persisted assistant message. */
+   *  server-side, so also delete the persisted assistant message. For an
+   *  investigate turn that may STILL be draining server-side (A4 H4: breadth
+   *  sub-investigations run long), write a tombstone so the finish-persist skips
+   *  it — the immediate DELETE alone would wrongly remove the PREVIOUS turn (this
+   *  one isn't persisted yet) and the discarded turn would resurrect on finish. */
   async function discardInterrupted(msgId: string) {
     setMessages((ms) => ms.filter((m) => m.id !== msgId));
     setInterruptedMsgId(null);
     if (lastSentModeRef.current !== 'chat' && sessionId) {
+      await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ at: turnStartRef.current }),
+      }).catch(() => {});
       await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
     }
   }
@@ -431,6 +445,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
               <div className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
                 {m.role === 'assistant' && <ChatPlanCard parts={m.parts as unknown as UIPart[]} />}
+                {m.role === 'assistant' && m.parts.some((p) => p.type === 'data-subq') && (
+                  <p className="mb-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">🧵 Investigating {m.parts.filter((p) => p.type === 'data-subq').length} angles in parallel</p>
+                )}
                 {m.parts.map((part, i) => {
                   if (part.type === 'text') {
                     if (m.role === 'user') return <span key={i} className="whitespace-pre-wrap">{part.text}</span>;
@@ -439,6 +456,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
                       </div>
                     );
+                  }
+                  // A4: a sub-investigation progress card (id-reconciled data part).
+                  if (part.type === 'data-subq') {
+                    const p = part as unknown as { data?: SubInvestigationSnapshot };
+                    if (!p.data) return null;
+                    return <SubInvestigationCard key={i} snapshot={p.data} />;
                   }
                   if (part.type === 'tool-run_sql') {
                     const p = part as unknown as RunSqlPart;

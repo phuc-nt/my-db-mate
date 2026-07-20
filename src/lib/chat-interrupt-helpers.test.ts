@@ -103,4 +103,16 @@ describe('summarizeToolParts', () => {
     ]);
     expect(steps.map((s) => s.label)).toEqual(['Planning the analysis', 'Running SQL']);
   });
+  // A4: data-* parts (the sub-investigation cards) must be inert for every tool
+  // helper — they are not tool-* parts, so summarize/prune/dangling ignore them.
+  it('ignores data-* parts (A4 sub-investigation cards)', () => {
+    const parts = [
+      { type: 'data-subq', text: undefined },
+      { type: 'tool-run_sql', state: 'output-available' },
+    ];
+    expect(summarizeToolParts(parts).map((s) => s.label)).toEqual(['Running SQL']);
+    expect(hasDanglingToolCall({ id: 'a', role: 'assistant', parts })).toBe(false);
+    // prune keeps the data part (not a tool-call) and the resolved run_sql.
+    expect(pruneDanglingToolCalls({ id: 'a', role: 'assistant', parts }).parts).toHaveLength(2);
+  });
 });

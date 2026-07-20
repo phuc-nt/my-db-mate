@@ -98,7 +98,8 @@ You are answering ONE focused sub-question of a larger investigation. Do NOT wri
 1. Go straight to run_sql: gather the specific evidence this sub-question needs (compare periods, decompose by the relevant dimension, find outliers).
 2. If the sub-question is ambiguous, state your assumption briefly and proceed — never wait for the user; you are running in the background.
 3. Use detect_anomalies for outlier/data-quality angles when relevant.
-4. Conclude concisely with the finding for THIS sub-question AND the numbers/${dialect} SQL that support it. This conclusion becomes one section of a merged answer, so make it self-contained.
+4. Your query budget is SMALL (a slice of the parent investigation). Plan for 2-4 queries, then STOP querying and write your conclusion — a sub-investigation that spends every step on queries and ends mid-thought contributes nothing.
+5. Conclude concisely with the finding for THIS sub-question AND the numbers/${dialect} SQL that support it. This conclusion becomes one section of a merged answer, so make it self-contained.
 Prefer aggregates over row dumps. Never SELECT * a large table.`;
 
 // Big-table policy appended when the connection has large tables (red-team C2/C3).

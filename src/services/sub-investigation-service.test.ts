@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitBudget, hasSurvivors } from './sub-investigation-service';
+import { splitBudget, hasSurvivors, looksLikeConclusion } from './sub-investigation-service';
 import type { SubInvestigationSnapshot } from '../lib/sub-investigation-types';
 
 describe('splitBudget — static, race-free budget division (red-team M1)', () => {
@@ -44,6 +44,27 @@ describe('splitBudget — static, race-free budget division (red-team M1)', () =
 
 const snap = (over: Partial<SubInvestigationSnapshot>): SubInvestigationSnapshot => ({
   id: 'x', title: 't', status: 'pending', queries: [], ...over,
+});
+
+describe('looksLikeConclusion — reject mid-loop narration as a section', () => {
+  const real =
+    '## Revenue by segment\nEnterprise revenue fell 18% quarter over quarter (from $412,880 to $338,610), ' +
+    'while SMB grew 4%. The decline concentrates in two enterprise accounts that stopped ordering in May, ' +
+    'accounting for 71% of the total drop. Consumer segment was flat.';
+
+  it('accepts a substantive evidence-backed section', () => {
+    expect(looksLikeConclusion(real)).toBe(true);
+  });
+
+  it('rejects trailing narration (the step-capped loop ending mid-thought)', () => {
+    expect(looksLikeConclusion('Now I have a comprehensive picture. Let me compile the findings.')).toBe(false);
+    expect(looksLikeConclusion(real + '\n\nNow let me get the full picture — let me check the product split.')).toBe(false);
+  });
+
+  it('rejects a too-short final line', () => {
+    expect(looksLikeConclusion('Done.')).toBe(false);
+    expect(looksLikeConclusion('')).toBe(false);
+  });
 });
 
 describe('hasSurvivors (red-team M2)', () => {
