@@ -14,13 +14,15 @@ import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
 import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
+import { CandidateVoteBlock } from '../../../../components/candidate-vote-block';
+import type { VoteResult } from '../../../../lib/candidate-vote-types';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
   state?: string;
   toolCallId: string;
   input?: { sql?: string };
-  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string; skewWarning?: { spreadMs: number } }; verifyChecks?: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[] };
+  output?: { columns?: string[]; rows?: unknown[][]; executedSql?: string; blocked?: boolean; reason?: string; error?: string; note?: string; lineage?: { tables: string[]; whereColumns: string[]; groupBy: string[] } | null; accelerated?: { asOf: string; skewWarning?: { spreadMs: number } }; verifyChecks?: { id: string; status: 'pass' | 'warn' | 'skip'; note?: string }[]; vote?: VoteResult };
 }
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
@@ -39,6 +41,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   }, []);
   const [investigate, setInvestigate] = useState(false);
   const [deep, setDeep] = useState(false);
+  const [highStakes, setHighStakes] = useState(false);
   const [sessionId, setSessionId] = useState<string>();
   const [distillMsg, setDistillMsg] = useState('');
   const [dialect, setDialect] = useState<'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb'>();
@@ -292,7 +295,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     followupAbortRef.current?.abort();
     setFollowLatest(true);
     lastSentModeRef.current = mode;
-    sendMessage({ text }, { body: { connectionId, sessionId, mode } });
+    // highStakes is orthogonal to mode but server-honored only in chat mode.
+    sendMessage({ text }, { body: { connectionId, sessionId, mode, highStakes: mode === 'chat' && highStakes } });
   }
 
   /** Keep the interrupted partial as the answer — just clear the interrupt flag,
@@ -353,6 +357,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   const analyzeDeeper = (sql: string) =>
     send(`Analyze this result more deeply — trends, comparisons, and anomalies. The query was: ${sql}`, 'investigate');
+
+  /** High-stakes diff panel "Use this": adopt the picked candidate as the answer
+   *  by asking the model to run exactly that SQL and answer from it. */
+  const usePickedCandidate = (sql: string) =>
+    send(`Use this exact query as the answer and report its result:\n${sql}`, 'chat');
 
   const okRunCount = artifacts.filter((a) => a.columns && !a.blocked && !a.error).length;
   const [distilledThisSession, setDistilledThisSession] = useState(false);
@@ -468,6 +477,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                               className="mt-1 text-xs text-blue-600 hover:underline">🔎 Analyze deeper</button>
                           )}
                         </div>
+                        {/* High-stakes cross-check verdict — shown in both layouts
+                            (it summarizes the answer, it isn't a heavy result). */}
+                        {out?.vote && <CandidateVoteBlock vote={out.vote} onPick={usePickedCandidate} />}
                       </div>
                     );
                   }
@@ -574,6 +586,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <label className="flex items-center gap-1 text-xs text-neutral-500" title="Gấp đôi budget bước/query (~2x cost) cho câu hỏi thật khó" data-testid="deep-toggle">
               <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
               Deep <span className="text-[10px] text-amber-600">~2x</span>
+            </label>
+          )}
+          {!investigate && (
+            <label className="flex items-center gap-1 text-xs text-neutral-500" title="Run 2-3 candidate queries and cross-check their results — higher confidence, costs more" data-testid="high-stakes-toggle">
+              <input type="checkbox" checked={highStakes} onChange={(e) => setHighStakes(e.target.checked)} />
+              High-stakes <span className="text-[10px] text-amber-600">~2-3x</span>
             </label>
           )}
           <input

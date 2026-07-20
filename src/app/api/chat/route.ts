@@ -16,11 +16,12 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
-  const { messages, connectionId, sessionId, mode } = (await req.json()) as {
+  const { messages, connectionId, sessionId, mode, highStakes } = (await req.json()) as {
     messages: UIMessage[];
     connectionId: string;
     sessionId?: string;
     mode?: 'chat' | 'investigate' | 'investigate-deep';
+    highStakes?: boolean;
   };
 
   const conn = await getConnection(connectionId);
@@ -58,6 +59,9 @@ export async function POST(req: Request) {
     // mode deliberately does NOT get this: its conclusion must survive the user
     // navigating away, so it keeps draining via consumeStream() below.
     abortSignal: isInvestigate ? undefined : req.signal,
+    // High-stakes candidate voting is chat-only: force-false in investigate /
+    // investigate-from-finding so a `highStakes:true` body can't trigger it there.
+    highStakes: !!highStakes && resolvedMode === 'chat',
   });
 
   // Persist the finished assistant turn (transcript history + notebook-from-session
