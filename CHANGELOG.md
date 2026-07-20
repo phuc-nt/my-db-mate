@@ -4,6 +4,57 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [0.10.0] — 2026-07-20
+
+Trust and control for the agentic chat loop. Three upgrades that make the
+model's work visible, verifiable, and interruptible — the parts a better model
+alone doesn't give you, because they're harness logic, not model output. Chosen
+by a moat test ("could a 2027 model with DB access just do this itself?") and
+verified on real Postgres and BigQuery, not only SQLite.
+
+### Answer verification
+
+- **Answer-verify layer** — after each `run_sql` in chat, deterministic sanity
+  checks run on the result (no extra model call): the number's magnitude is
+  compared against the nearest governed metric's *own* cached history, plus
+  date-coverage, duplicate-row (JOIN+aggregate only), and row-cap checks. A pass
+  shows a "✓ verified" badge; a warn surfaces inline *and* is fed back to the
+  model once so it can reconsider before concluding — without looping. Metrics
+  cache their last run (cleared when the metric's SQL changes) so the comparison
+  is against a real, recent baseline, and stale (>48h) baselines skip rather than
+  falsely reassure.
+
+### Chat control & visibility
+
+- **Live plan card** — a multi-step chat turn (≥2 tool calls) opens with a
+  collapsible "📋 Steps (done/total)" checklist derived from the tool-call stream
+  itself — no extra model call. Each step dims with a spinner while running and
+  flips to ✓ (or ✗) as it resolves. One-shot answers stay uncluttered. Distinct
+  from the deeper investigate-mode analysis plan (suppressed there so the two
+  never stack).
+- **Stop & interrupt a turn** — a Stop button appears while a turn streams. In
+  chat mode Stop *truly halts* the run server-side (the request is aborted, so no
+  further tool calls or tokens are billed); the stopped turn offers **Keep**,
+  **Edit & resend**, or **Discard**. Investigate mode instead keeps draining in
+  the background so a long investigation survives navigation, and Discard removes
+  the persisted turn server-side so it doesn't reappear on reload.
+
+### Trust — high-stakes cross-check
+
+- **Execution-grounded candidate voting** (opt-in per question) — after the model
+  answers, the harness generates 2–3 low-temperature candidate rewrites of its
+  SQL, runs each through the same read-only choke point, and compares the
+  *results*. Agreement gives a "N/N cross-check queries agree" confidence badge;
+  disagreement opens a diff panel with each query + its differing result so you
+  can pick the interpretation you meant — the divergence itself is the signal
+  (two correct SQLs can legitimately differ, e.g. whether cancelled/refunded
+  orders count toward "total revenue"). Candidates keep the full risk gate and
+  never bypass safety; governance-violating rewrites are excluded; BigQuery
+  compares dry-run cost estimates instead of executing (bytes = money). Verified
+  on real Postgres (fare vs total-amount divergence on 2.97M NYC-taxi rows) and
+  real BigQuery (dry-run byte/cost comparison, never executed). ~2–3× cost per
+  question, so it's off by default.
+
 ## [0.9.0] — 2026-07-19
 
 Replace-Tableau-with-AI-assist: the outputs a BI tool produces, driven by a
