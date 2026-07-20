@@ -13,7 +13,7 @@ import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
-import { pruneDanglingToolCalls, userTurnBefore, extractUserText, type UIMsg } from '../../../../lib/chat-interrupt-helpers';
+import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {
@@ -421,6 +421,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           {messages.map((m) => (
             <div key={m.id} className={m.role === 'user' ? 'text-right' : ''}>
               <div className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
+                {m.role === 'assistant' && <ChatPlanCard parts={m.parts as unknown as UIPart[]} />}
                 {m.parts.map((part, i) => {
                   if (part.type === 'text') {
                     if (m.role === 'user') return <span key={i} className="whitespace-pre-wrap">{part.text}</span>;
@@ -638,6 +639,33 @@ function toolStatus(state?: string): { icon: string; done: 'ok' | 'error' | 'run
   if (state === 'output-available') return { icon: '✓', done: 'ok' };
   if (state === 'output-error') return { icon: '✗', done: 'error' };
   return { icon: '⏳', done: 'running' };
+}
+
+/** Chat-mode plan card: a live checklist derived from the assistant turn's
+ *  tool-call parts (no extra LLM call). Only shown for genuine multi-step turns
+ *  (≥2 tool-calls) so a one-shot answer stays uncluttered. A step in flight is
+ *  dimmed with a spinner; a completed step shows ✓; an errored step shows ✗.
+ *  Separate surface from the investigate-only 📋 plan_analysis card. */
+function ChatPlanCard({ parts }: { parts: UIPart[] }) {
+  // Investigate turns already render the dedicated "📋 Analysis plan" card
+  // (the plan_analysis tool). Suppress this chat-mode Steps card there so the
+  // two 📋 surfaces never stack in one bubble — this stays a distinct surface.
+  if (parts.some((p) => p.type === 'tool-plan_analysis')) return null;
+  const steps = summarizeToolParts(parts);
+  if (steps.length < 2) return null;
+  const doneCount = steps.filter((s) => s.done).length;
+  return (
+    <details open className="mb-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs dark:border-blue-900 dark:bg-blue-950" data-testid="chat-plan-card">
+      <summary className="cursor-pointer font-medium">📋 Steps ({doneCount}/{steps.length})</summary>
+      <ol className="mt-1 space-y-0.5 pl-1">
+        {steps.map((s, j) => (
+          <li key={j} className={s.done || s.errored ? '' : 'text-neutral-400'}>
+            {s.errored ? '✗' : s.done ? '✓' : '⏳'} {s.label}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
 }
 
 /** Inline clarifying-question box for the ask_user tool (red-team C1). */
