@@ -43,3 +43,7 @@ AGENTS.md
 CLAUDE.md
 .demo/
 data-files/
+
+# vendored mywb CLI for diagram drift-check (built artifact, committed on purpose)
+!tools/mywb/dist/
+!tools/mywb/dist/**
