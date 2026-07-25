@@ -1,0 +1,122 @@
+# Diagram drift check — keeps docs/architecture.mywb honest against the code.
+# The agent only WRITES findings.json (contract in tools/mywb/drift-skill.md);
+# this workflow validates it, renders the PR comment from it, and uploads it
+# as the drift-findings artifact. Drift is comment-only; only a malformed
+# findings.json fails the build. mywb CLI vendored under tools/mywb (built
+# dist, no install). Requires the ANTHROPIC_API_KEY repo secret.
+# Template source: my-whiteboard examples/ci-drift-check/.
+
+name: diagram-drift-check
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'docs/architecture.mywb'
+      - 'tools/mywb/**'
+      - '.github/workflows/diagram-drift-check.yml'
+
+env:
+  BOARD_PATH: docs/architecture.mywb
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Full history so the agent's scoping step can diff against the base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Export diagram as JSON
+        run: node tools/mywb/dist/cli.js file read "$BOARD_PATH" --json > diagram.json
+
+      # Fork PRs never receive secrets, so the agent steps below would fail on
+      # them through no fault of the diagram. Skip instead: the export above
+      # still proves the board and the CLI are healthy.
+      - name: Decide whether the agent can run
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ] && [ "${{ github.event.pull_request.head.repo.fork }}" != "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Drift agent skipped: no ANTHROPIC_API_KEY (or fork PR). Export succeeded."
+          fi
+
+      - name: Install Claude Code
+        if: steps.agent.outputs.enabled == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Drift check (agent writes findings.json)
+        if: steps.agent.outputs.enabled == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          claude -p "Follow tools/mywb/drift-skill.md. diagram.json in the \
+            repo root is the exported architecture board. BASE_REF is set in \
+            the environment — apply the scoping step, evaluate the in-scope \
+            claims against this repository, and write findings.json exactly \
+            per the output contract. Do not post comments." \
+            --allowedTools "Bash,Read,Grep,Glob,Write"
+
+      - name: Validate findings.json
+        if: steps.agent.outputs.enabled == 'true'
+        run: |
+          jq -e '
+            .version == 1
+            and (.claims | type == "array")
+            and ([.claims[].status] - ["ok","drifted","unverifiable","skipped-out-of-scope"] == [])
+            and ([.summary.ok, .summary.drifted, .summary.unverifiable, .summary.skipped]
+                 | all(tostring | test("^[0-9]+$")))
+            and (.summary.ok == ([.claims[] | select(.status == "ok")] | length))
+            and (.summary.drifted == ([.claims[] | select(.status == "drifted")] | length))
+            and (.summary.unverifiable == ([.claims[] | select(.status == "unverifiable")] | length))
+            and (.summary.skipped == ([.claims[] | select(.status == "skipped-out-of-scope")] | length))
+          ' findings.json
+
+      - name: Comment on the PR (rendered from findings)
+        if: steps.agent.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          DRIFTED=$(jq '.summary.drifted' findings.json)
+          UNVERIFIABLE=$(jq '.summary.unverifiable' findings.json)
+          if [ "$DRIFTED" -gt 0 ] || [ "$UNVERIFIABLE" -gt 0 ]; then
+            {
+              echo "## Diagram drift check"
+              echo ""
+              echo "| status | type | claim | evidence | note |"
+              echo "|---|---|---|---|---|"
+              jq -r '.claims[]
+                | select(.status == "drifted" or .status == "unverifiable")
+                | [.status, .type, .claim, (.evidence // [] | join("<br>")), (.note // "")]
+                | map(tostring | gsub("\\|"; "\\|") | gsub("\n"; " "))
+                | "| " + join(" | ") + " |"' \
+                findings.json
+            } > comment.md
+          else
+            TOTAL=$(jq '.claims | length' findings.json)
+            SKIPPED=$(jq '.summary.skipped' findings.json)
+            SCOPE=$(jq -r '.run.scope' findings.json)
+            echo "Diagram drift check: in sync ($((TOTAL - SKIPPED))/$TOTAL claims evaluated, scope=$SCOPE)." > comment.md
+          fi
+          gh pr comment "$PR_NUMBER" --body-file comment.md
+
+      - name: Upload findings artifact
+        if: always() && steps.agent.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-findings
+          path: findings.json
+          if-no-files-found: ignore
