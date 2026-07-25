@@ -86,6 +86,21 @@
 			"from": "MCP Server",
 			"to": "Services Layer",
 			"relation": "calls"
+		},
+		{
+			"from": "API Routes",
+			"to": "App DB (Postgres)",
+			"relation": "reads"
+		},
+		{
+			"from": "API Routes",
+			"to": "DB Connection Providers",
+			"relation": "calls"
+		},
+		{
+			"from": "Web UI",
+			"to": "Services Layer",
+			"relation": "calls"
 		}
 	],
 	"title": "My DB Mate — architecture (2026-07-24)",
