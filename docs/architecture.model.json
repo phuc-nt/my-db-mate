@@ -1,0 +1,121 @@
+{
+	"components": [
+		{
+			"name": "MCP Server",
+			"kind": "tool",
+			"repoUrl": "src/services/mcp-server.ts"
+		},
+		{
+			"name": "Services Layer",
+			"kind": "lib",
+			"repoUrl": "src/services"
+		},
+		{
+			"name": "LLM Service",
+			"kind": "lib",
+			"repoUrl": "src/services/llm-service.ts"
+		},
+		{
+			"name": "API Routes",
+			"kind": "api",
+			"repoUrl": "src/app/api"
+		},
+		{
+			"name": "App DB (Postgres)",
+			"kind": "db",
+			"repoUrl": "src/db"
+		},
+		{
+			"name": "DB Connection Providers",
+			"kind": "lib",
+			"repoUrl": "src/services/connection-providers"
+		},
+		{
+			"name": "Scheduler",
+			"kind": "cron",
+			"repoUrl": "src/services/schedule-service.ts"
+		},
+		{
+			"name": "Safety Gate",
+			"kind": "lib",
+			"repoUrl": "src/services/safety"
+		},
+		{
+			"name": "Web UI",
+			"kind": "web",
+			"repoUrl": "src/app"
+		}
+	],
+	"edges": [
+		{
+			"from": "Web UI",
+			"to": "API Routes",
+			"relation": "calls"
+		},
+		{
+			"from": "API Routes",
+			"to": "Services Layer",
+			"relation": "calls"
+		},
+		{
+			"from": "Services Layer",
+			"to": "Safety Gate",
+			"relation": "calls"
+		},
+		{
+			"from": "Services Layer",
+			"to": "DB Connection Providers",
+			"relation": "calls"
+		},
+		{
+			"from": "Services Layer",
+			"to": "LLM Service",
+			"relation": "calls"
+		},
+		{
+			"from": "Services Layer",
+			"to": "App DB (Postgres)",
+			"relation": "reads"
+		},
+		{
+			"from": "Scheduler",
+			"to": "Services Layer",
+			"relation": "calls"
+		},
+		{
+			"from": "MCP Server",
+			"to": "Services Layer",
+			"relation": "calls"
+		},
+		{
+			"from": "API Routes",
+			"to": "App DB (Postgres)",
+			"relation": "reads"
+		},
+		{
+			"from": "API Routes",
+			"to": "DB Connection Providers",
+			"relation": "calls"
+		},
+		{
+			"from": "Web UI",
+			"to": "Services Layer",
+			"relation": "calls"
+		}
+	],
+	"title": "My DB Mate — architecture (2026-07-24)",
+	"groups": [
+		{
+			"name": "Services Layer",
+			"members": [
+				"MCP Server",
+				"Services Layer",
+				"LLM Service",
+				"DB Connection Providers",
+				"Scheduler",
+				"Safety Gate"
+			]
+		}
+	],
+	"documentId": "my-db-mate-architecture"
+}
