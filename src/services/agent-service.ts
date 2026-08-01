@@ -121,6 +121,9 @@ interface InvestigationState {
    *  sqlRunCount so cross-checking neither starves the model's real budget nor
    *  runs unbounded when the model loops (red-team H6). */
   candidateProbeCount: number;
+  /** Auto high-stakes votes at most ONCE per turn (the first successful run_sql)
+   *  so ambient verification can't multiply a multi-query turn's cost (M1). */
+  autoVoted: boolean;
 }
 
 /** A governed metric matched to the question, with its cosine distance — used by the
@@ -148,6 +151,32 @@ const LINT_DISTANCE_FLOOR = 0.25;
 /** Wrap untrusted DB values so the model cannot read them as instructions (M1). */
 function wrapData(payload: unknown): string {
   return `<data>${JSON.stringify(payload)}</data>`;
+}
+
+/**
+ * Decide the effective high-stakes mode for a turn. Pure so the guard matrix is
+ * unit-testable without a model:
+ * - manual toggle wins (votes every successful run_sql);
+ * - else AUTO fires only when the caller opted in (interactive chat route only —
+ *   headless MCP/schedule/eval must not silently gain cost, red-team H1), the
+ *   env kill-switch is open, the turn is plain chat (never investigate, never
+ *   the finding path), and the question matched a governed metric at least as
+ *   closely as the adherence-lint floor — the same "this answer must agree with
+ *   the metric" bar, which is exactly where a wrong number is most expensive.
+ */
+export function decideHighStakesMode(args: {
+  manual: boolean;
+  allowAuto: boolean;
+  mode: AgentMode;
+  hasFindingCap: boolean;
+  metricDistances: number[];
+  envOff?: boolean;
+}): boolean | 'auto' {
+  const { manual, allowAuto, mode, hasFindingCap, metricDistances, envOff } = args;
+  if (mode !== 'chat' || hasFindingCap) return false;
+  if (manual) return true;
+  if (!allowAuto || envOff) return false;
+  return metricDistances.some((d) => d <= LINT_DISTANCE_FLOOR) ? 'auto' : false;
 }
 
 /**
@@ -244,10 +273,13 @@ export function buildAgentTools(
   // counter (atomic reserve) instead of only the per-request budget — reopening the
   // session cannot reset it, and a client value can only lower the ceiling (red-team).
   findingCap?: { sessionId: string; cap: number },
-  // High-stakes voting (chat-only): when true, run_sql cross-checks its answer with
-  // low-temp candidate rewrites. `question` is the user's question, needed so
-  // candidates can explore an alternate interpretation, not just re-spell one.
-  highStakes = false,
+  // High-stakes voting (chat-only): `true` = the manual toggle (cross-check every
+  // successful run_sql); `'auto'` = the question matched a governed metric closely
+  // enough that verification runs unasked — but only for the FIRST successful
+  // run_sql of the turn (bounds the ambient cost; plan red-team M1). `question`
+  // is the user's question, needed so candidates can explore an alternate
+  // interpretation, not just re-spell one.
+  highStakes: boolean | 'auto' = false,
   question = '',
   // Sub-investigation (A4): a bounded worker loop for ONE decomposed sub-question.
   // Strips plan_analysis/ask_user (a background-consumed loop can't get a human
@@ -256,7 +288,7 @@ export function buildAgentTools(
   // `maxSqlSteps` is a no-op; this override is enforced in run_sql directly).
   sub?: { maxSql: number },
 ) {
-  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set(), candidateProbeCount: 0 };
+  const state: InvestigationState = { sqlRunCount: 0, consecutiveFailures: 0, verifyHinted: new Set(), candidateProbeCount: 0, autoVoted: false };
   const findingSqlCap = findingCap ? Math.min(Math.max(1, findingCap.cap), INVESTIGATE_FINDING_MAX_SQL) : null;
   // Per-sub SQL ceiling (A4 H1) — a real per-request cap, distinct from the
   // persisted findingCap counter. Overrides the mode-derived default below.
@@ -438,9 +470,12 @@ export function buildAgentTools(
         // the chat UI. Bounded by candidateProbeCount (H6); degrades silently on any
         // failure (voting is advisory, never blocks the answer).
         const voteWrap: { vote?: VoteResult } = {};
-        if (highStakes && mode === 'chat' && !findingCap && state.candidateProbeCount < MAX_CANDIDATE_PROBES) {
+        // Manual toggle votes every successful run_sql; auto mode votes only the
+        // first of the turn (M1 — ambient verification must not multiply cost).
+        const shouldVote = highStakes === true || (highStakes === 'auto' && !state.autoVoted);
+        if (shouldVote && mode === 'chat' && !findingCap && state.candidateProbeCount < MAX_CANDIDATE_PROBES) {
           try {
-            voteWrap.vote = await runCandidateVote({
+            const vote = await runCandidateVote({
               connectionId, actor: execActor, sessionId, dialect, question,
               baseSql: sql,
               baseColumns: res.result!.columns,
@@ -449,6 +484,14 @@ export function buildAgentTools(
               lintMetrics,
               state,
             });
+            if (vote) {
+              if (highStakes === 'auto') {
+                state.autoVoted = true;
+                voteWrap.vote = { ...vote, auto: true };
+              } else {
+                voteWrap.vote = vote;
+              }
+            }
           } catch {
             // never let cross-checking break the answer
           }
@@ -543,7 +586,7 @@ function selfRepairHint(state: InvestigationState) {
 }
 
 /** Tables above BIG_TABLE_ROWS, for the big-table policy prompt (red-team C2/C3). */
-async function getBigTables(connectionId: string): Promise<{ name: string; rows: number }[]> {
+export async function getBigTables(connectionId: string): Promise<{ name: string; rows: number }[]> {
   const threshold = Number(process.env.BIG_TABLE_ROWS ?? 1_000_000);
   const tables = await db.select({ tableName: schemaTables.tableName, rowCount: schemaTables.rowCount })
     .from(schemaTables)
@@ -575,13 +618,23 @@ export async function streamAgentAnswer(params: {
    *  Chat-only; the route force-clears it outside chat so the finding path can't
    *  trigger it. */
   highStakes?: boolean;
+  /** Opt-in for AUTO high-stakes (question matches a governed metric → verify
+   *  unasked). ONLY the interactive chat route passes true — headless callers
+   *  (MCP, scheduled question runs, eval) default to chat mode with no finding
+   *  cap and would otherwise silently gain LLM + execution cost (red-team H1). */
+  allowAutoHighStakes?: boolean;
   /** A4: run this as a bounded sub-investigation worker for ONE decomposed
    *  sub-question. Forces investigate behavior with the SUB addendum + toolset
    *  (no plan_analysis/ask_user), BQ agentBudgeted, and an explicit per-sub SQL
    *  cap. `maxSql` is the sub's slice of the parent budget (red-team H1/M1). */
   subInvestigation?: { maxSql: number; maxSteps: number };
+  /** Big-table list precomputed by the caller — N parallel sub-loops on ONE
+   *  connection would otherwise each run the identical query (review M3). The
+   *  question-specific fetches (pruned schema, relevant context) stay per-call
+   *  by design: each sub asks a different question. */
+  precomputedBigTables?: { name: string; rows: number }[];
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false, subInvestigation } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false, allowAutoHighStakes = false, subInvestigation, precomputedBigTables } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -604,7 +657,7 @@ export async function streamAgentAnswer(params: {
   const relevant = question ? await getRelevantContext(question, connectionId) : null;
   const contextBlock = relevant ? renderContextForPrompt(relevant) : '';
   const matchedMetrics = relevant?.metrics ?? [];
-  const bigTables = await getBigTables(connectionId);
+  const bigTables = precomputedBigTables ?? await getBigTables(connectionId);
 
   const system =
     SYSTEM(schema, dialect) +
@@ -628,7 +681,14 @@ export async function streamAgentAnswer(params: {
     model: await getModel(),
     system,
     messages,
-    tools: buildAgentTools(connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap, highStakes && mode === 'chat' && !findingCap, question, subInvestigation ? { maxSql: subInvestigation.maxSql } : undefined),
+    tools: buildAgentTools(
+      connectionId, actor, sessionId, mode, dialect as Dialect, matchedMetrics, findingCap,
+      decideHighStakesMode({
+        manual: highStakes, allowAuto: allowAutoHighStakes, mode, hasFindingCap: !!findingCap,
+        metricDistances: matchedMetrics.map((m) => m.distance),
+        envOff: process.env.HIGH_STAKES_AUTO === 'off',
+      }),
+      question, subInvestigation ? { maxSql: subInvestigation.maxSql } : undefined),
     stopWhen: stepCountIs(stepCap),
     ...(abortSignal ? { abortSignal } : {}),
   });

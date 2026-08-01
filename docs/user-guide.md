@@ -134,6 +134,8 @@ Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh se
 - Hỏi bằng ngôn ngữ tự nhiên; model tự khám phá schema qua tool và chạy SQL **chỉ-đọc** để trả lời (vòng lặp agentic, không phải RAG cố định).
 - Kết quả kèm **SQL sửa/chạy lại được**, **export CSV**, **xem biểu đồ**, và **copy SQL / copy kết quả** 1 chạm.
 - **Gợi ý câu hỏi tiếp** sau mỗi câu trả lời (bấm để hỏi luôn); màn chat trống gợi ý câu mẫu từ verified queries của bạn. Tắt được.
+- **Lịch sử phiên chat** — nút **🕘 Sessions** liệt kê các cuộc hội thoại cũ của connection (phiên điều tra gắn nhãn 🔎), mở lại là thấy **nguyên hội thoại**: kết quả query, badge verify, thẻ điều tra song song. Reload không mất; điều tra chạy nền xong rồi quay lại vẫn thấy kết luận. Phiên điều tra cũ mở ở chế độ chỉ-đọc kèm nút "Continue in new chat".
+- **Tự cross-check khi chạm governed metric** — câu hỏi khớp sát một metric đã định nghĩa sẽ được kiểm chứng chéo tự động (không cần bật High-stakes), gắn nhãn "auto (governed metric)"; chỉ kiểm 1 query đầu của lượt để giới hạn chi phí. Tắt bằng `HIGH_STAKES_AUTO=off`.
 - **Pivot nhanh** ngay trên bảng kết quả (group-by × giá trị × hàm tổng hợp) không cần viết lại SQL, trên số rows đã tải.
 - **Bước agent dễ đọc**: mỗi tool hiện nhãn tiếng người + trạng thái đang chạy/xong/lỗi; phần suy luận của model (nếu có) hiện gọn.
 - **Màn hình rộng tự tách 2-3 cột**: hội thoại bên trái (kết quả thu thành chip 1 dòng, bấm để mở), panel kết quả bên phải (SQL + bảng + chart, giữ nguyên state khi chuyển giữa các query), màn rất rộng thêm cột danh sách query của phiên. Màn hẹp giữ mọi thứ inline.
