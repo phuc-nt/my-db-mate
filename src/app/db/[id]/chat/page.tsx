@@ -399,7 +399,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }),
       })
         .then((r) => { if (!r.ok) throw new Error('session create failed'); return r.json(); })
-        .then((s: { id: string }) => { if (!s?.id) throw new Error('session create returned no id'); setSession(s.id); return s.id; })
+        .then((s: { id: string }) => {
+          if (!s?.id) throw new Error('session create returned no id');
+          setSession(s.id);
+          // Reflect the lazily-created session in the URL so a reload reopens
+          // THIS conversation (full-UAT gap: a fresh chat's transcript vanished
+          // on reload until reopened via the switcher).
+          router.replace(`/db/${connectionId}/chat?session=${s.id}`, { scroll: false });
+          return s.id;
+        })
         .catch((e) => { sessionCreateRef.current = null; throw e; });
     }
     return sessionCreateRef.current;
@@ -452,17 +460,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setMessages((ms) => ms.filter((m) => m.id !== msgId));
     setInterruptedMsgId(null);
     if (lastSentModeRef.current !== 'chat' && sessionId) {
-      // The tombstone moment is stamped SERVER-side (a skewed browser clock wrote
-      // future tombstones that swallowed legitimate later turns) — no body needed.
-      const tombstoned = await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, { method: 'POST' })
-        .then((r) => r.ok).catch(() => false);
-      // Only delete once the tombstone is safely recorded. Without it, a still-
-      // draining turn is not yet persisted, so "delete latest assistant" would
-      // remove the PREVIOUS turn's answer AND the discarded one would come back
-      // when the server finishes — the exact pair of bugs the tombstone prevents.
-      if (tombstoned) {
-        await fetch(`/api/chat/sessions/${sessionId}/last-assistant`, { method: 'DELETE' }).catch(() => {});
-      }
+      // ONE server call that decides atomically: a still-draining turn gets a
+      // tombstone (its eventual persist skips); an already-persisted turn has its
+      // answer rows deleted. The client must NOT choose — a client-side "delete
+      // latest assistant" during a drain erased the PREVIOUS turn's answer
+      // (full-UAT-caught bug).
+      await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, { method: 'POST' }).catch(() => {});
     }
   }
 
