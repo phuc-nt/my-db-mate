@@ -34,10 +34,18 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
   silently fails next to đ/diacritics) and a 120-char gate that rejected
   legitimate short Vietnamese conclusions; it now understands Vietnamese
   narration tails and accepts shorter real conclusions.
-- **Discarding an in-flight turn is race-proof** — the tombstone is stamped with
-  the server clock (a fast browser clock could swallow legitimate later turns)
-  and consumed compare-and-delete so one turn's late finish can't steal a newer
-  discard's tombstone.
+- **Discarding an in-flight turn is race-proof and never touches earlier
+  answers** — the tombstone is stamped with the server clock (a fast browser
+  clock could swallow legitimate later turns) and consumed compare-and-delete so
+  one turn's late finish can't steal a newer discard's tombstone. The discard
+  decision itself moved server-side: discarding a still-draining turn previously
+  fired a client-side "delete latest assistant" that erased the PREVIOUS turn's
+  answer (the current one wasn't persisted yet) — caught by full end-to-end UAT
+  across two consecutive investigations. The server now tombstones a draining
+  turn and deletes only an already-persisted turn's own answer rows.
+- **A fresh conversation keeps its URL** — sessions created lazily on the first
+  message now put `?session=` in the address bar, so reloading a new chat shows
+  its transcript instead of an empty page.
 - **BigQuery multi-dataset schemas present every same-named table** — schema
   pruning keyed tables by bare name, so two datasets with an `events` table
   silently kept only the last; both now render with their own columns and
