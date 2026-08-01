@@ -85,26 +85,45 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [pendingKickoff, setPendingKickoff] = useState<string | null>(null);
   const kickoffFiredRef = useRef(false);
 
-  // Create a session for this chat so queries + transcript can be distilled later.
-  // `?session=<id>` (investigate-from-finding, navigate-first flow) reuses the
-  // session the investigate-finding route created instead of minting a new one —
-  // THIS page owns the stream, so navigating here first means the conclusion's
-  // onFinish persistence can't be lost to an aborted fetch elsewhere.
+  // Session identity for the transport + lazy creation. The ref mirrors the state
+  // so prepareSendMessagesRequest (captured once by useChat) always reads the
+  // CURRENT session — the construct-time `body: { sessionId }` pattern froze
+  // `undefined` forever, silently dropping persistence on auto-resumed sends.
+  const sessionIdRef = useRef<string | undefined>(undefined);
+  const setSession = (id: string | undefined) => { sessionIdRef.current = id; setSessionId(id); };
+  // In-flight creation lock: double-Enter / starter buttons / followup chips must
+  // not mint two sessions racing each other (plan red-team H3a).
+  const sessionCreateRef = useRef<Promise<string> | null>(null);
+  // A reopened investigation session is read-only: the server forces investigate
+  // mode + a (usually exhausted) step cap for every turn of a target-carrying
+  // session, and the client interrupt flow would take the wrong branch —
+  // "Continue in new chat" is the safe path (plan red-team H4).
+  const [readOnlySession, setReadOnlySession] = useState(false);
+  // Session switcher.
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionList, setSessionList] = useState<{ id: string; title: string | null; createdAt: string; metadata?: Record<string, unknown> | null }[]>([]);
+
+  // `?session=<id>` opens an existing session (investigate-from-finding navigate-
+  // first flow, a switcher-set URL, or a reload of either). No `?session` → start
+  // EMPTY with no server row; the session is created lazily on the first send, so
+  // idle visits stop minting empty session rows (sprawl fix, deliberate change).
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const existing = sp.get('session');
     if (existing) {
-      setSessionId(existing);
-      if (sp.get('autostart')) {
+      setSession(existing);
+      const autostart = !!sp.get('autostart');
+      if (autostart) {
         fetch(`/api/connections/${connectionId}/investigate-finding?sessionId=${existing}`)
           .then((r) => r.json())
           .then((d) => { if (d.kickoff) setPendingKickoff(d.kickoff); })
           .catch(() => {});
       }
-      router.replace(`/db/${connectionId}/chat`, { scroll: false });
-    } else {
-      fetch('/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }) })
-        .then((r) => r.json()).then((s) => setSessionId(s.id));
+      loadSessionMessages(existing, { autostart });
+      // Keep ?session in the URL (drop only autostart) so a reload reopens this
+      // conversation — previously the whole query was stripped and a reload after
+      // navigating back showed an empty chat, hiding the persisted transcript.
+      router.replace(`/db/${connectionId}/chat?session=${existing}`, { scroll: false });
     }
     // Dialect drives dialect-aware SQL-insert export in result blocks.
     fetch(`/api/connections/${connectionId}/schema`).then((r) => r.json()).then((d) => setDialect(d.dialect)).catch(() => {});
@@ -118,7 +137,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const { messages, sendMessage, addToolResult, status, setMessages, stop } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
-      body: { connectionId, sessionId },
+      // Lazily-resolved body: the returned object REPLACES the POST body, and the
+      // per-call body (mode/highStakes) arrives via `body` to merge. sessionId is
+      // read from the ref at SEND time — auto-resumed sends (ask_user answers via
+      // sendAutomaticallyWhen) reuse this, so they carry the current session even
+      // though the transport was constructed before any session existed.
+      prepareSendMessagesRequest: ({ messages: msgs, body }) => ({
+        body: { connectionId, sessionId: sessionIdRef.current, ...body, messages: msgs },
+      }),
     }),
     // When the model calls ask_user (a no-execute tool), the stream stops at that
     // tool-call; we render the question and resume via addToolResult below.
@@ -288,8 +314,90 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // truly aborted (never persisted) so client removal is enough.
   const lastSentModeRef = useRef<'chat' | 'investigate' | 'investigate-deep'>('chat');
 
+  /** Load a session's persisted transcript into the chat. Pre-seeds the three
+   *  post-turn dedupe refs with the loaded last-assistant id BEFORE setMessages —
+   *  their effects gate on status==='ready' and would otherwise fire a real LLM
+   *  followups call + two fetches for a historical turn on every open (H2). */
+  async function loadSessionMessages(sid: string, opts?: { autostart?: boolean }) {
+    try {
+      const r = await fetch(`/api/sessions/${sid}/messages`);
+      if (!r.ok) return;
+      const d = (await r.json()) as { messages: UIMsg[]; investigation?: boolean };
+      const msgs = Array.isArray(d.messages) ? d.messages : [];
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+      followupMsgIdRef.current = lastAssistant?.id ?? null;
+      inboxMsgIdRef.current = lastAssistant?.id ?? null;
+      provenanceMsgIdRef.current = lastAssistant?.id ?? null;
+      prevLastRef.current = lastAssistant?.id ?? null;
+      setMessages(msgs as never);
+      // A reopened investigation session (target-carrying, NOT the live autostart
+      // kickoff flow) is read-only — see readOnlySession comment (H4).
+      setReadOnlySession(!!d.investigation && !opts?.autostart);
+    } catch { /* load failure → empty chat, sends still work */ }
+  }
+
+  /** Reset every per-session UI state (the L4 table) when switching sessions. */
+  function resetSessionState() {
+    setFollowups([]);
+    setProvenance(null);
+    setSelected(null);
+    setUnseen(new Set());
+    setFollowLatest(true);
+    setInterruptedMsgId(null);
+    setInput('');
+    setDistillMsg('');
+    setDistilledThisSession(false);
+    setInboxChipDismissed(false);
+    setPendingKickoff(null);
+    setReadOnlySession(false);
+    followupAbortRef.current?.abort();
+    followupMsgIdRef.current = null;
+    inboxMsgIdRef.current = null;
+    provenanceMsgIdRef.current = null;
+    prevLastRef.current = null;
+  }
+
+  /** Switcher: open an existing session in place (URL updated so reload sticks). */
+  function openSession(sid: string) {
+    if (busy) return;
+    resetSessionState();
+    setMessages([] as never);
+    setSession(sid);
+    sessionCreateRef.current = null;
+    setSessionsOpen(false);
+    loadSessionMessages(sid);
+    router.replace(`/db/${connectionId}/chat?session=${sid}`, { scroll: false });
+  }
+
+  /** Start a fresh conversation (no server row until the first send). */
+  function newChat() {
+    if (busy) return;
+    resetSessionState();
+    setMessages([] as never);
+    setSession(undefined);
+    sessionCreateRef.current = null;
+    setSessionsOpen(false);
+    router.replace(`/db/${connectionId}/chat`, { scroll: false });
+  }
+
+  /** Lazy session creation with an in-flight lock (H3a): the first send creates
+   *  the row; concurrent sends (double-Enter, starter buttons, chips) share one
+   *  creation promise instead of minting parallel sessions. */
+  function ensureSession(): Promise<string> {
+    if (sessionIdRef.current) return Promise.resolve(sessionIdRef.current);
+    if (!sessionCreateRef.current) {
+      sessionCreateRef.current = fetch('/api/sessions', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }),
+      })
+        .then((r) => r.json())
+        .then((s: { id: string }) => { setSession(s.id); return s.id; })
+        .catch((e) => { sessionCreateRef.current = null; throw e; });
+    }
+    return sessionCreateRef.current;
+  }
+
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
-  function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
+  async function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
     // the turn the user just moved past (covers typed sends AND chip clicks).
     setFollowups([]);
@@ -297,8 +405,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     followupAbortRef.current?.abort();
     setFollowLatest(true);
     lastSentModeRef.current = mode;
+    // Session exists before the POST so persistence + investigate-target checks
+    // see it; sessionId itself travels via the transport's lazily-resolved body.
+    try { await ensureSession(); } catch { /* still send — the turn just won't persist */ }
     // highStakes is orthogonal to mode but server-honored only in chat mode.
-    sendMessage({ text }, { body: { connectionId, sessionId, mode, highStakes: mode === 'chat' && highStakes } });
+    sendMessage({ text }, { body: { connectionId, mode, highStakes: mode === 'chat' && highStakes } });
   }
 
   /** Keep the interrupted partial as the answer — just clear the interrupt flag,
@@ -419,6 +530,35 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           <h1 className="text-lg font-semibold">Chat</h1>
           <div className="flex items-center gap-3 text-sm">
             {distillMsg && <span className="text-xs text-neutral-500">{distillMsg}</span>}
+            {/* Session switcher: reopen a persisted conversation, or start clean. */}
+            <div className="relative">
+              <button data-testid="session-switcher" disabled={busy} title="Previous conversations"
+                onClick={() => {
+                  setSessionsOpen((o) => !o);
+                  if (!sessionsOpen) {
+                    fetch(`/api/sessions?connectionId=${connectionId}`)
+                      .then((r) => r.json())
+                      .then((l) => setSessionList(Array.isArray(l) ? l.slice(0, 50) : []))
+                      .catch(() => {});
+                  }
+                }}
+                className="text-blue-600 disabled:opacity-40">🕘 Sessions</button>
+              {sessionsOpen && (
+                <div className="absolute right-0 z-20 mt-1 max-h-80 w-80 overflow-y-auto rounded border border-neutral-200 bg-white p-1 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900" data-testid="session-list">
+                  <button onClick={newChat} className="block w-full rounded px-2 py-1.5 text-left font-medium text-blue-600 hover:bg-neutral-100 dark:hover:bg-neutral-800">+ New chat</button>
+                  {sessionList.map((s) => {
+                    const isInvestigation = !!(s.metadata as Record<string, unknown> | null)?.investigationTarget;
+                    return (
+                      <button key={s.id} onClick={() => openSession(s.id)} data-testid="session-item"
+                        className={`block w-full truncate rounded px-2 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 ${s.id === sessionId ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}>
+                        {isInvestigation ? '🔎 ' : ''}{s.title || new Date(s.createdAt).toLocaleString()}
+                      </button>
+                    );
+                  })}
+                  {sessionList.length === 0 && <p className="px-2 py-1.5 text-neutral-400">No previous sessions</p>}
+                </div>
+              )}
+            </div>
             <button onClick={toggleFollowups} className={followupsOn ? 'text-blue-600' : 'text-neutral-400'} title="Suggest follow-up questions after each answer">Follow-ups {followupsOn ? 'on' : 'off'}</button>
             <button onClick={() => setNotebookModal(true)} disabled={!sessionId || messages.length === 0} className="text-blue-600 disabled:opacity-40">Save as notebook</button>
             <button onClick={distill} disabled={!sessionId || messages.length === 0}
@@ -603,6 +743,16 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           </div>
         )}
 
+        {/* A reopened investigation session is read-only: the server forces
+            investigate mode + an exhausted step cap on its turns, and the client
+            interrupt flow would take the wrong branch (plan red-team H4). */}
+        {readOnlySession && (
+          <div className="mt-3 flex items-center justify-between rounded border border-indigo-200 bg-indigo-50 p-2 text-xs dark:border-indigo-900 dark:bg-indigo-950" data-testid="readonly-banner">
+            <span>🔎 Investigation session (read-only)</span>
+            <button onClick={newChat} className="rounded bg-blue-600 px-2 py-1 text-white">Continue in new chat</button>
+          </div>
+        )}
+        {!readOnlySession && (
         <form
           className="mt-3 flex gap-2"
           onSubmit={(e) => {
@@ -644,6 +794,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Send</button>
           )}
         </form>
+        )}
         {isInvestigationSession && busy && (
           <p className="mt-1 text-center text-[11px] text-amber-600" data-testid="investigation-running-notice">
             🔎 Investigation running — stay on this page until it finishes so the conclusion is saved.

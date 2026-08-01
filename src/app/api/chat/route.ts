@@ -27,6 +27,11 @@ import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
 /** Parent investigate caps — imported from agent-service, which OWNS them. The
  *  budget split must divide the real cap: a local copy would silently drift if
  *  the owner's value changed, letting the sub-caps exceed the parent. */
+/** How many trailing UIMessages the MODEL re-reads per send (H5). Rehydrated
+ *  sessions can carry very heavy transcripts; the UI shows everything, the model
+ *  only needs recent context. Env-overridable for tuning. */
+const MODEL_HISTORY_WINDOW = Number(process.env.CHAT_MODEL_HISTORY_WINDOW ?? 20);
+
 const PARENT_SQL = { investigate: MAX_SQL_PER_INVESTIGATION, 'investigate-deep': MAX_SQL_DEEP };
 const PARENT_STEPS = { investigate: MAX_STEPS_INVESTIGATE, 'investigate-deep': MAX_STEPS_INVESTIGATE_DEEP };
 
@@ -168,7 +173,10 @@ export async function POST(req: Request) {
   const result = await streamAgentAnswer({
     connectionId,
     dialect: conn.dialect,
-    messages: await convertToModelMessages(messages),
+    // Model-history window (H5): a rehydrated session ships its whole transcript
+    // (30-query investigations, vote payloads) — cap what the model re-reads per
+    // send. The UI keeps the full transcript; only the model payload is windowed.
+    messages: await convertToModelMessages(messages.slice(-MODEL_HISTORY_WINDOW)),
     sessionId,
     mode: resolvedMode,
     findingContext,
