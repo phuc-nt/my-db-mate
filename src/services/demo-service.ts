@@ -171,7 +171,14 @@ async function seedDemoContext(connectionId: string) {
 /** Create (or return) the demo connection. Idempotent by connection name. */
 export async function ensureDemoConnection(): Promise<{ id: string; created: boolean }> {
   const existing = await db.select({ id: connections.id }).from(connections).where(eq(connections.name, DEMO_CONNECTION_NAME));
-  if (existing.length > 0) return { id: existing[0].id, created: false };
+  if (existing.length > 0) {
+    // The connection row (app Postgres) outlives the SQLite file when the app
+    // container is recreated or a dev wipes .demo/ — regenerate the file so the
+    // existing connection heals instead of failing every query. Deterministic
+    // seed → the regenerated data is identical to the original.
+    ensureDemoDb();
+    return { id: existing[0].id, created: false };
+  }
 
   const dbPath = ensureDemoDb();
   const row = await createConnection({

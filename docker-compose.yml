@@ -33,7 +33,14 @@ services:
       CREDENTIAL_ENC_KEY: ${CREDENTIAL_ENC_KEY}
     ports:
       - "3000:3000"
+    volumes:
+      # The one-click demo DB lives on the container filesystem (.demo/demo-shop.db)
+      # while its connection row lives in Postgres. Without this volume, updating or
+      # recreating the app container deletes the file but keeps the connection —
+      # leaving a demo that fails every query. Persist it like the app DB.
+      - app-demo-data:/app/.demo
     profiles: ["full"]  # `docker compose --profile full up` runs app+db; default runs db only
 
 volumes:
   app-db-data:
+  app-demo-data:
