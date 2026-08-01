@@ -35,6 +35,8 @@ Cài nhanh (cần Docker):
 docker compose --profile full up    # app + DB + tự migrate → http://localhost:3000
 ```
 
+Cài xong **thử được ngay, không cần database**: trang Connections có nút **"✨ Try with a sample database"** — 1 click tạo DB shop mẫu (5.000 đơn hàng, mã enum kiểu production thật) kèm sẵn glossary + verified queries, vào thẳng chat. Câu hỏi gợi ý cho từng chức năng: xem [mục "Thử ngay" trong hướng dẫn](docs/user-guide.md#thử-ngay--không-cần-database).
+
 ---
 
 ## Cho người dùng Tableau

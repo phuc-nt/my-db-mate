@@ -4,6 +4,21 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [Unreleased]
+
+### Fixed
+
+- **The one-click demo DB now survives app-container updates.** Its SQLite file
+  lived on the container filesystem while its connection row lived in the app
+  Postgres — recreating or updating the app container deleted the file but kept
+  the connection, leaving a demo that failed every query with no way to heal
+  (the demo button only shows on an empty connections list). The demo directory
+  is now a named Docker volume, and `ensureDemoConnection` regenerates a
+  missing/corrupt file even when the connection already exists (deterministic
+  seed → the regenerated data is identical). The user guide gained a
+  "try it immediately, no database needed" section with suggested first
+  questions per feature.
+
 ## [0.11.0] — 2026-07-20
 
 Investigate mode goes wide: a breadth question runs as several focused
