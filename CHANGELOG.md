@@ -6,7 +6,45 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Chat — session history & ambient trust
+
+- **Persisted conversations are visible again.** The chat page never reloaded
+  stored messages — everything A3/A4 persistence saved (transcripts, verify
+  badges, sub-investigation cards) was invisible after a reload, and a breadth
+  investigation that survived navigating away could never actually be seen. A
+  🕘 Sessions switcher now lists and reopens past conversations with the full
+  transcript rendered from persisted parts; the URL keeps `?session=` so reloads
+  stick. Dangling `ask_user` pause turns are pruned on load (they previously
+  poisoned every subsequent send in that session). Reopened investigation
+  sessions are read-only with "Continue in new chat" (their turns are
+  step-capped server-side, and every send path honors it). Sessions are created
+  on the first message instead of every page visit, and the model re-reads only
+  a trailing window (default 20 messages) of a reopened transcript.
+- **Governed-metric questions cross-check automatically.** A chat question
+  matching a governed metric at the adherence-lint bar runs the candidate
+  cross-check without the High-stakes toggle, labeled "auto (governed metric)".
+  Auto checks only the first query of the turn; only the interactive chat opts
+  in (scheduled runs / MCP / eval never silently pay for it); `HIGH_STAKES_AUTO=off`
+  disables it.
+
 ### Fixed
+
+- **Sub-investigation conclusions in Vietnamese are no longer misjudged** — the
+  narration detector was English-only with an ASCII word-boundary regex (which
+  silently fails next to đ/diacritics) and a 120-char gate that rejected
+  legitimate short Vietnamese conclusions; it now understands Vietnamese
+  narration tails and accepts shorter real conclusions.
+- **Discarding an in-flight turn is race-proof** — the tombstone is stamped with
+  the server clock (a fast browser clock could swallow legitimate later turns)
+  and consumed compare-and-delete so one turn's late finish can't steal a newer
+  discard's tombstone.
+- **BigQuery multi-dataset schemas present every same-named table** — schema
+  pruning keyed tables by bare name, so two datasets with an `events` table
+  silently kept only the last; both now render with their own columns and
+  dataset qualification.
+- Parallel sub-investigations share one big-tables fetch instead of N identical
+  queries, and persisted sub-investigation snapshots keep the same query window
+  the UI showed.
 
 - **The one-click demo DB now survives app-container updates.** Its SQLite file
   lived on the container filesystem while its connection row lived in the app
