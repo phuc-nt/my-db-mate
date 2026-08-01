@@ -66,14 +66,25 @@ export async function wasTurnDiscarded(sessionId: string, turnStartIso: string):
   return typeof at === 'string' && at >= turnStartIso;
 }
 
+/** The current tombstone timestamp, if any — callers that intend to consume it
+ *  must capture this value and pass it to `clearDiscardTombstone` so a NEWER
+ *  tombstone (a second discard racing this drain) is never stolen. */
+export async function getDiscardTombstone(sessionId: string): Promise<string | null> {
+  const [row] = await db.select({ metadata: chatSessions.metadata }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+  const at = (row?.metadata as Record<string, unknown> | null)?.[META_DISCARD_AFTER_KEY];
+  return typeof at === 'string' ? at : null;
+}
+
 /** Consume the tombstone AFTER its skip fired — the only race-free point to
  *  clear it. Clearing on a new POST instead would let a still-draining discarded
- *  turn outlive its tombstone and persist after all (the A4 zombie, reborn). */
-export async function clearDiscardTombstone(sessionId: string): Promise<void> {
+ *  turn outlive its tombstone and persist after all (the A4 zombie, reborn).
+ *  Compare-and-delete: only removes the exact value the skip observed, so turn
+ *  A's late drain can't consume the tombstone stamped for turn B's discard. */
+export async function clearDiscardTombstone(sessionId: string, observedAt: string): Promise<void> {
   await db
     .update(chatSessions)
     .set({ metadata: sql`coalesce(${chatSessions.metadata}, '{}'::jsonb) - ${META_DISCARD_AFTER_KEY}` })
-    .where(eq(chatSessions.id, sessionId));
+    .where(and(eq(chatSessions.id, sessionId), sql`coalesce(${chatSessions.metadata}, '{}'::jsonb)->>${META_DISCARD_AFTER_KEY} = ${observedAt}`));
 }
 
 /** Delete the most recent assistant message in a session — used by the chat

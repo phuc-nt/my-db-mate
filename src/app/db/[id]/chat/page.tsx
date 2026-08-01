@@ -94,6 +94,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // In-flight creation lock: double-Enter / starter buttons / followup chips must
   // not mint two sessions racing each other (plan red-team H3a).
   const sessionCreateRef = useRef<Promise<string> | null>(null);
+  const loadTokenRef = useRef(0);
   // A reopened investigation session is read-only: the server forces investigate
   // mode + a (usually exhausted) step cap for every turn of a target-carrying
   // session, and the client interrupt flow would take the wrong branch —
@@ -113,13 +114,16 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     if (existing) {
       setSession(existing);
       const autostart = !!sp.get('autostart');
-      if (autostart) {
+      // Load the transcript FIRST, then arm the kickoff: firing them concurrently
+      // let a late setMessages(persisted) clobber the kickoff's in-flight stream
+      // from the UI (review Medium #3).
+      loadSessionMessages(existing, { autostart }).then(() => {
+        if (!autostart) return;
         fetch(`/api/connections/${connectionId}/investigate-finding?sessionId=${existing}`)
           .then((r) => r.json())
           .then((d) => { if (d.kickoff) setPendingKickoff(d.kickoff); })
           .catch(() => {});
-      }
-      loadSessionMessages(existing, { autostart });
+      });
       // Keep ?session in the URL (drop only autostart) so a reload reopens this
       // conversation — previously the whole query was stripped and a reload after
       // navigating back showed an empty chat, hiding the persisted transcript.
@@ -319,10 +323,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
    *  their effects gate on status==='ready' and would otherwise fire a real LLM
    *  followups call + two fetches for a historical turn on every open (H2). */
   async function loadSessionMessages(sid: string, opts?: { autostart?: boolean }) {
+    // Load token: rapid session switching is last-CLICK-wins, not last-RESOLVE-
+    // wins — a stale load must not land its messages after the user moved on
+    // (review Medium #4: A's history would become B's model payload).
+    const token = ++loadTokenRef.current;
     try {
       const r = await fetch(`/api/sessions/${sid}/messages`);
-      if (!r.ok) return;
+      if (!r.ok || token !== loadTokenRef.current) return;
       const d = (await r.json()) as { messages: UIMsg[]; investigation?: boolean };
+      if (token !== loadTokenRef.current) return;
       const msgs = Array.isArray(d.messages) ? d.messages : [];
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
       followupMsgIdRef.current = lastAssistant?.id ?? null;
@@ -389,8 +398,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       sessionCreateRef.current = fetch('/api/sessions', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connectionId }),
       })
-        .then((r) => r.json())
-        .then((s: { id: string }) => { setSession(s.id); return s.id; })
+        .then((r) => { if (!r.ok) throw new Error('session create failed'); return r.json(); })
+        .then((s: { id: string }) => { if (!s?.id) throw new Error('session create returned no id'); setSession(s.id); return s.id; })
         .catch((e) => { sessionCreateRef.current = null; throw e; });
     }
     return sessionCreateRef.current;
@@ -398,6 +407,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   /** Send a turn, optionally in investigate mode (deeper multi-step analysis). */
   async function send(text: string, mode: 'chat' | 'investigate' | 'investigate-deep' = 'chat') {
+    // Read-only sessions must not send from ANY path — the composer is hidden,
+    // but transcript-embedded buttons (Analyze deeper, panel actions) all funnel
+    // here, so this is the single choke point (review High #1).
+    if (readOnlySession) return;
     // Clear + abort any pending follow-up fetch so stale chips don't repopulate
     // the turn the user just moved past (covers typed sends AND chip clicks).
     setFollowups([]);
@@ -643,7 +656,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             onConfirmedRun={(info) => recordConfirmedRun(`Q${artifact?.index ?? '?'}`, info)}
                             question={artifact?.question}
                           />
-                          {ok && !busy && (
+                          {ok && !busy && !readOnlySession && (
                             <button onClick={() => analyzeDeeper(out!.executedSql ?? p.input?.sql ?? '')}
                               className="mt-1 text-xs text-blue-600 hover:underline">🔎 Analyze deeper</button>
                           )}

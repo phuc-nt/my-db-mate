@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { connections, chatSessions } from '../db/schema';
-import { createSession, setDiscardTombstone, wasTurnDiscarded, clearDiscardTombstone } from './session-service';
+import { createSession, setDiscardTombstone, wasTurnDiscarded, clearDiscardTombstone, getDiscardTombstone } from './session-service';
 
 let connId: string;
 let sessionId: string;
@@ -38,16 +38,30 @@ describe('discard tombstone', () => {
     expect(await wasTurnDiscarded(sessionId, turnAfter)).toBe(false);
   });
 
-  it('consume-on-skip clears the key; a later check is clean', async () => {
-    await clearDiscardTombstone(sessionId);
+  it('consume-on-skip clears the exact observed value; a later check is clean', async () => {
+    const observed = await getDiscardTombstone(sessionId);
+    expect(observed).toBeTruthy();
+    await clearDiscardTombstone(sessionId, observed!);
     const [row] = await db.select({ m: chatSessions.metadata }).from(chatSessions).where(eq(chatSessions.id, sessionId));
     expect((row?.m as Record<string, unknown> | null)?.discardAfter).toBeUndefined();
     expect(await wasTurnDiscarded(sessionId, new Date(0).toISOString())).toBe(false);
   });
 
+  it('compare-and-delete: a STALE observed value cannot steal a newer tombstone', async () => {
+    // Turn A observed t1; turn B's discard re-stamps to t2; A's late clear must no-op.
+    const t1 = new Date(Date.now() - 5000).toISOString();
+    await setDiscardTombstone(sessionId, t1);
+    const t2 = new Date().toISOString();
+    await setDiscardTombstone(sessionId, t2);
+    await clearDiscardTombstone(sessionId, t1); // stale — must NOT remove t2
+    expect(await getDiscardTombstone(sessionId)).toBe(t2);
+    await clearDiscardTombstone(sessionId, t2); // the rightful consumer
+    expect(await getDiscardTombstone(sessionId)).toBeNull();
+  });
+
   it('clear on a session with no tombstone is a no-op (metadata preserved)', async () => {
     await db.update(chatSessions).set({ metadata: { keepMe: 1 } }).where(eq(chatSessions.id, sessionId));
-    await clearDiscardTombstone(sessionId);
+    await clearDiscardTombstone(sessionId, new Date().toISOString());
     const [row] = await db.select({ m: chatSessions.metadata }).from(chatSessions).where(eq(chatSessions.id, sessionId));
     expect((row?.m as Record<string, unknown>).keepMe).toBe(1);
   });
