@@ -4,7 +4,11 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
-## [Unreleased]
+## [0.12.0] — 2026-08-01
+
+Conversations finally persist where you can see them, verification turns
+ambient, and a batch of quality debts is paid — including two bugs that only a
+full end-to-end UAT across consecutive real investigations could expose.
 
 ### Chat — session history & ambient trust
 
