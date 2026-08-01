@@ -1,5 +1,5 @@
 /** Chat session persistence: sessions, messages, and the query-run audit view. */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { chatSessions, chatMessages, queryRuns } from '../db/schema';
 
@@ -102,6 +102,35 @@ export async function deleteLatestAssistantMessage(sessionId: string): Promise<s
   if (!latest) return null;
   await db.delete(chatMessages).where(eq(chatMessages.id, latest.id));
   return latest.id;
+}
+
+/**
+ * Discard the LATEST TURN, deciding server-side what that means — the client
+ * cannot know whether the turn it is discarding was already persisted:
+ * - not yet persisted (server still draining): the tombstone makes the eventual
+ *   persist skip; nothing is deleted — "delete latest assistant" here would hit
+ *   the PREVIOUS turn's answer (full-UAT-caught bug: discarding a running
+ *   breadth turn silently erased the prior investigation's result);
+ * - already persisted: its answer is exactly the assistant rows newer than the
+ *   final user message — delete those, never anything older.
+ * Both cases stamp the tombstone (server clock), so a drain that races this
+ * call is covered either way. Returns what happened for observability.
+ */
+export async function discardLatestTurn(sessionId: string): Promise<{ deleted: number; tombstoned: boolean }> {
+  await setDiscardTombstone(sessionId, new Date().toISOString());
+  // Positional, not timestamp-compared: take the ordered transcript and delete
+  // only assistant rows AFTER the final user row. A raw `createdAt >` compare
+  // mis-fires when rows share a timestamp; position can never reach anything
+  // at-or-before the last user message, so an earlier turn's answer is safe by
+  // construction.
+  const msgs = await getMessages(sessionId);
+  let lastUserIdx = -1;
+  msgs.forEach((m, i) => { if (m.role === 'user') lastUserIdx = i; });
+  if (lastUserIdx < 0) return { deleted: 0, tombstoned: true };
+  const ids = msgs.slice(lastUserIdx + 1).filter((m) => m.role === 'assistant').map((m) => m.id);
+  if (ids.length === 0) return { deleted: 0, tombstoned: true };
+  await db.delete(chatMessages).where(inArray(chatMessages.id, ids));
+  return { deleted: ids.length, tombstoned: true };
 }
 
 /** Audit trail for a session (or a connection). */

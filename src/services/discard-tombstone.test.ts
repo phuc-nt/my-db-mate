@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { connections, chatSessions } from '../db/schema';
-import { createSession, setDiscardTombstone, wasTurnDiscarded, clearDiscardTombstone, getDiscardTombstone } from './session-service';
+import { createSession, setDiscardTombstone, wasTurnDiscarded, clearDiscardTombstone, getDiscardTombstone, discardLatestTurn, addMessage, getMessages } from './session-service';
 
 let connId: string;
 let sessionId: string;
@@ -57,6 +57,42 @@ describe('discard tombstone', () => {
     expect(await getDiscardTombstone(sessionId)).toBe(t2);
     await clearDiscardTombstone(sessionId, t2); // the rightful consumer
     expect(await getDiscardTombstone(sessionId)).toBeNull();
+  });
+
+  it('discardLatestTurn mid-drain: tombstones but NEVER deletes the previous turn', async () => {
+    // Session state during a draining discard: [user1, assistant1(previous turn),
+    // user2] — turn 2's answer is NOT yet persisted. The old client-side "delete
+    // latest assistant" erased assistant1 here (full-UAT-caught bug).
+    const s = await createSession(connId);
+    const tick = () => new Promise((r) => setTimeout(r, 10));
+    await addMessage({ sessionId: s.id, role: 'user', content: 'q1' });
+    await tick();
+    await addMessage({ sessionId: s.id, role: 'assistant', content: 'answer 1 (must survive)' });
+    await tick();
+    await addMessage({ sessionId: s.id, role: 'user', content: 'q2 (being discarded mid-drain)' });
+    const r = await discardLatestTurn(s.id);
+    expect(r).toEqual({ deleted: 0, tombstoned: true });
+    const msgs = await getMessages(s.id);
+    expect(msgs.filter((m) => m.role === 'assistant')).toHaveLength(1); // answer 1 intact
+    expect(await getDiscardTombstone(s.id)).toBeTruthy(); // drain's persist will skip
+  });
+
+  it('discardLatestTurn post-finish: deletes exactly the discarded turn’s answer', async () => {
+    const s = await createSession(connId);
+    const tick = () => new Promise((r) => setTimeout(r, 10));
+    await addMessage({ sessionId: s.id, role: 'user', content: 'q1' });
+    await tick();
+    await addMessage({ sessionId: s.id, role: 'assistant', content: 'answer 1 (must survive)' });
+    await tick();
+    await addMessage({ sessionId: s.id, role: 'user', content: 'q2' });
+    await tick();
+    await addMessage({ sessionId: s.id, role: 'assistant', content: 'answer 2 (discarded)' });
+    const r = await discardLatestTurn(s.id);
+    expect(r.deleted).toBe(1);
+    const msgs = await getMessages(s.id);
+    const assistants = msgs.filter((m) => m.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0].content).toContain('answer 1');
   });
 
   it('clear on a session with no tombstone is a no-op (metadata preserved)', async () => {
