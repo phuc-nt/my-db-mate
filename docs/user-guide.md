@@ -51,11 +51,29 @@ npm run dev                         # http://localhost:3000
 npm run smoke:llm      # test model gọi tool + độ chính xác với OPENROUTER_API_KEY của bạn
 ```
 
+### Thử ngay — không cần database
+
+Cài xong là kiểm tra được chức năng ngay, chưa cần DB thật: mở `http://localhost:3000`, trang Connections (khi trống) có nút **"✨ Try with a sample database"**. Một click sẽ:
+
+- Tạo một **DB shop mẫu** (SQLite local): 500 khách hàng, 200 sản phẩm, 5.000 đơn hàng trải 18 tháng. Schema **cố tình dùng mã enum khó đoán** (`ord_sts_cd` = trạng thái đơn, `seg_cd` = segment khách…) — đúng kiểu DB production thật, để bạn thấy giá trị của context layer chứ không chỉ text-to-SQL.
+- **Seed sẵn context**: chú thích bảng/cột giải nghĩa các mã, glossary (revenue, cancelled order, VIP customer) và 2 verified queries — rồi đưa bạn thẳng vào chat.
+
+**Câu hỏi gợi ý để thử từng nhóm chức năng:**
+
+| Thử | Hỏi |
+|---|---|
+| Chat + context layer | "Doanh thu tháng trước là bao nhiêu?" (agent tự hiểu revenue = đơn S/D nhờ glossary) |
+| Plan card + verify badge | "Top 10 sản phẩm theo doanh thu" |
+| High-stakes cross-check | Bật **High-stakes** rồi hỏi "Tổng doanh thu tất cả đơn hàng?" — sẽ thấy diff panel vì "tất cả đơn" có nhiều cách hiểu (tính cả đơn huỷ/hoàn không?) |
+| Điều tra song song | Bật **Investigate** rồi hỏi "Doanh thu giảm do đâu? Theo segment, thời gian và sản phẩm" |
+
+Dữ liệu demo **giống hệt nhau trên mọi máy** (sinh deterministic) nên số liệu bạn thấy khớp với số trong tài liệu. Demo DB **sống qua các lần update app** (có volume riêng); nếu file có mất (xoá tay ở chế độ dev), bấm lại nút demo là tự tạo lại đúng dữ liệu cũ.
+
 ---
 
 ## 2. Kết nối database
 
-> **Chưa có DB để thử?** Trang Connections (khi trống) có nút **"Try with a sample database"** — tạo một DB shop mẫu (orders/products/customers, mã enum kiểu `ord_sts_cd`) kèm sẵn business glossary, rồi đưa bạn thẳng vào chat.
+> **Chưa có DB để thử?** Xem mục **"Thử ngay — không cần database"** ở trên.
 
 Mở `/connections`, bấm thêm connection:
 
