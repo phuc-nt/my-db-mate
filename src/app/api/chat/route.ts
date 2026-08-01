@@ -189,6 +189,10 @@ export async function POST(req: Request) {
     // High-stakes candidate voting is chat-only: force-false in investigate /
     // investigate-from-finding so a `highStakes:true` body can't trigger it there.
     highStakes: !!highStakes && resolvedMode === 'chat',
+    // AUTO high-stakes (governed-metric questions verify unasked) is opted in by
+    // THIS interactive route only — headless callers (MCP/schedule/eval) must
+    // never silently gain the extra cost (red-team H1).
+    allowAutoHighStakes: true,
   });
 
   // Persist the finished assistant turn (transcript history + notebook-from-session

@@ -9,10 +9,17 @@
 import type { VoteResult, VoteGroup, BqCostCandidate } from '../lib/candidate-vote-types';
 
 export function CandidateVoteBlock({ vote, onPick }: { vote: VoteResult; onPick?: (sql: string) => void }) {
+  // Why the check ran without the toggle: the question matched a governed metric.
+  const autoNote = vote.auto ? (
+    <span className="ml-1 text-neutral-400" data-testid="vote-auto-note" title="This question matched a governed metric, so the answer was cross-checked automatically">
+      · auto (governed metric)
+    </span>
+  ) : null;
+
   if (vote.kind === 'consensus') {
     return (
       <p className="mt-1 text-[11px] text-green-600 dark:text-green-500" data-testid="vote-consensus">
-        ✓ {vote.agree}/{vote.total} cross-check queries agree
+        ✓ {vote.agree}/{vote.total} cross-check queries agree{autoNote}
       </p>
     );
   }
@@ -47,7 +54,7 @@ export function CandidateVoteBlock({ vote, onPick }: { vote: VoteResult; onPick?
   // diverge
   return (
     <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] dark:border-amber-800 dark:bg-amber-950" data-testid="vote-diverge">
-      <div className="mb-1 font-medium text-amber-700 dark:text-amber-400">⚠ Cross-check queries disagree — worth a look</div>
+      <div className="mb-1 font-medium text-amber-700 dark:text-amber-400">⚠ Cross-check queries disagree — worth a look{autoNote}</div>
       <div className="space-y-2">
         {vote.groups.map((g: VoteGroup, i) => (
           <div key={i} className="rounded bg-white/60 p-1 dark:bg-black/20">

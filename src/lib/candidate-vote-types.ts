@@ -43,7 +43,7 @@ export interface BqCostCandidate {
   reliable: boolean;
 }
 
-export type VoteResult =
+export type VoteResult = (
   /** Every executed candidate produced the same result. */
   | { kind: 'consensus'; agree: number; total: number }
   /** Executed candidates produced different results — the user should look. This
@@ -53,4 +53,9 @@ export type VoteResult =
    *  unordered to cross-check deterministically. Not an error, not a pass. */
   | { kind: 'inconclusive'; reason: string }
   /** BigQuery: dry-run cost comparison, no execution. */
-  | { kind: 'bq-cost'; candidates: BqCostCandidate[] };
+  | { kind: 'bq-cost'; candidates: BqCostCandidate[] }
+) & {
+  /** Present when the cross-check fired automatically because the question
+   *  matched a governed metric (not the manual toggle) — the UI explains why. */
+  auto?: boolean;
+};
