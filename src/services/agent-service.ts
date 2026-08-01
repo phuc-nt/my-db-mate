@@ -586,7 +586,7 @@ function selfRepairHint(state: InvestigationState) {
 }
 
 /** Tables above BIG_TABLE_ROWS, for the big-table policy prompt (red-team C2/C3). */
-async function getBigTables(connectionId: string): Promise<{ name: string; rows: number }[]> {
+export async function getBigTables(connectionId: string): Promise<{ name: string; rows: number }[]> {
   const threshold = Number(process.env.BIG_TABLE_ROWS ?? 1_000_000);
   const tables = await db.select({ tableName: schemaTables.tableName, rowCount: schemaTables.rowCount })
     .from(schemaTables)
@@ -628,8 +628,13 @@ export async function streamAgentAnswer(params: {
    *  (no plan_analysis/ask_user), BQ agentBudgeted, and an explicit per-sub SQL
    *  cap. `maxSql` is the sub's slice of the parent budget (red-team H1/M1). */
   subInvestigation?: { maxSql: number; maxSteps: number };
+  /** Big-table list precomputed by the caller — N parallel sub-loops on ONE
+   *  connection would otherwise each run the identical query (review M3). The
+   *  question-specific fetches (pruned schema, relevant context) stay per-call
+   *  by design: each sub asks a different question. */
+  precomputedBigTables?: { name: string; rows: number }[];
 }) {
-  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false, allowAutoHighStakes = false, subInvestigation } = params;
+  const { connectionId, dialect, messages, actor = 'owner', sessionId, mode = 'chat', findingContext, maxSqlSteps, abortSignal, highStakes = false, allowAutoHighStakes = false, subInvestigation, precomputedBigTables } = params;
   // Inject context relevant to the latest user turn (glossary, annotations,
   // verified few-shots) — the moat that lifts accuracy on real schemas.
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
@@ -652,7 +657,7 @@ export async function streamAgentAnswer(params: {
   const relevant = question ? await getRelevantContext(question, connectionId) : null;
   const contextBlock = relevant ? renderContextForPrompt(relevant) : '';
   const matchedMetrics = relevant?.metrics ?? [];
-  const bigTables = await getBigTables(connectionId);
+  const bigTables = precomputedBigTables ?? await getBigTables(connectionId);
 
   const system =
     SYSTEM(schema, dialect) +

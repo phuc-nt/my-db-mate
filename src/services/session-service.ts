@@ -66,6 +66,16 @@ export async function wasTurnDiscarded(sessionId: string, turnStartIso: string):
   return typeof at === 'string' && at >= turnStartIso;
 }
 
+/** Consume the tombstone AFTER its skip fired — the only race-free point to
+ *  clear it. Clearing on a new POST instead would let a still-draining discarded
+ *  turn outlive its tombstone and persist after all (the A4 zombie, reborn). */
+export async function clearDiscardTombstone(sessionId: string): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ metadata: sql`coalesce(${chatSessions.metadata}, '{}'::jsonb) - ${META_DISCARD_AFTER_KEY}` })
+    .where(eq(chatSessions.id, sessionId));
+}
+
 /** Delete the most recent assistant message in a session — used by the chat
  *  interrupt's Discard action when the server already persisted a (completed)
  *  turn the user chose to throw away (investigate mode). Single-user, no

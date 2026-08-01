@@ -15,7 +15,7 @@
 import { generateText, streamText, Output, type UIMessageStreamWriter } from 'ai';
 import { z } from 'zod';
 import { getModel } from './llm-service';
-import { streamAgentAnswer } from './agent-service';
+import { streamAgentAnswer, getBigTables } from './agent-service';
 import type { Dialect } from './connection-providers/provider-interface';
 import {
   SUBQ_PART_TYPE,
@@ -33,6 +33,10 @@ const MIN_SUB_STEPS = 6;
 /** Snapshot text updates are throttled to at most one write per this interval
  *  (tool-result writes are always emitted); previews are capped (red-team M6). */
 const TEXT_WRITE_THROTTLE_MS = 250;
+/** Queries kept per sub snapshot on the WIRE and at PERSIST time — one shared
+ *  constant so the stored row can't silently hold more than the UI ever showed
+ *  (A4 review L1: the persist path wrote the full uncapped snapshot). */
+export const SNAPSHOT_QUERY_CAP = 8;
 const PREVIEW_ROWS = 3;
 const CURRENT_STEP_MAX = 160;
 
@@ -123,10 +127,15 @@ export async function runSubInvestigations(args: {
 }): Promise<SubInvestigationSnapshot[]> {
   const { connectionId, dialect, subs, budget, writer, sessionId } = args;
 
+  // One connection-level fetch shared by all sub-loops (review M3) — each would
+  // otherwise run the identical big-tables query. Question-specific context
+  // stays per-sub by design.
+  const bigTables = await getBigTables(connectionId).catch(() => []);
+
   const snapshots = new Map<string, SubInvestigationSnapshot>();
   const write = (snap: SubInvestigationSnapshot) => {
     // Same id → the SDK reconciles to one part; this is a full in-place replace.
-    writer.write({ type: SUBQ_PART_TYPE, id: snap.id, data: { ...snap, queries: snap.queries.slice(-8) } });
+    writer.write({ type: SUBQ_PART_TYPE, id: snap.id, data: { ...snap, queries: snap.queries.slice(-SNAPSHOT_QUERY_CAP) } });
   };
 
   for (const sq of subs) {
@@ -149,6 +158,7 @@ export async function runSubInvestigations(args: {
           sessionId,
           mode: 'investigate',
           subInvestigation: { maxSql: budget.maxSql, maxSteps: budget.maxSteps },
+          precomputedBigTables: bigTables,
         });
 
         // Only the FINAL step's text is the conclusion — a multi-step loop narrates
@@ -207,16 +217,25 @@ export async function runSubInvestigations(args: {
 /** Trailing narration a step-capped loop ends on instead of a real conclusion
  *  ("Now let me compile the findings.") — short, and announcing work still to come. */
 const NARRATION_RE = /\b(let me|let's|now i(?:'| a)|next,? i|i(?:'ll| will) (?:now |then )?(?:compile|check|look|get|run|calculate|analyze|summarize))\b/i;
+/** Vietnamese narration tails ("để tôi kiểm tra", "bây giờ tôi sẽ…"). Matched via
+ *  lowercase substring, NOT regex \b — JS \b is ASCII-based and misbehaves next
+ *  to đ/diacritics, so word-boundary regexes silently fail on exactly the text
+ *  this guards (the product is Vietnamese-first; plan red-team M4). */
+const NARRATION_VI = ['để tôi', 'hãy để tôi', 'bây giờ tôi', 'giờ tôi sẽ', 'tiếp theo tôi', 'giờ mình', 'tôi sẽ kiểm tra', 'tôi sẽ tính', 'tôi sẽ chạy', 'tôi sẽ phân tích', 'tôi sẽ tổng hợp'];
 
 /** Whether a sub-loop's final text reads as its conclusion rather than mid-loop
  *  narration. Pure + testable: a real section is substantive (not a one-liner) and
- *  does not announce work it never got to do. */
+ *  does not announce work it never got to do. The length gate is 60 chars — 120
+ *  rejected legitimate short Vietnamese conclusions and made the fallback (full
+ *  narration-laced text) the common case for VN answers. */
 export function looksLikeConclusion(text: string): boolean {
   const t = text.trim();
-  if (t.length < 120) return false; // a real evidence-backed section is longer
-  // Narration in the LAST sentence means the loop ended mid-thought.
+  if (t.length < 60) return false; // a real evidence-backed section is longer
+  // Narration in the LAST sentences means the loop ended mid-thought.
   const tail = t.slice(-160);
-  return !NARRATION_RE.test(tail);
+  if (NARRATION_RE.test(tail)) return false;
+  const tailLower = tail.toLowerCase();
+  return !NARRATION_VI.some((p) => tailLower.includes(p));
 }
 
 /** Whether any sub produced a usable conclusion (red-team M2: 0 survivors → the

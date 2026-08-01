@@ -83,6 +83,28 @@ describe('looksLikeConclusion — reject mid-loop narration as a section', () =>
     expect(looksLikeConclusion('Done.')).toBe(false);
     expect(looksLikeConclusion('')).toBe(false);
   });
+
+  // VN-first (review H2/M4): the product answers in Vietnamese; the old 120-char
+  // gate + EN-only regex pushed real VN conclusions into the noisy fallback.
+  it('accepts a legitimate short Vietnamese conclusion (60-120 chars)', () => {
+    const vn = 'Doanh thu giảm 12% so với quý trước, tập trung ở segment Enterprise (S1).';
+    expect(vn.length).toBeGreaterThan(60);
+    expect(vn.length).toBeLessThan(120);
+    expect(looksLikeConclusion(vn)).toBe(true);
+  });
+  it('rejects Vietnamese narration tails (diacritic-adjacent, no \\b reliance)', () => {
+    const body = 'Doanh thu Q2 đạt 1,2 tỷ, giảm 8% so với Q1 do segment Enterprise sụt mạnh. ';
+    expect(looksLikeConclusion(body + 'Bây giờ tôi sẽ kiểm tra theo sản phẩm.')).toBe(false);
+    expect(looksLikeConclusion(body + 'Để tôi tính tiếp phần còn lại.')).toBe(false);
+    expect(looksLikeConclusion(body + 'Tiếp theo tôi phân tích theo kênh.')).toBe(false);
+  });
+  it('does not false-reject a VN conclusion merely CONTAINING an early narration-ish phrase', () => {
+    // Narration check only inspects the TAIL — a conclusion that references its
+    // own process early on must still pass.
+    const t = 'Để tôi tóm tắt: doanh thu giảm 12%, nguyên nhân chính là segment Enterprise; ' +
+      'chi tiết theo tháng cho thấy mức giảm tập trung vào tháng 4 và tháng 5 với tổng thiệt hại 340 triệu đồng.';
+    expect(looksLikeConclusion(t)).toBe(true);
+  });
 });
 
 describe('hasSurvivors (red-team M2)', () => {

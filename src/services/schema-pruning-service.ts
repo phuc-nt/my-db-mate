@@ -12,10 +12,18 @@ import { manualRelationships, tableAnnotations } from '../db/context-schema';
 const PRUNE_THRESHOLD = 200;
 const MAX_HOPS = 2;
 
+/** Canonical table key: schema-qualified when a schema/dataset is present. Bare
+ *  `tableName` keys collide on multi-dataset BigQuery connections (two datasets
+ *  can each have `events`) — a bare-keyed Map silently kept only the LAST one,
+ *  presenting the wrong columns/qualification. One helper, used consistently. */
+function tableKey(t: { tableName: string; schemaName?: string | null }): string {
+  return t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
+}
+
 export async function getPrunedSchemaSummary(connectionId: string, question: string): Promise<string> {
   const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
   if (tables.length <= PRUNE_THRESHOLD) {
-    return buildSummary(connectionId, tables.map((t) => t.tableName));
+    return buildSummary(connectionId, tables.map((t) => tableKey(t)));
   }
 
   const fks = await db.select().from(schemaForeignKeys).where(eq(schemaForeignKeys.connectionId, connectionId));
@@ -40,7 +48,7 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
     .map((t) => t.tableName));
 
   // If nothing seeded, fall back to the full summary (don't starve the agent).
-  if (seed.size === 0) return buildSummary(connectionId, tables.map((t) => t.tableName));
+  if (seed.size === 0) return buildSummary(connectionId, tables.map((t) => tableKey(t)));
 
   // BFS expand up to MAX_HOPS.
   const included = new Set(seed);
@@ -55,8 +63,23 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
 
 async function buildSummary(connectionId: string, tableNames: string[]): Promise<string> {
   const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
-  const byName = new Map(tables.map((t) => [t.tableName, t]));
-  const wantedTableIds = tableNames.map((n) => byName.get(n)?.id).filter((id): id is string => !!id);
+  // Two-tier resolution: canonical `schema.table` keys hit exactly; a bare name
+  // (the FK graph and question-seeding work in bare names — FK rows don't carry
+  // schemas) resolves to EVERY table with that name, so a multi-dataset collision
+  // renders both instead of silently keeping the last (and a changed key scheme
+  // can never produce a silently-empty summary — callers may pass either form).
+  const byKey = new Map(tables.map((t) => [tableKey(t), t]));
+  const byBare = new Map<string, typeof tables>();
+  for (const t of tables) {
+    const arr = byBare.get(t.tableName) ?? [];
+    arr.push(t);
+    byBare.set(t.tableName, arr);
+  }
+  const resolve = (n: string) => (byKey.has(n) ? [byKey.get(n)!] : byBare.get(n) ?? []);
+  const seen = new Set<string>();
+  const wanted: typeof tables = [];
+  for (const n of tableNames) for (const t of resolve(n)) if (!seen.has(t.id)) { seen.add(t.id); wanted.push(t); }
+  const wantedTableIds = wanted.map((t) => t.id);
   if (wantedTableIds.length === 0) return '';
 
   // BigQuery requires dataset-qualified refs; present `dataset.table` so the model
@@ -76,13 +99,11 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   }
 
   const lines: string[] = [];
-  for (const name of tableNames) {
-    const t = byName.get(name);
-    if (!t) continue;
+  for (const t of wanted) {
     const cols = colsByTableId.get(t.id) ?? [];
     const colStr = cols.slice().sort((a, b) => a.ordinalPosition - b.ordinalPosition)
       .map((c) => `${c.columnName} ${c.dataType}${c.isPrimaryKey ? ' PK' : ''}`).join(', ');
-    const label = qualify && t.schemaName ? `${t.schemaName}.${name}` : name;
+    const label = qualify && t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
     lines.push(`${label}(${colStr})`);
   }
   return lines.join('\n');

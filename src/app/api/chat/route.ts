@@ -7,7 +7,7 @@ import {
   MAX_STEPS_INVESTIGATE_DEEP,
 } from '../../../services/agent-service';
 import { getConnection } from '../../../services/connection-service';
-import { addMessage, wasTurnDiscarded } from '../../../services/session-service';
+import { addMessage, wasTurnDiscarded, clearDiscardTombstone } from '../../../services/session-service';
 import {
   getSessionInvestigationTarget,
   buildFindingContext,
@@ -23,6 +23,7 @@ import {
 } from '../../../services/sub-investigation-service';
 import type { Dialect } from '../../../services/connection-providers/provider-interface';
 import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
+import { SNAPSHOT_QUERY_CAP } from '../../../services/sub-investigation-service';
 
 /** Parent investigate caps — imported from agent-service, which OWNS them. The
  *  budget split must divide the real cap: a local copy would silently drift if
@@ -154,10 +155,18 @@ export async function POST(req: Request) {
           // survive the user navigating away.
           if (sessionId && !(await wasTurnDiscarded(sessionId, turnStartIso))) {
             const parts = [
-              ...snapshots.map((s) => ({ type: SUBQ_PART_TYPE, id: s.id, data: s })),
+              // Persist the same query window the wire showed (shared cap) — the
+              // stored row must not silently hold more than the UI ever did.
+              ...snapshots.map((s) => ({ type: SUBQ_PART_TYPE, id: s.id, data: { ...s, queries: s.queries.slice(-SNAPSHOT_QUERY_CAP) } })),
               ...(synthesisText ? [{ type: 'text', text: synthesisText }] : []),
             ];
             await addMessage({ sessionId, role: 'assistant', content: synthesisText, parts });
+          } else if (sessionId) {
+            // The discard tombstone did its one job (this skip) — consume it so the
+            // session metadata doesn't carry the key forever. Consuming HERE is the
+            // only race-free point: clearing on a new POST would let a still-draining
+            // discarded turn outlive its tombstone and persist after all (A4 zombie).
+            await clearDiscardTombstone(sessionId);
           }
         },
         // NO onFinish persistence here — see the comment above: it fires on stream
@@ -206,7 +215,10 @@ export async function POST(req: Request) {
       if (!sessionId) return;
       // A4 H4: an investigate turn drains server-side; if the user discarded it
       // mid-run, skip persisting so it doesn't resurrect as a zombie.
-      if (isInvestigate && (await wasTurnDiscarded(sessionId, turnStartIso))) return;
+      if (isInvestigate && (await wasTurnDiscarded(sessionId, turnStartIso))) {
+        await clearDiscardTombstone(sessionId); // consumed — see the breadth branch
+        return;
+      }
       const text = responseMessage.parts
         ?.filter((p) => p.type === 'text')
         .map((p) => (p as { text: string }).text)

@@ -9,9 +9,12 @@ export const runtime = 'nodejs';
  *  immediate DELETE-last-assistant would wrongly remove the PREVIOUS turn (not yet
  *  overwritten). The persist path checks this tombstone and skips the discarded
  *  turn. Body: { at: ISO string } — the moment the current turn started. */
-export async function POST(req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+export async function POST(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
-  const { at } = (await req.json().catch(() => ({}))) as { at?: string };
-  await setDiscardTombstone(sessionId, at ?? new Date().toISOString());
+  // SERVER clock only — the tombstone is compared against server-stamped turn
+  // starts, and a browser clock minutes ahead would write a future tombstone
+  // that silently swallows legitimate later turns (review fix). Any client-sent
+  // timestamp is deliberately ignored.
+  await setDiscardTombstone(sessionId, new Date().toISOString());
   return NextResponse.json({ ok: true });
 }

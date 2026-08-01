@@ -439,12 +439,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     setMessages((ms) => ms.filter((m) => m.id !== msgId));
     setInterruptedMsgId(null);
     if (lastSentModeRef.current !== 'chat' && sessionId) {
-      // Stamp the tombstone with the discard moment (now) — it must land AFTER the
-      // server recorded the turn's start for the persist guard to fire.
-      const tombstoned = await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ at: new Date().toISOString() }),
-      }).then((r) => r.ok).catch(() => false);
+      // The tombstone moment is stamped SERVER-side (a skewed browser clock wrote
+      // future tombstones that swallowed legitimate later turns) — no body needed.
+      const tombstoned = await fetch(`/api/chat/sessions/${sessionId}/discard-tombstone`, { method: 'POST' })
+        .then((r) => r.ok).catch(() => false);
       // Only delete once the tombstone is safely recorded. Without it, a still-
       // draining turn is not yet persisted, so "delete latest assistant" would
       // remove the PREVIOUS turn's answer AND the discarded one would come back
