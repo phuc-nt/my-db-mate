@@ -8,6 +8,7 @@ import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { QueryResultBlock } from '../../../../components/query-result-block';
+import { GovernedViewsBadge } from '../../../../components/governed-views-badge';
 import { ChatArtifactChip, type ChatArtifact } from '../../../../components/chat-artifact-chip';
 import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat-workspace-panel';
 import { FormModal } from '../../../../components/form-modal';
@@ -543,6 +544,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         <div className="mb-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">Chat</h1>
           <div className="flex items-center gap-3 text-sm">
+            <GovernedViewsBadge connectionId={connectionId} />
             {distillMsg && <span className="text-xs text-neutral-500">{distillMsg}</span>}
             {/* Session switcher: reopen a persisted conversation, or start clean. */}
             <div className="relative">

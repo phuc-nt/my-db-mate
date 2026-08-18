@@ -204,6 +204,30 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
     return { tables, columns, foreignKeys: [] };
   }
 
+  /**
+   * The result schema of a statement, without running it.
+   *
+   * The same free `dryRun` job that prices a query also reports the columns it
+   * would return, which is the only affordable way to probe a curated view's
+   * shape here: `LIMIT 0` bills the full scan on BigQuery (billing counts bytes
+   * processed, not rows returned), so the obvious probe would charge real money
+   * every time someone saved an edit.
+   */
+  async dryRunSchema(sql: string): Promise<Array<{ name: string; type: string }>> {
+    let jobResult;
+    try {
+      jobResult = await this.client.createQueryJob({ query: sql, dryRun: true });
+    } catch (e) {
+      throw new EstimateFailedError(e);
+    }
+    const fields = jobResult[0].metadata?.statistics?.query?.schema?.fields;
+    if (!Array.isArray(fields)) return [];
+    return fields.map((f: { name?: string; type?: string }) => ({
+      name: String(f.name ?? ''),
+      type: String(f.type ?? 'unknown'),
+    }));
+  }
+
   /** Layer 1 (UX estimate): a `dryRun: true` job — never billed, never consumes
    *  query quota. Distinct from `explainQuery()`'s OLTP row-based shape; BigQuery
    *  cost is dollar-denominated via bytes scanned (Phase 3 architecture decision). */

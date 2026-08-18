@@ -65,6 +65,7 @@ export function SchemaScopeEditor({
   onApplied?: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set(initialScope?.tables ?? []));
+  const [viewsOnly, setViewsOnly] = useState<boolean>(initialScope?.viewsOnly === true);
   const [preview, setPreview] = useState<ImpactedArtifact[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -83,7 +84,7 @@ export function SchemaScopeEditor({
 
   const body = (dryRun: boolean) => JSON.stringify({
     dryRun,
-    scope: active ? { tables: [...selected] } : null,
+    scope: active ? { tables: [...selected], viewsOnly } : null,
   });
 
   async function check() {
@@ -120,7 +121,7 @@ export function SchemaScopeEditor({
       <div className="mb-1 flex items-center justify-between">
         <h3 className="font-semibold">Governed scope</h3>
         <span className={`rounded px-1.5 py-0.5 text-xs ${active ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'}`}>
-          {active ? `${selected.size} in scope` : 'full schema'}
+          {active ? (viewsOnly ? 'views only' : `${selected.size} in scope`) : 'full schema'}
         </span>
       </div>
       <p className="mb-2 text-xs text-neutral-500">
@@ -139,6 +140,24 @@ export function SchemaScopeEditor({
           </li>
         ))}
       </ul>
+
+      <label className="mb-2 flex cursor-pointer items-start gap-2 rounded bg-neutral-50 p-2 dark:bg-neutral-900">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={viewsOnly}
+          disabled={!active}
+          onChange={(e) => { setViewsOnly(e.target.checked); setPreview(null); setMsg(''); }}
+        />
+        <span className="text-xs">
+          <span className="font-medium">Governed views only</span>
+          <span className="block text-neutral-500">
+            The agent may read the curated views defined in Context Studio, and nothing
+            else — not even the tables ticked above. Narrower and more predictable:
+            answers come from agreed definitions rather than assembled on the fly.
+          </span>
+        </span>
+      </label>
 
       <div className="flex items-center gap-2">
         <button onClick={check} disabled={busy} className="rounded border px-3 py-1 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-neutral-800">

@@ -9,6 +9,7 @@ import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
 import { getScope, filterTablesToScope } from './schema-scope-service';
+import { listViews } from './virtual-view-service';
 
 const PRUNE_THRESHOLD = 200;
 const MAX_HOPS = 2;
@@ -117,5 +118,32 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
     const label = qualify && t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
     lines.push(`${label}(${colStr})`);
   }
-  return lines.join('\n');
+
+  const views = await describeViews(connectionId);
+  const scope = await getScope(connectionId);
+  // Under viewsOnly the curated layer is the entire interface, so raw tables are
+  // not merely de-emphasised — they are omitted. Showing a table the executor
+  // will refuse would only teach the agent to write queries that get blocked.
+  if (scope?.viewsOnly && views) return views;
+  return [views, lines.join('\n')].filter(Boolean).join('\n\n');
+}
+
+/**
+ * The governed views, presented to the agent as tables it should prefer.
+ *
+ * A curated view carries the business definition — the thing the raw schema
+ * cannot express — so it is listed first and named as the preferred surface.
+ * The description matters as much as the columns: it is what lets a question
+ * phrased in business language find the right definition instead of the agent
+ * reassembling one from fact tables and getting the filters subtly wrong.
+ */
+async function describeViews(connectionId: string): Promise<string> {
+  const views = await listViews(connectionId);
+  const active = views.filter((v) => !v.isDisabled);
+  if (active.length === 0) return '';
+  const lines = active.map((v) => {
+    const cols = (v.columnsCache ?? []).map((c) => (c.type && c.type !== 'unknown' ? `${c.name} ${c.type}` : c.name)).join(', ');
+    return `${v.name}(${cols})${v.description ? ` — ${v.description}` : ''}`;
+  });
+  return `-- Governed views (prefer these; they carry the agreed business definitions):\n${lines.join('\n')}`;
 }

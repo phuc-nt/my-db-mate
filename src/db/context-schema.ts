@@ -4,7 +4,7 @@
  * knowledge suggestions (mining inbox), and revision history. pgvector columns
  * back semantic retrieval; the extension is already enabled by the P1 migration.
  */
-import { pgTable, uuid, text, boolean, timestamp, jsonb, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean, timestamp, jsonb, doublePrecision, unique } from 'drizzle-orm/pg-core';
 import { connections, chatSessions } from './schema';
 import { vector384 } from './vector-type';
 
@@ -89,3 +89,34 @@ export const knowledgeSuggestions = pgTable('knowledge_suggestions', {
   status: text('status').notNull().default('pending'), // pending | accepted | rejected
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * A curated view defined inside my-db-mate rather than in the warehouse.
+ *
+ * This is how a datamart gets built without write access to the target: the
+ * definition lives here and is inlined as a CTE at query time. The agent sees
+ * these as first-class tables with business names, so a question can be asked
+ * in the language of the business even when the warehouse only speaks in raw
+ * fact tables.
+ *
+ * `name` is unique per connection AND checked against real table names at save
+ * time — a view that shadows a real table would make the same identifier mean
+ * two different things depending on which layer resolved it first.
+ */
+export const virtualViews = pgTable('virtual_views', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  connectionId: uuid('connection_id').notNull().references(() => connections.id, { onDelete: 'cascade' }),
+  /** Lowercase snake_case business name, e.g. `doanh_thu_thang`. */
+  name: text('name').notNull(),
+  description: text('description'),
+  /** The curated SELECT. Validated against safety + governed scope on save. */
+  sql: text('sql').notNull(),
+  /** [{ name, type }] probed at save time so the agent gets column types
+   *  without the app re-probing on every prompt build. */
+  columnsCache: jsonb('columns_cache'),
+  isDisabled: boolean('is_disabled').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  uniqueName: unique('virtual_views_connection_name_unique').on(t.connectionId, t.name),
+}));
