@@ -25,6 +25,7 @@ import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-se
 import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
+import { assertSqlInScope, type SchemaScope } from './schema-scope-service';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
 import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from './bigquery-daily-budget-service';
 
@@ -249,6 +250,21 @@ export async function executeQuery(params: {
   // properly-granted users are the common dogfood case.)
   const onWritableConn = conn.isReadOnlyVerified === false;
   const finalSql = verdict.sql;
+
+  // Governed scope (datamart boundary): checked on the post-safety SQL, before
+  // ANY execution path — including acceleration and BigQuery snapshot/offline
+  // branches, so out-of-scope data can never even be cached. Unscoped
+  // connections short-circuit inside the guard and cost nothing.
+  const scopeVerdict = await assertSqlInScope({
+    connectionId,
+    sql: finalSql,
+    dialect: conn.dialect as Dialect,
+    scope: (conn as unknown as { schemaScope?: SchemaScope | null }).schemaScope ?? null,
+  });
+  if (scopeVerdict.status === 'blocked') {
+    await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: scopeVerdict.reason });
+    return { status: 'blocked', blockedReason: scopeVerdict.reason };
+  }
 
   const provider = buildProvider(conn as unknown as ConnectionRow);
   const started = Date.now();

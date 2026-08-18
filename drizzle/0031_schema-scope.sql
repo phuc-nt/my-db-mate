@@ -1,0 +1,1 @@
+ALTER TABLE "connections" ADD COLUMN "schema_scope" jsonb;

@@ -1,13 +1,14 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ResultTable } from '../../../../components/result-table';
+import { SchemaScopeEditor, type SchemaScopeValue } from '../../../../components/schema-scope-editor';
 
 interface Column { columnName: string; dataType: string; isNullable: boolean; isPrimaryKey: boolean }
 interface Table { id: string; tableName: string; rowCount: number | null; columns: Column[] }
 interface FK { fromTable: string; fromColumn: string; toTable: string; toColumn: string }
-interface SchemaData { dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'; tables: Table[]; foreignKeys: FK[] }
+interface SchemaData { dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'; tables: Table[]; foreignKeys: FK[]; scope: SchemaScopeValue | null; allTableNames: string[] }
 
 export default function BrowsePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -16,10 +17,13 @@ export default function BrowsePage({ params }: { params: Promise<{ id: string }>
   const [sample, setSample] = useState<{ columns: string[]; rows: unknown[][] } | undefined>();
   const [sampleErr, setSampleErr] = useState('');
   const [loadingSample, setLoadingSample] = useState(false);
+  const [showScope, setShowScope] = useState(false);
 
-  useEffect(() => {
+  const loadSchema = useCallback(() => {
     fetch(`/api/connections/${id}/schema`).then((r) => r.json()).then(setData);
   }, [id]);
+
+  useEffect(() => { loadSchema(); }, [loadSchema]);
 
   const table = data?.tables.find((t) => t.tableName === selected);
   const tableFks = data?.foreignKeys.filter((f) => f.fromTable === selected || f.toTable === selected) ?? [];
@@ -34,21 +38,37 @@ export default function BrowsePage({ params }: { params: Promise<{ id: string }>
     setLoadingSample(false);
   }
 
+  const scopeActive = ((data?.scope?.tables?.length ?? 0) + (data?.scope?.datasets?.length ?? 0)) > 0;
+
   if (!data) return <main className="p-6 text-sm text-neutral-500">Loading schema… (if empty, sync the connection first)</main>;
 
   return (
     <main className="mx-auto flex h-screen max-w-6xl gap-4 p-4">
       <aside className="w-64 shrink-0 overflow-y-auto rounded-lg border border-neutral-200 p-2 dark:border-neutral-800">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Tables ({data.tables.length})</h2>
+          <h2 className="text-sm font-semibold">
+            Tables ({data.tables.length})
+            {scopeActive && <span className="ml-1 text-xs font-normal text-amber-600">scoped</span>}
+          </h2>
           <div className="flex gap-2 text-xs">
             <Link href={`/db/${id}/schema/erd`} className="text-blue-600">ERD</Link>
             <Link href={`/db/${id}/schema/explain`} className="text-blue-600">Explain</Link>
             <Link href={`/db/${id}/schema/saved`} className="text-blue-600">Bookmarks</Link>
             <Link href={`/db/${id}/schema/health`} className="text-blue-600">Health</Link>
             <Link href={`/db/${id}/schema/advisor`} className="text-blue-600">Advisor</Link>
+            <button onClick={() => setShowScope((v) => !v)} className="text-blue-600">Scope</button>
           </div>
         </div>
+        {showScope && (
+          <div className="mb-2">
+            <SchemaScopeEditor
+              connectionId={id}
+              allTableNames={data.allTableNames}
+              initialScope={data.scope}
+              onApplied={loadSchema}
+            />
+          </div>
+        )}
         <ul className="space-y-0.5 text-sm">
           {data.tables.map((t) => (
             <li key={t.id}>

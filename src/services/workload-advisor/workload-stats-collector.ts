@@ -79,6 +79,9 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** Like query-history mining, the collectors read only engine statistics and
+ *  system catalogs — never a governed user table — so they carry no scope guard.
+ *  Table names appearing in the collected SQL text are analyzed, never executed. */
 async function collectPostgres(provider: ConnectionProvider): Promise<WorkloadStats> {
   // Version gates the total_exec_time column name (PG13+) and GENERIC_PLAN (PG16+).
   let pgVersionNum: number | undefined;

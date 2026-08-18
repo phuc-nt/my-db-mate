@@ -8,6 +8,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
+import { getScope, filterTablesToScope } from './schema-scope-service';
 
 const PRUNE_THRESHOLD = 200;
 const MAX_HOPS = 2;
@@ -21,7 +22,13 @@ function tableKey(t: { tableName: string; schemaName?: string | null }): string 
 }
 
 export async function getPrunedSchemaSummary(connectionId: string, question: string): Promise<string> {
-  const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  const allTables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  // Governed scope first: pruning is a token optimization, the scope is a
+  // boundary. Filtering here means the agent never sees out-of-scope tables to
+  // ask about — the executeQuery guard is the enforcement behind it, not the
+  // only line of defense. Unscoped connections get the full list, unchanged.
+  const scope = await getScope(connectionId);
+  const tables = filterTablesToScope(scope, allTables);
   if (tables.length <= PRUNE_THRESHOLD) {
     return buildSummary(connectionId, tables.map((t) => tableKey(t)));
   }
@@ -62,7 +69,11 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
 }
 
 async function buildSummary(connectionId: string, tableNames: string[]): Promise<string> {
-  const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  const allTables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  // Re-apply the scope here too: this function re-reads the full table list, so
+  // resolving a bare name could otherwise pull in a same-named table from an
+  // out-of-scope dataset.
+  const tables = filterTablesToScope(await getScope(connectionId), allTables);
   // Two-tier resolution: canonical `schema.table` keys hit exactly; a bare name
   // (the FK graph and question-seeding work in bare names — FK rows don't carry
   // schemas) resolves to EVERY table with that name, so a multi-dataset collision
