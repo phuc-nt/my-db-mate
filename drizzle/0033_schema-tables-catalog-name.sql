@@ -1,0 +1,1 @@
+ALTER TABLE "schema_tables" ADD COLUMN "catalog_name" text;
