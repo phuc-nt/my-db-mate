@@ -71,6 +71,8 @@ let unscopedId: string;
 let viewsOnlyId: string;
 /** viewsOnly with nothing curated: the fail-closed case. */
 let viewsOnlyEmptyId: string;
+/** viewsOnly whose allowlist matches nothing synced, so no table resolves at all. */
+let noResolveId: string;
 
 beforeAll(async () => {
   scopedId = await makeConnection('scope-parity-scoped', { tables: ['orders', 'users'] });
@@ -91,6 +93,13 @@ beforeAll(async () => {
 
   viewsOnlyEmptyId = await makeConnection('scope-parity-views-only-empty', { tables: ['orders'], viewsOnly: true });
   await addTable(viewsOnlyEmptyId, 'orders');
+
+  // The allowlist names a table this connection never synced, so table
+  // resolution comes back empty. The governed views still have to be described:
+  // an empty table set is the normal case here, not a degenerate one.
+  noResolveId = await makeConnection('scope-parity-no-resolve', { tables: ['nothing_matches'], viewsOnly: true });
+  await addTable(noResolveId, 'orders');
+  await addView(noResolveId, 'doanh_thu_thang');
 });
 
 afterAll(async () => {
@@ -129,6 +138,12 @@ describe.each([
     const summary = await render(viewsOnlyEmptyId);
     expect(summary).not.toContain('orders(');
     expect(summary).toMatch(/governed view/i);
+  });
+
+  it('still describes the governed views when no table resolves at all', async () => {
+    const summary = await render(noResolveId);
+    expect(summary).toContain('doanh_thu_thang(total numeric)');
+    expect(summary).not.toContain('orders(');
   });
 });
 

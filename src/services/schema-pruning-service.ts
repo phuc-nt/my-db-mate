@@ -9,7 +9,7 @@ import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
-import { getScope, filterTablesToScope } from './schema-scope-service';
+import { getScope, filterTablesToScope, type SchemaScope } from './schema-scope-service';
 import { composeSummary, describeViews } from './schema-summary-composition';
 
 const PRUNE_THRESHOLD = 200;
@@ -32,7 +32,7 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
   const scope = await getScope(connectionId);
   const tables = filterTablesToScope(scope, allTables);
   if (tables.length <= PRUNE_THRESHOLD) {
-    return buildSummary(connectionId, tables.map((t) => tableKey(t)));
+    return buildSummary(connectionId, tables.map((t) => tableKey(t)), scope);
   }
 
   const fks = await db.select().from(schemaForeignKeys).where(eq(schemaForeignKeys.connectionId, connectionId));
@@ -57,7 +57,7 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
     .map((t) => t.tableName));
 
   // If nothing seeded, fall back to the full summary (don't starve the agent).
-  if (seed.size === 0) return buildSummary(connectionId, tables.map((t) => tableKey(t)));
+  if (seed.size === 0) return buildSummary(connectionId, tables.map((t) => tableKey(t)), scope);
 
   // BFS expand up to MAX_HOPS.
   const included = new Set(seed);
@@ -67,15 +67,18 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
     for (const t of frontier) for (const n of adj.get(t) ?? []) if (!included.has(n)) { included.add(n); next.push(n); }
     frontier = next;
   }
-  return buildSummary(connectionId, [...included]);
+  return buildSummary(connectionId, [...included], scope);
 }
 
-async function buildSummary(connectionId: string, tableNames: string[]): Promise<string> {
+// The scope is read once by the caller and threaded through: it decides which
+// tables survive AND how the result is composed, so re-reading it here could
+// compose against a boundary different from the one that filtered.
+async function buildSummary(connectionId: string, tableNames: string[], scope: SchemaScope | null): Promise<string> {
   const allTables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
   // Re-apply the scope here too: this function re-reads the full table list, so
   // resolving a bare name could otherwise pull in a same-named table from an
   // out-of-scope dataset.
-  const tables = filterTablesToScope(await getScope(connectionId), allTables);
+  const tables = filterTablesToScope(scope, allTables);
   // Two-tier resolution: canonical `schema.table` keys hit exactly; a bare name
   // (the FK graph and question-seeding work in bare names — FK rows don't carry
   // schemas) resolves to EVERY table with that name, so a multi-dataset collision
@@ -100,7 +103,7 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
     return composeSummary({
       views: await describeViews(connectionId),
       tableLines: [],
-      scope: await getScope(connectionId),
+      scope,
       anyCatalogQualified: false,
     });
   }
@@ -139,7 +142,7 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   return composeSummary({
     views: await describeViews(connectionId),
     tableLines: lines,
-    scope: await getScope(connectionId),
+    scope,
     anyCatalogQualified,
   });
 }
