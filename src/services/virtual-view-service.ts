@@ -40,6 +40,32 @@ export class VirtualViewError extends Error {}
 const NAME_RE = /^[a-z][a-z0-9_]{0,62}$/;
 
 /**
+ * Names that are legal snake_case but cannot be used as a bare CTE alias.
+ *
+ * Expansion inlines a view as `<name> AS (...)` with the name UNQUOTED, because
+ * quoting a CTE definition is what node-sql-parser rejects on BigQuery and
+ * Postgres. That leaves one gap: a name like `select` passes NAME_RE but makes
+ * the engine itself reject the statement (BigQuery: "Syntax error: Unexpected
+ * keyword SELECT"). Refusing the name at save time is better than storing a
+ * view that can never be read — the owner picks another word once, instead of
+ * every query through that view failing later with a parser message that says
+ * nothing about the real cause.
+ */
+const RESERVED_VIEW_NAMES = new Set([
+  'all', 'and', 'any', 'array', 'as', 'asc', 'between', 'by', 'case', 'cast',
+  'cross', 'cube', 'current', 'default', 'define', 'desc', 'distinct', 'else',
+  'end', 'escape', 'except', 'exclude', 'exists', 'extract', 'false', 'fetch',
+  'following', 'for', 'from', 'full', 'group', 'grouping', 'groups', 'hash',
+  'having', 'if', 'ignore', 'in', 'inner', 'intersect', 'interval', 'into',
+  'is', 'join', 'lateral', 'left', 'like', 'limit', 'lookup', 'merge',
+  'natural', 'new', 'no', 'not', 'null', 'nulls', 'of', 'on', 'or', 'order',
+  'outer', 'over', 'partition', 'preceding', 'proto', 'qualify', 'range',
+  'recursive', 'respect', 'right', 'rollup', 'rows', 'select', 'set', 'some',
+  'struct', 'tablesample', 'then', 'to', 'treat', 'true', 'unbounded', 'union',
+  'unnest', 'using', 'when', 'where', 'window', 'with', 'within',
+]);
+
+/**
  * mssql is excluded in v1, and not for a stylistic reason: `capRows` cannot
  * append OFFSET/FETCH to a WITH query that has no ORDER BY, so it returns the
  * statement uncapped. Expansion turns EVERY view query into a WITH query, which
@@ -113,6 +139,12 @@ async function validateDefinition(params: {
 
   if (!NAME_RE.test(name)) {
     throw new VirtualViewError('View name must be lowercase snake_case, starting with a letter (e.g. doanh_thu_thang).');
+  }
+
+  if (RESERVED_VIEW_NAMES.has(name)) {
+    throw new VirtualViewError(
+      `"${name}" is a reserved SQL word, so a query through this view would not run. Pick a business name (e.g. ${name}_summary).`,
+    );
   }
 
   const safety = validateSql(sql, dialect);
@@ -282,7 +314,11 @@ export async function expandForConnection(
       return { status: 'blocked' as const, reason: 'SQL could not be parsed to verify it uses only governed views.' };
     }
     if (direct.length > 0) {
-      const names = direct.map((t) => t.replace(/[^A-Za-z0-9_.]/g, '')).join(', ');
+      // Hyphens are kept: they are legal in a BigQuery project id, and stripping
+      // them turned `bigquery-public-data.…` into a name the reader cannot find
+      // anywhere in their query. The filter still exists to keep parser output
+      // out of the message verbatim.
+      const names = direct.map((t) => t.replace(/[^A-Za-z0-9_.-]/g, '')).join(', ');
       const available = views.map((v) => v.name).join(', ');
       return {
         status: 'blocked' as const,

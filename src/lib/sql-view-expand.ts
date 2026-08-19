@@ -80,11 +80,27 @@ function allTableRefs(ast: unknown): Set<string> {
     if (Array.isArray(node)) { node.forEach(visit); return; }
     const rec = node as Record<string, unknown>;
     const table = rec.table;
-    if (typeof table === 'string' && !rec.expr) {
+    // A column reference carries the qualifier that written it — `p.brand`
+    // parses to `{ table: 'p', column: 'brand' }` — so an ALIAS looks exactly
+    // like a table name at this node. Collecting it is fail-closed (an extra
+    // name can only block more, never less), but it makes the refusal message
+    // name things the reader never wrote, and an alias that happened to match a
+    // governed view's name would read as a view reference. A FROM item has no
+    // `column` key; a column reference always does.
+    if (typeof table === 'string' && table !== '' && !rec.expr && rec.column === undefined) {
       const db = rec.db;
       out.add(typeof db === 'string' && db ? `${db}.${table}`.toLowerCase() : table.toLowerCase());
     }
-    for (const v of Object.values(rec)) visit(v);
+    for (const [k, v] of Object.entries(rec)) {
+      // `surround` is quoting metadata, not structure: the BigQuery grammar
+      // hangs a `surround: { table: '`' }` off every FROM item to record how the
+      // name was written. Its `table` key holds a quote character (or an empty
+      // string), so walking into it collects a phantom reference named '`' —
+      // which matches no view and no scope entry, and so blocks the very query
+      // the caller was allowed to run. The real name is on the parent node.
+      if (k === 'surround') continue;
+      visit(v);
+    }
   };
   visit(ast);
   return out;
@@ -225,7 +241,7 @@ export function expandVirtualViews(
 
   return {
     status: 'expanded',
-    sql: prependCtes(sql, toExpand, dialect),
+    sql: prependCtes(sql, toExpand),
     expanded: toExpand.map((v) => v.name),
   };
 }
@@ -238,9 +254,19 @@ export function expandVirtualViews(
  * the statement text is left exactly as written and the definitions are placed
  * in front of it. A statement that already opens with WITH has its list
  * extended rather than nested, which keeps one flat, readable CTE chain.
+ *
+ * The CTE name is emitted BARE, unquoted, because the two engines that read
+ * this text disagree about quoting a CTE name: BigQuery and Postgres accept a
+ * backtick-quoted table reference but node-sql-parser's grammars for both
+ * reject a backtick-quoted CTE *definition*, so a quoted name makes the whole
+ * expanded statement unparseable and the safety layer — which fails closed —
+ * blocks every query that touches a governed view. Bare is the one form all
+ * five parser dialects and all five engines accept. It is safe because a view
+ * name is validated at save time to be lowercase snake_case AND not a reserved
+ * word, so it never needs quoting to be read as an identifier.
  */
-function prependCtes(sql: string, views: VirtualViewDef[], dialect: Dialect): string {
-  const defs = views.map((v) => `${quoteName(v.name, dialect)} AS (\n${stripTrailingSemicolon(v.sql)}\n)`);
+function prependCtes(sql: string, views: VirtualViewDef[]): string {
+  const defs = views.map((v) => `${v.name} AS (\n${stripTrailingSemicolon(v.sql)}\n)`);
   const trimmed = sql.trimStart();
   const leading = sql.slice(0, sql.length - trimmed.length);
   const withMatch = /^with\s+(recursive\s+)?/i.exec(trimmed);
@@ -258,10 +284,3 @@ function stripTrailingSemicolon(sql: string): string {
   return sql.trim().replace(/;+\s*$/, '');
 }
 
-/** View names are validated to lowercase snake_case at save time, so quoting is
- *  only about avoiding collisions with reserved words. */
-function quoteName(name: string, dialect: Dialect): string {
-  if (dialect === 'mysql') return `\`${name}\``;
-  if (dialect === 'bigquery') return `\`${name}\``;
-  return `"${name}"`;
-}

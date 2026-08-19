@@ -5,7 +5,9 @@
  * cannot prove correct is refused rather than guessed at.
  */
 import { describe, expect, it } from 'vitest';
-import { expandVirtualViews, mentionsIdentifier } from './sql-view-expand';
+import { Parser } from 'node-sql-parser';
+import { directBaseTables, expandVirtualViews, mentionsIdentifier, type VirtualViewDef } from './sql-view-expand';
+import { PARSER_DIALECT } from '../services/safety/safety-service';
 
 const REVENUE = {
   name: 'monthly_revenue',
@@ -65,7 +67,7 @@ describe('expansion inlines the curated definition', () => {
     expect(res.status).toBe('expanded');
     if (res.status !== 'expanded') return;
     expect(res.expanded).toEqual(['monthly_revenue']);
-    expect(res.sql).toContain('WITH "monthly_revenue" AS (');
+    expect(res.sql).toContain('WITH monthly_revenue AS (');
     expect(res.sql).toContain("status = 'paid'");
     expect(res.sql.trimEnd().endsWith('SELECT * FROM monthly_revenue')).toBe(true);
   });
@@ -101,10 +103,25 @@ describe('expansion inlines the curated definition', () => {
     expect(res.status === 'expanded' && res.sql).toContain('SELECT 1 AS x\n)');
   });
 
-  it('quotes with backticks on BigQuery', () => {
-    const res = expandVirtualViews('SELECT * FROM monthly_revenue', VIEWS, 'bigquery');
-    expect(res.status === 'expanded' && res.sql).toContain('`monthly_revenue` AS (');
-  });
+  // The CTE name is emitted bare on every dialect. Quoting it is not a style
+  // choice: node-sql-parser rejects a quoted CTE *definition* on BigQuery and
+  // Postgres, so a quoted name would make the expanded statement unparseable,
+  // and the safety layer fails closed — every query touching a governed view
+  // would be blocked. This asserts the output is actually parseable, which is
+  // the property that matters; asserting the quote characters is what let the
+  // unparseable form ship in the first place.
+  it.each(['postgres', 'mysql', 'sqlite', 'mssql', 'bigquery'] as const)(
+    'emits an expanded statement the safety parser accepts: %s',
+    (dialect) => {
+      const res = expandVirtualViews('SELECT * FROM monthly_revenue', VIEWS, dialect);
+      expect(res.status).toBe('expanded');
+      if (res.status !== 'expanded') return;
+      expect(res.sql).toContain('monthly_revenue AS (');
+      expect(() =>
+        new Parser().astify(res.sql, { database: PARSER_DIALECT[dialect] }),
+      ).not.toThrow();
+    },
+  );
 });
 
 describe('a caller CTE of the same name', () => {
@@ -135,5 +152,68 @@ describe('refusal beats a guess', () => {
     // Not this layer's job to reject it — the safety validator will.
     const res = expand('SELECT ?? FROM !!!');
     expect(res.status).toBe('unchanged');
+  });
+});
+
+/**
+ * `viewsOnly` on BigQuery, where the parser's output is shaped differently.
+ *
+ * The BigQuery grammar hangs a `surround` metadata node off every FROM item to
+ * record how the name was quoted, and that node carries its own `table` key
+ * holding a quote character or an empty string. A reference walk that does not
+ * know this collects a phantom base table named '' or '`' — which belongs to no
+ * view and no scope, so the guard blocks a query over nothing but governed
+ * views. That failure is invisible to a same-name test on another dialect and
+ * it locks the agent out of the curated layer entirely, which is why it gets
+ * its own block here.
+ */
+describe('viewsOnly on BigQuery admits the governed views', () => {
+  const views: VirtualViewDef[] = [
+    { name: 'mart_sales', sql: 'SELECT 1 AS id' },
+  ];
+
+  it.each([
+    ['bare name', 'SELECT * FROM mart_sales'],
+    ['backtick-quoted', 'SELECT * FROM `mart_sales`'],
+    ['aggregated', 'SELECT b, SUM(r) AS t FROM mart_sales GROUP BY b ORDER BY t DESC LIMIT 5'],
+    ['wrapped in a caller CTE', 'WITH t AS (SELECT * FROM mart_sales) SELECT * FROM t'],
+  ])('reports no raw base table: %s', (_label, sql) => {
+    expect(directBaseTables(sql, views, 'bigquery')).toEqual([]);
+  });
+
+  it.each([
+    ['direct raw table', 'SELECT * FROM orders', 'orders'],
+    ['backtick-quoted raw', 'SELECT * FROM `orders`', 'orders'],
+    ['fully qualified raw', 'SELECT * FROM `proj.ds.orders`', 'proj.ds.orders'],
+    ['joined onto a view', 'SELECT * FROM mart_sales m JOIN orders o ON m.id = o.id', 'orders'],
+    ['hidden in a subquery', 'SELECT * FROM mart_sales WHERE id IN (SELECT id FROM raw_pii)', 'raw_pii'],
+    ['hidden in a CTE body', 'WITH x AS (SELECT * FROM raw_pii) SELECT * FROM x', 'raw_pii'],
+    ['hidden in a derived table', 'SELECT * FROM (SELECT ssn FROM raw_pii) t', 'raw_pii'],
+    ['hidden in a UNION branch', 'SELECT id FROM mart_sales UNION ALL SELECT id FROM raw_pii', 'raw_pii'],
+    ['hidden in a scalar subquery', 'SELECT (SELECT MAX(x) FROM raw_pii) AS m FROM mart_sales', 'raw_pii'],
+  ])('still catches the raw table: %s', (_label, sql, expected) => {
+    expect(directBaseTables(sql, views, 'bigquery')).toContain(expected);
+  });
+
+  // An alias is not a table. Reporting one is fail-closed and so never unsafe,
+  // but it names things the reader never wrote and an alias colliding with a
+  // view name would read as a view reference.
+  it('reports the tables, not the aliases standing in for them', () => {
+    const sql =
+      'SELECT p.brand FROM `bigquery-public-data.ds.order_items` oi ' +
+      'JOIN `bigquery-public-data.ds.products` p ON oi.product_id = p.id';
+    const refs = directBaseTables(sql, views, 'bigquery') ?? [];
+    expect(refs).not.toContain('p');
+    expect(refs).not.toContain('oi');
+    expect(refs).toContain('bigquery-public-data.ds.order_items');
+    expect(refs).toContain('bigquery-public-data.ds.products');
+  });
+
+  it('never reports a quote character or an empty name as a table', () => {
+    for (const sql of ['SELECT * FROM `mart_sales`', 'SELECT * FROM `orders`', 'SELECT * FROM orders']) {
+      const refs = directBaseTables(sql, views, 'bigquery') ?? [];
+      expect(refs).not.toContain('');
+      expect(refs).not.toContain('`');
+    }
   });
 });
