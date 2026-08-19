@@ -6,7 +6,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { getProvider } from './connection-service';
-import { composeSchemaPrefix, VERBATIM_NAME_NOTE } from '../lib/table-catalog-prefix';
+import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
+import { getScope, filterTablesToScope } from './schema-scope-service';
+import { composeSummary, describeViews } from './schema-summary-composition';
 
 export async function syncSchema(connectionId: string) {
   const provider = await getProvider(connectionId);
@@ -68,16 +70,33 @@ export async function syncSchema(connectionId: string) {
   }
 }
 
-/** Compact schema summary string for the agent's system prompt. */
+/**
+ * Compact schema summary string for the agent's system prompt.
+ *
+ * Filtered to the governed scope, the same boundary the pruned renderer applies
+ * and `executeQuery` enforces. Listing a table the executor will refuse teaches
+ * the agent to write queries that get blocked, and hands MCP clients the names
+ * and columns of tables the connection does not grant.
+ */
 export async function getSchemaSummary(connectionId: string): Promise<string> {
-  const tables = await db
+  const allTables = await db
     .select()
     .from(schemaTables)
     .where(eq(schemaTables.connectionId, connectionId));
-  const fks = await db
+  const scope = await getScope(connectionId);
+  const tables = filterTablesToScope(scope, allTables);
+  const allFks = await db
     .select()
     .from(schemaForeignKeys)
     .where(eq(schemaForeignKeys.connectionId, connectionId));
+  // A relationship is only worth showing when the agent can read both ends.
+  // Foreign-key rows store bare table names with no schema, so the comparison is
+  // on the bare name: two datasets holding a same-named table make this
+  // over-inclusive, never under-inclusive. That is the safe direction — an FK
+  // line is a hint about how to join, while the scope guard on executeQuery is
+  // the enforcement.
+  const inScopeNames = new Set(tables.map((t) => t.tableName));
+  const fks = allFks.filter((fk) => inScopeNames.has(fk.fromTable) && inScopeNames.has(fk.toTable));
 
   // BigQuery requires table refs qualified with their dataset, and the owning
   // project too when the dataset is shared in from another one; present names to
@@ -108,6 +127,10 @@ export async function getSchemaSummary(connectionId: string): Promise<string> {
   for (const fk of fks) {
     lines.push(`FK: ${fk.fromTable}.${fk.fromColumn} -> ${fk.toTable}.${fk.toColumn}`);
   }
-  if (anyCatalogQualified) lines.unshift(VERBATIM_NAME_NOTE);
-  return lines.join('\n');
+  return composeSummary({
+    views: await describeViews(connectionId),
+    tableLines: lines,
+    scope,
+    anyCatalogQualified,
+  });
 }
