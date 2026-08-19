@@ -55,7 +55,8 @@ export default function BrowsePage({ params }: { params: Promise<{ id: string }>
             <Link href={`/db/${id}/schema/explain`} className="text-blue-600">Explain</Link>
             <Link href={`/db/${id}/schema/saved`} className="text-blue-600">Bookmarks</Link>
             <Link href={`/db/${id}/schema/health`} className="text-blue-600">Health</Link>
-            <Link href={`/db/${id}/schema/advisor`} className="text-blue-600">Advisor</Link>
+            <Link href={`/db/${id}/schema/advisor`} className="text-blue-600">Workload advisor</Link>
+            <Link href={`/db/${id}/schema/datamart-advisor`} className="text-blue-600">Datamart advisor</Link>
             <button onClick={() => setShowScope((v) => !v)} className="text-blue-600">Scope</button>
           </div>
         </div>
