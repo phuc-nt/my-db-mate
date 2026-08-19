@@ -121,6 +121,13 @@ export const schemaTables = pgTable('schema_tables', {
     .notNull()
     .references(() => connections.id, { onDelete: 'cascade' }),
   schemaName: text('schema_name'),
+  /** The catalog (BigQuery: project) that owns this table's schema/dataset.
+   *  Third identity level above schema.table, for dialects where a two-part name
+   *  resolves against the connection's own catalog and so silently misses tables
+   *  shared from elsewhere. Attached at render/execute time only — it must never
+   *  be folded into schemaName, because scope matching compares dataset-only
+   *  names and a project-prefixed entry would match nothing. null everywhere else. */
+  catalogName: text('catalog_name'),
   tableName: text('table_name').notNull(),
   /** Estimated row count captured at sync time — big-table guard source (C2). */
   rowCount: integer('row_count'),

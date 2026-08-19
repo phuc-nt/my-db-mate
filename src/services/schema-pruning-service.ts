@@ -8,6 +8,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
+import { composeSchemaPrefix, VERBATIM_NAME_NOTE } from '../lib/table-catalog-prefix';
 import { getScope, filterTablesToScope } from './schema-scope-service';
 import { listViews } from './virtual-view-service';
 
@@ -94,11 +95,14 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   const wantedTableIds = wanted.map((t) => t.id);
   if (wantedTableIds.length === 0) return '';
 
-  // BigQuery requires dataset-qualified refs; present `dataset.table` so the model
-  // writes valid run_sql. Bare name for other dialects (default-schema resolution).
+  // BigQuery requires dataset-qualified refs, plus the owning project when the
+  // dataset is shared in from another one; present the name the warehouse itself
+  // resolves so the model writes valid run_sql. Bare name for other dialects
+  // (default-schema resolution).
   const [conn] = await db.select({ dialect: connections.dialect }).from(connections)
     .where(eq(connections.id, connectionId));
-  const qualify = conn?.dialect === 'bigquery';
+  const dialect = conn?.dialect ?? '';
+  const qualify = dialect === 'bigquery';
 
   // Batch-fetch ALL columns for the wanted tables in one query (was N+1 — one
   // query per table inside the loop, on the agent hot path).
@@ -111,11 +115,14 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   }
 
   const lines: string[] = [];
+  let anyCatalogQualified = false;
   for (const t of wanted) {
     const cols = colsByTableId.get(t.id) ?? [];
     const colStr = cols.slice().sort((a, b) => a.ordinalPosition - b.ordinalPosition)
       .map((c) => `${c.columnName} ${c.dataType}${c.isPrimaryKey ? ' PK' : ''}`).join(', ');
-    const label = qualify && t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
+    const prefix = qualify ? composeSchemaPrefix(dialect, t.catalogName, t.schemaName) : null;
+    if (prefix && prefix.includes('.')) anyCatalogQualified = true;
+    const label = prefix ? `${prefix}.${t.tableName}` : t.tableName;
     lines.push(`${label}(${colStr})`);
   }
 
@@ -125,6 +132,7 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
   // not merely de-emphasised — they are omitted. Showing a table the executor
   // will refuse would only teach the agent to write queries that get blocked.
   if (scope?.viewsOnly && views) return views;
+  if (anyCatalogQualified) lines.unshift(VERBATIM_NAME_NOTE);
   return [views, lines.join('\n')].filter(Boolean).join('\n\n');
 }
 

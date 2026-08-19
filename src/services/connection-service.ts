@@ -9,6 +9,7 @@ import { encryptSecret } from './crypto/credential-cipher';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { closeTunnel } from './connection-providers/ssh-tunnel-manager';
 import { sanitizeBigQueryConnError } from './connection-providers/bigquery-provider';
+import { withValidatedPinnedDatasets } from './connection-providers/pinned-dataset-config';
 import type { ConnectionProvider } from './connection-providers/provider-interface';
 
 export interface CreateConnectionInput {
@@ -78,6 +79,9 @@ export async function testConnectionConfig(input: { kind: CreateConnectionInput[
 }
 
 export async function createConnection(input: CreateConnectionInput) {
+  // Validate pinned datasets before the probe, so a malformed entry is rejected
+  // by name rather than surfacing later as a confusing introspection warning.
+  input = { ...input, config: withValidatedPinnedDatasets(input.kind, input.config) };
   const secretEncrypted = input.secret ? encryptSecret(input.secret) : null;
   const sshSecretEncrypted = input.sshSecret ? encryptSecret(input.sshSecret) : null;
   const bigqueryServiceAccountJsonEncrypted = input.bigqueryServiceAccountJson ? encryptSecret(input.bigqueryServiceAccountJson) : null;
@@ -123,7 +127,10 @@ export async function updateConnection(id: string, input: { name?: string; confi
   const bigqueryMaxBytesPerQuery = input.bigqueryMaxBytesPerQuery ?? existing.bigqueryMaxBytesPerQuery;
   const bigqueryDailyBytesBudget = input.bigqueryDailyBytesBudget ?? existing.bigqueryDailyBytesBudget;
   const bigqueryOfflineMode = input.bigqueryOfflineMode ?? existing.bigqueryOfflineMode;
-  const config = input.config ?? (existing.config as Record<string, unknown>);
+  const config = withValidatedPinnedDatasets(
+    existing.kind,
+    input.config ?? (existing.config as Record<string, unknown>),
+  );
   const dialect = input.dialect ?? (existing.dialect as CreateConnectionInput['dialect']);
 
   // Host/tunnel settings may have changed — drop any existing tunnel so the

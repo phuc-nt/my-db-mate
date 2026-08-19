@@ -76,7 +76,9 @@ describe('BigQueryConnectionProvider', () => {
     const provider = makeProvider();
     const schema = await provider.introspectSchema();
 
-    expect(schema.tables).toEqual([{ schemaName: 'sales', tableName: 'orders', rowCount: 42 }]);
+    // catalogName is null here because this stub dataset carries no projectId;
+    // the owning-project mapping is covered in bigquery-pinned-dataset-introspection.test.ts.
+    expect(schema.tables).toEqual([{ schemaName: 'sales', catalogName: null, tableName: 'orders', rowCount: 42 }]);
     expect(schema.columns).toEqual([
       { tableName: 'orders', schemaName: 'sales', columnName: 'id', dataType: 'INT64', isNullable: false, isPrimaryKey: false, ordinalPosition: 0 },
       { tableName: 'orders', schemaName: 'sales', columnName: 'note', dataType: 'STRING', isNullable: true, isPrimaryKey: false, ordinalPosition: 1 },

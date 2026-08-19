@@ -27,7 +27,15 @@ export interface ForeignKeyInfo {
 export interface IntrospectedSchema {
   /** rowCount = estimated row count captured at sync time (red-team C2 big-table
    *  guard data source). null when the dialect can't estimate cheaply. */
-  tables: { schemaName: string | null; tableName: string; rowCount: number | null }[];
+  tables: {
+    schemaName: string | null;
+    tableName: string;
+    rowCount: number | null;
+    /** The catalog (BigQuery: project) owning this schema. Only dialects that
+     *  resolve a two-part name against a default catalog need it; everyone else
+     *  omits it and the persisted column stays null. */
+    catalogName?: string | null;
+  }[];
   columns: ColumnInfo[];
   foreignKeys: ForeignKeyInfo[];
 }

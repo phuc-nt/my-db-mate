@@ -105,6 +105,9 @@ export function buildProvider(row: ConnectionRow): ConnectionProvider {
         projectId: String(row.config.projectId),
         credentials,
         maximumBytesBilled: row.bigqueryMaxBytesPerQuery,
+        extraDatasets: Array.isArray(row.config.extraDatasets)
+          ? row.config.extraDatasets.map(String)
+          : undefined,
       });
     }
 

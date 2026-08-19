@@ -14,6 +14,7 @@
  * pass — see Phase 3's Architecture note for why.
  */
 import { BigQuery } from '@google-cloud/bigquery';
+import type { Dataset } from '@google-cloud/bigquery';
 import type {
   ConnectionProvider,
   Dialect,
@@ -31,6 +32,12 @@ export interface BigQueryConfig {
    *  Constructor-injected from the connection row's bigqueryMaxBytesPerQuery —
    *  Phase 3 reads this via the provider, not a per-call param. */
   maximumBytesBilled: number;
+  /** Datasets outside this connection's own project to introspect as if they
+   *  were local, each written `project.dataset` (e.g.
+   *  `bigquery-public-data.thelook_ecommerce`). Listing a project's datasets only
+   *  ever returns that project's own, so a dataset shared from elsewhere is
+   *  invisible to sync unless it is pinned here by name. */
+  extraDatasets?: string[];
 }
 
 export interface CostEstimate {
@@ -188,9 +195,65 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
     return out;
   }
 
+  /**
+   * Introspect one dataset into the accumulating tables/columns arrays.
+   *
+   * Shared by the own-project sweep and the pinned cross-project datasets so both
+   * kinds of dataset land in the snapshot with identical shape — same row-count
+   * source, same column mapping, same skip-and-warn behaviour when the service
+   * account cannot read something.
+   */
+  private async introspectDataset(
+    dataset: Dataset,
+    into: { tables: IntrospectedSchema['tables']; columns: ColumnInfo[] },
+  ): Promise<void> {
+    let dsTables;
+    try {
+      dsTables = (await dataset.getTables())[0];
+    } catch (e) {
+      // The service account may only have dataViewer on a subset of datasets —
+      // skip inaccessible datasets with a visible note rather than failing the
+      // whole introspection call.
+      console.warn(`[bigquery] skipping dataset ${dataset.id} (introspection failed): ${sanitizeBigQueryConnError(e)}`);
+      return;
+    }
+
+    for (const table of dsTables) {
+      try {
+        const [metadata] = await table.getMetadata();
+        const schemaName = dataset.id ?? null;
+        // The project that actually holds this dataset — the connection's own for
+        // the local sweep, the shared one for a pinned dataset. Recorded separately
+        // from schemaName so a two-part name can be qualified at query time.
+        const catalogName = dataset.projectId ?? null;
+        const tableName = table.id ?? '';
+        const numRows = metadata.numRows != null ? Number(metadata.numRows) : null;
+        into.tables.push({
+          schemaName,
+          catalogName,
+          tableName,
+          rowCount: Number.isFinite(numRows) ? numRows : null,
+        });
+        const fields = (metadata.schema?.fields ?? []) as { name: string; type: string; mode?: string }[];
+        fields.forEach((f, i) => {
+          into.columns.push({
+            tableName,
+            schemaName,
+            columnName: f.name,
+            dataType: f.type,
+            isNullable: f.mode !== 'REQUIRED',
+            isPrimaryKey: false, // BigQuery has no primary-key concept at the storage layer.
+            ordinalPosition: i,
+          });
+        });
+      } catch (e) {
+        console.warn(`[bigquery] skipping table ${dataset.id}.${table.id} (metadata fetch failed): ${sanitizeBigQueryConnError(e)}`);
+      }
+    }
+  }
+
   async introspectSchema(): Promise<IntrospectedSchema> {
-    const tables: IntrospectedSchema['tables'] = [];
-    const columns: ColumnInfo[] = [];
+    const into = { tables: [] as IntrospectedSchema['tables'], columns: [] as ColumnInfo[] };
 
     let datasetsResult;
     try {
@@ -200,49 +263,29 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
     }
     const [datasets] = datasetsResult;
 
+    const seen = new Set<string>();
     for (const dataset of datasets) {
-      let dsTables;
-      try {
-        dsTables = (await dataset.getTables())[0];
-      } catch (e) {
-        // The service account may only have dataViewer on a subset of datasets —
-        // skip inaccessible datasets with a visible note rather than failing the
-        // whole introspection call.
-        console.warn(`[bigquery] skipping dataset ${dataset.id} (introspection failed): ${sanitizeBigQueryConnError(e)}`);
+      seen.add(`${dataset.projectId ?? this.config.projectId}.${dataset.id ?? ''}`);
+      await this.introspectDataset(dataset, into);
+    }
+
+    // Pinned datasets from other projects. `getDatasets()` above only ever lists
+    // this project's own, so anything shared in from elsewhere arrives here.
+    for (const pinned of this.config.extraDatasets ?? []) {
+      const dot = pinned.indexOf('.');
+      if (dot <= 0 || dot === pinned.length - 1) {
+        console.warn(`[bigquery] ignoring pinned dataset "${pinned}" (expected project.dataset)`);
         continue;
       }
-
-      for (const table of dsTables) {
-        try {
-          const [metadata] = await table.getMetadata();
-          const schemaName = dataset.id ?? null;
-          const tableName = table.id ?? '';
-          const numRows = metadata.numRows != null ? Number(metadata.numRows) : null;
-          tables.push({
-            schemaName,
-            tableName,
-            rowCount: Number.isFinite(numRows) ? numRows : null,
-          });
-          const fields = (metadata.schema?.fields ?? []) as { name: string; type: string; mode?: string }[];
-          fields.forEach((f, i) => {
-            columns.push({
-              tableName,
-              schemaName,
-              columnName: f.name,
-              dataType: f.type,
-              isNullable: f.mode !== 'REQUIRED',
-              isPrimaryKey: false, // BigQuery has no primary-key concept at the storage layer.
-              ordinalPosition: i,
-            });
-          });
-        } catch (e) {
-          console.warn(`[bigquery] skipping table ${dataset.id}.${table.id} (metadata fetch failed): ${sanitizeBigQueryConnError(e)}`);
-        }
-      }
+      const projectId = pinned.slice(0, dot);
+      const datasetId = pinned.slice(dot + 1);
+      if (seen.has(`${projectId}.${datasetId}`)) continue; // already covered by the own-project sweep
+      seen.add(`${projectId}.${datasetId}`);
+      await this.introspectDataset(this.client.dataset(datasetId, { projectId }), into);
     }
 
     // BigQuery has no cross-table foreign-key enforcement exposed via this API surface.
-    return { tables, columns, foreignKeys: [] };
+    return { tables: into.tables, columns: into.columns, foreignKeys: [] };
   }
 
   /**

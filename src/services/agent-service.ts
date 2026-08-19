@@ -14,6 +14,8 @@ import { db } from '../db/client';
 import { schemaTables } from '../db/schema';
 import { getSchemaSummary } from './schema-sync-service';
 import { qualifiedTableRef } from '../lib/table-ref';
+import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
+import { splitTableArgument } from '../lib/split-table-argument';
 import { executeQuery } from './query-executor-service';
 import { and } from 'drizzle-orm';
 import { capRows } from './safety/safety-service';
@@ -320,25 +322,31 @@ export function buildAgentTools(
     sample_rows: tool({
       description: 'Fetch a few sample rows from a table to understand real values (enum codes, formats).',
       inputSchema: z.object({
-        table: z.string().describe('Exact table name as shown in the schema (for BigQuery, the `dataset.table` form is accepted)'),
+        table: z.string().describe('Exact table name as shown in the schema, copied verbatim (for BigQuery that may be `dataset.table` or `project.dataset.table`)'),
       }),
       execute: async ({ table }) => {
         // Route through the safety layer like any other query. The schema summary
-        // presents BigQuery tables as `dataset.table`, so the model may pass either a
-        // bare name or a qualified one — split on the last dot so the dataset survives
-        // sanitizing (stripping the dot first would merge dataset+table into one token).
-        const dot = table.lastIndexOf('.');
-        const rawTable = dot >= 0 ? table.slice(dot + 1) : table;
-        const rawDataset = dot >= 0 ? table.slice(0, dot) : '';
-        const safe = rawTable.replace(/[^A-Za-z0-9_]/g, '');
-        const safeDataset = rawDataset.replace(/[^A-Za-z0-9_]/g, '');
+        // presents a BigQuery table under the name the warehouse resolves, which
+        // carries the owning project when the dataset belongs to another one — so
+        // the argument may be bare, `dataset.table`, or `project.dataset.table`.
+        const { dataset: safeDataset, table: safe } = splitTableArgument(table);
         // Resolve the real dataset from the synced schema. When a dataset was supplied,
         // match on it too — (connectionId, tableName) is NOT unique across BQ datasets,
         // so a bare-name match could pick the wrong dataset's table.
         const conds = [eq(schemaTables.connectionId, connectionId), eq(schemaTables.tableName, safe)];
         if (safeDataset) conds.push(eq(schemaTables.schemaName, safeDataset));
-        const [t] = await db.select({ schemaName: schemaTables.schemaName }).from(schemaTables).where(and(...conds));
-        const quoted = qualifiedTableRef(dialect, safe, t?.schemaName ?? (safeDataset || undefined));
+        const [t] = await db
+          .select({ schemaName: schemaTables.schemaName, catalogName: schemaTables.catalogName })
+          .from(schemaTables)
+          .where(and(...conds));
+        // The project the dataset belongs to comes from the synced row, never from
+        // the model's argument — a name it invents would point the read somewhere
+        // outside the connection's own catalog.
+        const quoted = qualifiedTableRef(
+          dialect,
+          safe,
+          composeSchemaPrefix(dialect, t?.catalogName, t?.schemaName ?? (safeDataset || undefined)),
+        );
         // App-generated, bounded (5 rows) → skip the risk EXPLAIN (M2 hot-path).
         // In an investigation on BigQuery this rides agentBudgeted (dry-run + daily
         // budget + maximumBytesBilled cap), so it is cost-bounded — but it is NOT
