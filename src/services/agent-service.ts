@@ -16,6 +16,7 @@ import { getSchemaSummary } from './schema-sync-service';
 import { qualifiedTableRef } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { splitTableArgument } from '../lib/split-table-argument';
+import { getScope, filterTablesToScope } from './schema-scope-service';
 import { executeQuery } from './query-executor-service';
 import { and } from 'drizzle-orm';
 import { capRows } from './safety/safety-service';
@@ -593,12 +594,22 @@ function selfRepairHint(state: InvestigationState) {
   return { hint: `Attempt ${state.consecutiveFailures}/${MAX_CONSECUTIVE_SQL_FAILURES}. Re-read the error, check exact table/column names via schema_details, and try ONE corrected query.` };
 }
 
-/** Tables above BIG_TABLE_ROWS, for the big-table policy prompt (red-team C2/C3). */
+/** Tables above BIG_TABLE_ROWS, for the big-table policy prompt (red-team C2/C3).
+ *
+ *  Scoped like the schema summary: this list goes straight into the system
+ *  prompt, so an unfiltered one names tables — and their row counts — that the
+ *  connection does not grant. Under `viewsOnly` no raw table is readable at all,
+ *  so there is no big-table policy to state. */
 export async function getBigTables(connectionId: string): Promise<{ name: string; rows: number }[]> {
   const threshold = Number(process.env.BIG_TABLE_ROWS ?? 1_000_000);
-  const tables = await db.select({ tableName: schemaTables.tableName, rowCount: schemaTables.rowCount })
-    .from(schemaTables)
-    .where(eq(schemaTables.connectionId, connectionId));
+  const scope = await getScope(connectionId);
+  if (scope?.viewsOnly) return [];
+  const tables = filterTablesToScope(
+    scope,
+    await db.select({ tableName: schemaTables.tableName, schemaName: schemaTables.schemaName, rowCount: schemaTables.rowCount })
+      .from(schemaTables)
+      .where(eq(schemaTables.connectionId, connectionId)),
+  );
   return tables
     .filter((t) => t.rowCount != null && t.rowCount >= threshold)
     .map((t) => ({ name: t.tableName, rows: t.rowCount as number }));

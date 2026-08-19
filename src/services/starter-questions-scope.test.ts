@@ -1,5 +1,7 @@
 /**
- * A starter question is a one-click prompt, so it has to stay inside the
+ * Two prompt-building helpers that read the synced schema directly, so both had
+ * to learn the same boundary the schema summary now honors: a starter question
+ * is a one-click prompt, so it has to stay inside the
  * boundary the executor enforces. Suggesting an out-of-scope table hands the
  * user a question that comes back blocked, which reads as the product being
  * broken rather than the connection being governed.
@@ -9,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { connections, schemaTables, schemaColumns } from '../db/schema';
 import { getStarterQuestions } from './starter-questions-service';
+import { getBigTables } from './agent-service';
 import { setScope, type SchemaScope } from './schema-scope-service';
 
 const created: string[] = [];
@@ -23,9 +26,11 @@ async function makeConnection(name: string, scope: SchemaScope | null) {
   return c.id;
 }
 
-/** `events` is deliberately the largest, so an unfiltered heuristic picks it first. */
+/** `events` is deliberately the largest, so an unfiltered heuristic picks it
+ *  first, and sits above the default BIG_TABLE_ROWS threshold so the big-table
+ *  prompt would name it too. */
 async function seed(connectionId: string) {
-  for (const [tableName, rowCount] of [['events', 900_000], ['orders', 1_000]] as const) {
+  for (const [tableName, rowCount] of [['events', 2_400_000], ['orders', 1_000]] as const) {
     const [t] = await db
       .insert(schemaTables)
       .values({ connectionId, tableName, schemaName: 'public', catalogName: null, rowCount })
@@ -45,7 +50,10 @@ beforeAll(async () => {
   await seed(scopedId);
   unscopedId = await makeConnection('starter-scope-unscoped', null);
   await seed(unscopedId);
-  viewsOnlyId = await makeConnection('starter-scope-views-only', { tables: ['orders'], viewsOnly: true });
+  // `events` is inside this scope on purpose: the allowlist would let it
+  // through, so only the viewsOnly rule can be what withholds it. Otherwise the
+  // test passes even when the viewsOnly branch is deleted.
+  viewsOnlyId = await makeConnection('starter-scope-views-only', { tables: ['orders', 'events'], viewsOnly: true });
   await seed(viewsOnlyId);
 });
 
@@ -66,5 +74,23 @@ describe('getStarterQuestions', () => {
 
   it('still picks the largest table on an unscoped connection', async () => {
     expect((await getStarterQuestions(unscopedId)).join('\n')).toContain('events');
+  });
+});
+
+// `getBigTables` feeds table names AND row counts straight into the system
+// prompt. Unfiltered, the agent could cite the size of a table the connection
+// withholds — which is how the leak was spotted, in a real chat answer.
+describe('getBigTables', () => {
+  it('omits a big table the scope withholds', async () => {
+    const names = (await getBigTables(scopedId)).map((t) => t.name);
+    expect(names).not.toContain('events');
+  });
+
+  it('states no big-table policy under viewsOnly, where no raw table is readable', async () => {
+    expect(await getBigTables(viewsOnlyId)).toEqual([]);
+  });
+
+  it('still reports big tables on an unscoped connection', async () => {
+    expect((await getBigTables(unscopedId)).map((t) => t.name)).toContain('events');
   });
 });

@@ -82,6 +82,9 @@ beforeAll(async () => {
   for (const t of ['orders', 'users', 'secrets']) await addTable(unscopedId, t);
   await addFk(unscopedId, 'orders', 'secrets');
 
+  // `orders` is inside this scope on purpose, so the allowlist cannot be what
+  // hides it — only the viewsOnly rule can. A scope that excluded it would let
+  // the test pass even with the viewsOnly branch deleted.
   viewsOnlyId = await makeConnection('scope-parity-views-only', { tables: ['orders'], viewsOnly: true });
   await addTable(viewsOnlyId, 'orders');
   await addView(viewsOnlyId, 'doanh_thu_thang');
