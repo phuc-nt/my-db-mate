@@ -43,7 +43,7 @@ export const LOW_TIER_FRACTION = 0.5;
  *  Tiers (derived purely from `actor` + the interactive flag — no new call-site param):
  *   - interactive (non-backgroundBudgeted: chat / SQL-panel / browse) → full budget;
  *     already dry-run+confirm+per-query-cap protected, never sub-ceiled.
- *   - low maintenance (`monitor`, `anomaly`) → `budget * LOW_TIER_FRACTION`.
+ *   - low maintenance (`monitor`, `anomaly`, `profiling`) → `budget * LOW_TIER_FRACTION`.
  *   - everything else background (dashboard / metric* / report) → full budget.
  *
  *  A low-tier reservation still debits the FULL pool for later high-tier admits (it
@@ -62,6 +62,12 @@ export function effectiveBudget(budgetBytes: number, actor: string, backgroundBu
  *  say WHY it was throttled even when the budget is 0 (where `ceiling < budget` can't tell). */
 export function isLowTierActor(actor: string, backgroundBudgeted?: boolean): boolean {
   if (!backgroundBudgeted) return false;
+  // The datamart advisor is deliberately absent. It reads the app database for
+  // its inputs and validates every proposed statement with a BigQuery DRY RUN,
+  // which BigQuery does not bill and which never reaches this ledger — so it
+  // consumes no budget to tier. Listing it here would be a rule that can never
+  // run, and an unrunnable rule reads as protection that is not there. If the
+  // advisor ever issues a billed query (real profiling, say), add it back then.
   return actor === 'monitor' || actor === 'anomaly' || actor === 'profiling';
 }
 

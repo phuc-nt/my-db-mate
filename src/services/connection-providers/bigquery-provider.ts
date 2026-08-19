@@ -147,6 +147,47 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
     };
   }
 
+  /**
+   * Find the project that actually holds each named dataset.
+   *
+   * BigQuery resolves a two-part `dataset.table` against the connection's own
+   * project, which is wrong for anything shared from elsewhere — a public
+   * dataset, a partner project, a separate prod project. Callers that put a
+   * table name in front of a query generator need the project spelled out or the
+   * query fails with "Dataset ... was not found".
+   *
+   * Own project first, then the public catalog for whatever is still missing.
+   * Listing datasets is a metadata call, not a query: free, and it never touches
+   * the daily byte budget. A dataset that resolves nowhere is simply omitted —
+   * the caller keeps whatever it had, rather than being handed a wrong project.
+   */
+  async resolveDatasetProjects(datasets: string[]): Promise<Record<string, string>> {
+    const wanted = new Set(datasets);
+    if (wanted.size === 0) return {};
+    const out: Record<string, string> = {};
+
+    const scan = async (opts?: { projectId: string }) => {
+      const [found] = await this.client.getDatasets(opts);
+      for (const d of found) {
+        if (d.id && d.projectId && wanted.has(d.id) && !out[d.id]) out[d.id] = d.projectId;
+      }
+    };
+
+    try {
+      await scan();
+    } catch {
+      // No access to the connection's own dataset list is not fatal here.
+    }
+    if (wanted.size > Object.keys(out).length) {
+      try {
+        await scan({ projectId: 'bigquery-public-data' });
+      } catch {
+        // Public catalog unreachable — leave the rest unresolved.
+      }
+    }
+    return out;
+  }
+
   async introspectSchema(): Promise<IntrospectedSchema> {
     const tables: IntrospectedSchema['tables'] = [];
     const columns: ColumnInfo[] = [];
@@ -202,6 +243,30 @@ export class BigQueryConnectionProvider implements ConnectionProvider {
 
     // BigQuery has no cross-table foreign-key enforcement exposed via this API surface.
     return { tables, columns, foreignKeys: [] };
+  }
+
+  /**
+   * The result schema of a statement, without running it.
+   *
+   * The same free `dryRun` job that prices a query also reports the columns it
+   * would return, which is the only affordable way to probe a curated view's
+   * shape here: `LIMIT 0` bills the full scan on BigQuery (billing counts bytes
+   * processed, not rows returned), so the obvious probe would charge real money
+   * every time someone saved an edit.
+   */
+  async dryRunSchema(sql: string): Promise<Array<{ name: string; type: string }>> {
+    let jobResult;
+    try {
+      jobResult = await this.client.createQueryJob({ query: sql, dryRun: true });
+    } catch (e) {
+      throw new EstimateFailedError(e);
+    }
+    const fields = jobResult[0].metadata?.statistics?.query?.schema?.fields;
+    if (!Array.isArray(fields)) return [];
+    return fields.map((f: { name?: string; type?: string }) => ({
+      name: String(f.name ?? ''),
+      type: String(f.type ?? 'unknown'),
+    }));
   }
 
   /** Layer 1 (UX estimate): a `dryRun: true` job — never billed, never consumes

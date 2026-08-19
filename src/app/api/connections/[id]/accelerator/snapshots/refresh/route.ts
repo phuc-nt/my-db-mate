@@ -7,7 +7,8 @@ import { buildProvider, type ConnectionRow } from '../../../../../../../services
 import { ensureSnapshot } from '../../../../../../../services/accelerator/snapshot-cache-service';
 import { ensureIncrementalSnapshot } from '../../../../../../../services/accelerator/incremental-snapshot-service';
 import { getWatermarkConfig } from '../../../../../../../services/accelerator/watermark-config-service';
-import { assertNotBigQuery } from '../../../../../../../services/connection-providers/provider-interface';
+import { assertNotBigQuery, type Dialect } from '../../../../../../../services/connection-providers/provider-interface';
+import { assertSqlInScope } from '../../../../../../../services/schema-scope-service';
 
 export const runtime = 'nodejs';
 
@@ -35,6 +36,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });
+
+  // A refresh replays SQL stored when the snapshot was first built. If the scope
+  // has narrowed since, re-extracting would rebuild a local copy of data the
+  // boundary now withholds — so the stored SQL is re-checked, not grandfathered.
+  const scopeVerdict = await assertSqlInScope({ connectionId: id, sql: row.sql, dialect: conn.dialect as Dialect });
+  if (scopeVerdict.status === 'blocked') {
+    return NextResponse.json({ error: scopeVerdict.reason }, { status: 403 });
+  }
 
   const provider = buildProvider(conn as unknown as ConnectionRow);
   try {

@@ -13,7 +13,8 @@ import { evalQueries, evalRuns, evalResults } from '../db/intelligence-schema';
 import { getConnection, getProvider } from './connection-service';
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from './query-executor-service';
-import { assertNotBigQuery } from './connection-providers/provider-interface';
+import { assertNotBigQuery, type Dialect } from './connection-providers/provider-interface';
+import { assertSqlInScope } from './schema-scope-service';
 
 export async function addEvalQuery(input: { connectionId: string; question: string; goldSql: string; complexity?: string }) {
   const [row] = await db.insert(evalQueries).values(input).returning();
@@ -62,7 +63,18 @@ export async function runEval(connectionId: string) {
   try {
     assertNotBigQuery(provider, 'Eval harness');
     for (const g of golds) {
-      // Gold result (executed directly, trusted).
+      // Gold result (executed directly, trusted) — but "trusted" means it was
+      // authored by the owner, not that it may cross the governed boundary: a
+      // gold query saved before a scope was set would otherwise read tables the
+      // scope now forbids. Check it here, since this path skips executeQuery.
+      const goldScope = await assertSqlInScope({ connectionId, sql: g.goldSql, dialect: conn.dialect as Dialect });
+      if (goldScope.status === 'blocked') {
+        await db.insert(evalResults).values({
+          runId: run.id, evalQueryId: g.id, generatedSql: null, executionMatch: false, structuralMatch: false,
+          note: `gold SQL out of governed scope: ${goldScope.reason}`,
+        });
+        continue;
+      }
       const goldRes = await provider.executeReadOnly(g.goldSql);
       const goldHash = hashRows(goldRes.rows);
 

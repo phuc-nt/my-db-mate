@@ -221,7 +221,14 @@ const MYSQL_TRUNCATED = /\.\.\.\s*$/; // performance_schema digest tail marker
 
 /** Read the engine's query-statistics view through the read-only provider.
  *  Direct executeReadOnly (bounded app-internal read) — the source queries are
- *  plain SELECTs and are not blocked by the safety layer. */
+ *  plain SELECTs and are not blocked by the safety layer.
+ *
+ *  Deliberately NOT scope-guarded: these read only the engine's own statistics
+ *  views (`pg_stat_statements`, `performance_schema`), never a user table, so no
+ *  row of governed data can pass through here. What they return is SQL *text*
+ *  that may mention out-of-scope tables — mining only parses it; every path that
+ *  would execute mined SQL goes through `executeQuery`, where the scope guard
+ *  applies. */
 export async function fetchQueryLog(provider: ConnectionProvider): Promise<QueryLogResult> {
   if (provider.dialect === 'bigquery') {
     assertNotBigQuery(provider, 'Query-history mining');

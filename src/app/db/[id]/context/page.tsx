@@ -2,8 +2,9 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { VirtualViewsTab } from '../../../../components/virtual-views-tab';
 
-type Tab = 'glossary' | 'annotations' | 'relationships' | 'verified' | 'inbox' | 'coverage';
+type Tab = 'glossary' | 'annotations' | 'relationships' | 'views' | 'verified' | 'inbox' | 'coverage';
 
 interface ContextData {
   tables: { id: string; tableName: string; description: string | null; businessAlias: string | null; isDeprecated: boolean }[];
@@ -87,7 +88,7 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'context.yaml'; a.click();
   }
 
-  const tabs: Tab[] = ['glossary', 'annotations', 'relationships', 'verified', 'inbox', 'coverage'];
+  const tabs: Tab[] = ['glossary', 'annotations', 'relationships', 'views', 'verified', 'inbox', 'coverage'];
 
   return (
     <main className="mx-auto max-w-4xl p-6">
@@ -133,6 +134,7 @@ export default function ContextStudio({ params }: { params: Promise<{ id: string
       {tab === 'glossary' && <GlossaryTab data={data} onAdd={(b) => post({ type: 'glossary', ...b })} />}
       {tab === 'annotations' && <AnnotationsTab data={data} onAdd={(b) => post(b)} />}
       {tab === 'relationships' && <RelationshipsTab data={data} onAdd={(b) => post({ type: 'relationship', ...b })} />}
+      {tab === 'views' && <VirtualViewsTab connectionId={id} />}
       {tab === 'verified' && <VerifiedTab connectionId={id} data={data} onToggle={(queryId, disabled) => post({ type: 'verified_query_disable', queryId, disabled })} />}
       {tab === 'inbox' && <InboxTab suggestions={suggestions} onAction={suggestionAction} />}
       {tab === 'coverage' && <CoverageTab data={data} />}
@@ -201,6 +203,23 @@ function VerifiedTab({ connectionId, data, onToggle }: { connectionId: string; d
   // Per-item outcome of "Track as metric" — the server shape-validates the SQL,
   // so non-(time, value) queries fail here with the server's reason.
   const [trackMsg, setTrackMsg] = useState<Record<string, string>>({});
+
+  /** Promote a query that already proved itself into a named definition. This is
+   *  how a datamart accumulates in practice: someone answers a real question,
+   *  the answer turns out to be the one everybody wanted, and it earns a name.
+   *  The name is derived from the question and left editable in the Views tab,
+   *  since a question phrased in a hurry rarely makes a good identifier. */
+  async function promote(v: { id: string; question: string; sql: string }) {
+    const name = v.question.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+      || `view_${v.id.slice(0, 8)}`;
+    const r = await fetch(`/api/connections/${connectionId}/views`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: /^[a-z]/.test(name) ? name : `v_${name}`, sql: v.sql, description: v.question }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setTrackMsg((m) => ({ ...m, [v.id]: r.ok ? 'Promoted ✓ — see Views tab' : (d.error ?? 'failed') }));
+  }
+
   async function track(v: { id: string; question: string; sql: string }) {
     const r = await fetch(`/api/connections/${connectionId}/metrics`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -217,6 +236,7 @@ function VerifiedTab({ connectionId, data, onToggle }: { connectionId: string; d
           <code className="text-xs text-neutral-500">{v.sql}</code>
           <button onClick={() => onToggle(v.id, !v.isDisabled)} className="ml-2 text-xs text-blue-600">{v.isDisabled ? 'enable' : 'disable'}</button>
           <button onClick={() => track(v)} className="ml-2 text-xs text-blue-600">📈 Track as metric</button>
+          <button onClick={() => promote(v)} className="ml-2 text-xs text-blue-600">🛡 Promote to view</button>
           {trackMsg[v.id] && <span className="ml-2 text-xs text-neutral-500">{trackMsg[v.id]}</span>}
         </li>
       ))}

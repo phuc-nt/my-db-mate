@@ -12,6 +12,7 @@ import { getProvider } from './connection-service';
 import { capRows } from './safety/safety-service';
 import { executeQuery } from './query-executor-service';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
+import { getScope, isScopeActive, isRefInScope } from './schema-scope-service';
 import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
 
 const DISTINCT_CAP = 50;
@@ -24,6 +25,14 @@ async function assertKnownColumn(connectionId: string, tableName: string, column
   const [t] = await db.select().from(schemaTables)
     .where(and(eq(schemaTables.connectionId, connectionId), eq(schemaTables.tableName, tableName)));
   if (!t) throw new Error(`Unknown table: ${tableName}`);
+  // The governed boundary applies to profiling too: its reads sample real
+  // values, so an out-of-scope table would leak exactly the data the scope
+  // exists to withhold. Checked on the table (not the generated SQL) because
+  // every statement below is built from this one allow-listed table.
+  const scope = await getScope(connectionId);
+  if (isScopeActive(scope) && !isRefInScope(scope, { schemaName: t.schemaName, tableName: t.tableName })) {
+    throw new Error(`Table ${tableName} is outside the governed scope for this connection`);
+  }
   const [c] = await db.select().from(schemaColumns)
     .where(and(eq(schemaColumns.tableId, t.id), eq(schemaColumns.columnName, columnName)));
   if (!c) throw new Error(`Unknown column: ${tableName}.${columnName}`);
@@ -31,7 +40,8 @@ async function assertKnownColumn(connectionId: string, tableName: string, column
 }
 
 /** Run one profiling read. Non-BigQuery keeps the historical direct
- *  `executeReadOnly` (app-internal bounded reads, unchanged behavior). BigQuery
+ *  `executeReadOnly` (app-internal bounded reads over a table `assertKnownColumn`
+ *  already checked against the governed scope, unchanged behavior). BigQuery
  *  goes through the choke point's budgeted path as maintenance actor
  *  'profiling' — dry-run estimate → daily-budget reservation (half-budget
  *  low-tier ceiling) → run under maximumBytesBilled → reconcile — the same

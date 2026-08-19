@@ -226,6 +226,9 @@ async function hasSeqScanOnTable(
   table: string,
 ): Promise<{ ok: boolean; seqScan: boolean; excerpt?: string }> {
   try {
+    // GENERIC_PLAN plans the statement without executing it, so this returns plan
+    // text and never a row of table data — out of the governed scope's reach by
+    // construction, which is why no scope guard sits here.
     const res = await provider.executeReadOnly(`EXPLAIN (GENERIC_PLAN, FORMAT TEXT) ${placeholderSql}`);
     const plan = res.rows.map((r) => String(r[0])).join('\n');
     // Match `Seq Scan on [schema.]"?table"?` with a RIGHT boundary (whitespace, EOL,

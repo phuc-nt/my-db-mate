@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getConnection } from '../../../services/connection-service';
 import { WorkspaceRail } from '../../../components/workspace-rail';
+import { getScope, isScopeActive } from '../../../services/schema-scope-service';
 
 /** Per-connection workspace: one shared header (name · engine · read-only badge)
  *  + section strip (Chat / Schema / Context / Automations) above every section.
@@ -14,6 +15,13 @@ export default async function WorkspaceLayout({ children, params }: {
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) notFound();
+  // Surfaced in the header rather than only on the schema page: a scoped
+  // connection answers fewer questions on purpose, and someone in chat wondering
+  // why should be able to see the boundary without going looking for it.
+  const scope = await getScope(id);
+  const scopedCount = isScopeActive(scope)
+    ? (scope.tables?.length ?? 0) + (scope.datasets?.length ?? 0)
+    : 0;
 
   return (
     <div style={{ ['--workspace-chrome-h' as string]: '5.5rem' }}>
@@ -22,6 +30,15 @@ export default async function WorkspaceLayout({ children, params }: {
           <span className="max-w-[200px] truncate font-medium" title={conn.name}>{conn.name}</span>
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{conn.dialect}</span>
           {conn.isReadOnlyVerified && <span className="whitespace-nowrap text-xs text-green-600">read-only ✓</span>}
+          {scopedCount > 0 && (
+            <Link
+              href={`/db/${id}/schema`}
+              title="This connection is limited to a governed set of tables. Queries touching anything else are refused."
+              className="whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+            >
+              scoped · {scopedCount}
+            </Link>
+          )}
           <WorkspaceRail id={id} accelerateEnabled={Boolean(conn.accelerateEnabled)} />
           <Link href="/connections" className="ml-auto whitespace-nowrap text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100">switch db →</Link>
         </div>

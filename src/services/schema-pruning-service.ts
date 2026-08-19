@@ -8,6 +8,8 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
 import { manualRelationships, tableAnnotations } from '../db/context-schema';
+import { getScope, filterTablesToScope } from './schema-scope-service';
+import { listViews } from './virtual-view-service';
 
 const PRUNE_THRESHOLD = 200;
 const MAX_HOPS = 2;
@@ -21,7 +23,13 @@ function tableKey(t: { tableName: string; schemaName?: string | null }): string 
 }
 
 export async function getPrunedSchemaSummary(connectionId: string, question: string): Promise<string> {
-  const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  const allTables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  // Governed scope first: pruning is a token optimization, the scope is a
+  // boundary. Filtering here means the agent never sees out-of-scope tables to
+  // ask about — the executeQuery guard is the enforcement behind it, not the
+  // only line of defense. Unscoped connections get the full list, unchanged.
+  const scope = await getScope(connectionId);
+  const tables = filterTablesToScope(scope, allTables);
   if (tables.length <= PRUNE_THRESHOLD) {
     return buildSummary(connectionId, tables.map((t) => tableKey(t)));
   }
@@ -62,7 +70,11 @@ export async function getPrunedSchemaSummary(connectionId: string, question: str
 }
 
 async function buildSummary(connectionId: string, tableNames: string[]): Promise<string> {
-  const tables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  const allTables = await db.select().from(schemaTables).where(eq(schemaTables.connectionId, connectionId));
+  // Re-apply the scope here too: this function re-reads the full table list, so
+  // resolving a bare name could otherwise pull in a same-named table from an
+  // out-of-scope dataset.
+  const tables = filterTablesToScope(await getScope(connectionId), allTables);
   // Two-tier resolution: canonical `schema.table` keys hit exactly; a bare name
   // (the FK graph and question-seeding work in bare names — FK rows don't carry
   // schemas) resolves to EVERY table with that name, so a multi-dataset collision
@@ -106,5 +118,32 @@ async function buildSummary(connectionId: string, tableNames: string[]): Promise
     const label = qualify && t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
     lines.push(`${label}(${colStr})`);
   }
-  return lines.join('\n');
+
+  const views = await describeViews(connectionId);
+  const scope = await getScope(connectionId);
+  // Under viewsOnly the curated layer is the entire interface, so raw tables are
+  // not merely de-emphasised — they are omitted. Showing a table the executor
+  // will refuse would only teach the agent to write queries that get blocked.
+  if (scope?.viewsOnly && views) return views;
+  return [views, lines.join('\n')].filter(Boolean).join('\n\n');
+}
+
+/**
+ * The governed views, presented to the agent as tables it should prefer.
+ *
+ * A curated view carries the business definition — the thing the raw schema
+ * cannot express — so it is listed first and named as the preferred surface.
+ * The description matters as much as the columns: it is what lets a question
+ * phrased in business language find the right definition instead of the agent
+ * reassembling one from fact tables and getting the filters subtly wrong.
+ */
+async function describeViews(connectionId: string): Promise<string> {
+  const views = await listViews(connectionId);
+  const active = views.filter((v) => !v.isDisabled);
+  if (active.length === 0) return '';
+  const lines = active.map((v) => {
+    const cols = (v.columnsCache ?? []).map((c) => (c.type && c.type !== 'unknown' ? `${c.name} ${c.type}` : c.name)).join(', ');
+    return `${v.name}(${cols})${v.description ? ` — ${v.description}` : ''}`;
+  });
+  return `-- Governed views (prefer these; they carry the agreed business definitions):\n${lines.join('\n')}`;
 }

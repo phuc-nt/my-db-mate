@@ -63,6 +63,11 @@ export const connections = pgTable('connections', {
   // budgeted extract, then $0 reads until TTL) instead of querying BigQuery live each
   // refresh. Explicit opt-in — off by default; data is cached (staleness surfaced).
   bigqueryOfflineMode: boolean('bigquery_offline_mode').notNull().default(false),
+  // Governed datamart boundary: when set, the agent may only see and query the
+  // listed datasets/tables. NOT a prompt hint — enforced in `executeQuery` (see
+  // schema-scope-service). Null means unscoped: the full synced schema, which is
+  // the pre-existing behavior and stays the default.
+  schemaScope: jsonb('schema_scope').$type<{ datasets?: string[]; tables?: string[]; viewsOnly?: boolean }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

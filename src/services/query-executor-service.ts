@@ -25,6 +25,8 @@ import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-se
 import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
 import { extractLineage } from '../lib/sql-lineage';
+import { assertSqlInScope, type SchemaScope } from './schema-scope-service';
+import { expandForConnection } from './virtual-view-service';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
 import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from './bigquery-daily-budget-service';
 
@@ -233,7 +235,23 @@ export async function executeQuery(params: {
   const conn = await getConnection(connectionId);
   if (!conn) return { status: 'error', errorMessage: 'Connection not found' };
 
-  const verdict = validateSql(sql, conn.dialect as Dialect);
+  const scopeConfig = (conn as unknown as { schemaScope?: SchemaScope | null }).schemaScope ?? null;
+
+  // Curated views are inlined FIRST, so every guard below — safety, governed
+  // scope, BigQuery cost — inspects the statement that will really run. A view
+  // can therefore never be a way to reach a table the scope forbids or to hide
+  // an expensive scan behind a friendly name. Connections with no views return
+  // the original string byte-identical and pay only an in-process cache read.
+  const expansion = await expandForConnection(
+    connectionId, sql, conn.dialect as Dialect, scopeConfig?.viewsOnly === true,
+  );
+  if (expansion.status === 'blocked') {
+    await audit({ connectionId, sessionId, actor, sql, status: 'blocked', blockedReason: expansion.reason });
+    return { status: 'blocked', blockedReason: expansion.reason };
+  }
+  const expandedSql = expansion.sql;
+
+  const verdict = validateSql(expandedSql, conn.dialect as Dialect);
 
   // Blocked by safety → audit and return without touching the DB.
   if (verdict.status === 'blocked') {
@@ -249,6 +267,21 @@ export async function executeQuery(params: {
   // properly-granted users are the common dogfood case.)
   const onWritableConn = conn.isReadOnlyVerified === false;
   const finalSql = verdict.sql;
+
+  // Governed scope (datamart boundary): checked on the post-safety SQL, before
+  // ANY execution path — including acceleration and BigQuery snapshot/offline
+  // branches, so out-of-scope data can never even be cached. Unscoped
+  // connections short-circuit inside the guard and cost nothing.
+  const scopeVerdict = await assertSqlInScope({
+    connectionId,
+    sql: finalSql,
+    dialect: conn.dialect as Dialect,
+    scope: scopeConfig,
+  });
+  if (scopeVerdict.status === 'blocked') {
+    await audit({ connectionId, sessionId, actor, sql: finalSql, status: 'blocked', blockedReason: scopeVerdict.reason });
+    return { status: 'blocked', blockedReason: scopeVerdict.reason };
+  }
 
   const provider = buildProvider(conn as unknown as ConnectionRow);
   const started = Date.now();
