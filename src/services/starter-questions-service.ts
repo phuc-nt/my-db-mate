@@ -2,24 +2,44 @@
  * Starter questions for a fresh chat: prefer the connection's verified queries
  * (the questions a human already curated), fall back to safe heuristics derived
  * from schema metadata (largest table, a time column). No LLM.
+ *
+ * Every branch is bounded by the governed scope. A starter question is a
+ * one-click prompt, so one naming a table the executor refuses hands the user a
+ * dead button — which reads as the product being broken rather than the
+ * connection being governed. Curated questions get no exemption: they carry
+ * their own SQL and are checked against the same guard the executor runs, since
+ * a scope can be narrowed after a question was written.
  */
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../db/client';
 import { verifiedQueries } from '../db/context-schema';
-import { schemaTables, schemaColumns } from '../db/schema';
-import { getScope, filterTablesToScope, isScopeActive } from './schema-scope-service';
+import { connections, schemaTables, schemaColumns } from '../db/schema';
+import { getScope, filterTablesToScope, assertSqlInScope } from './schema-scope-service';
+import type { Dialect } from './connection-providers/provider-interface';
 
 export async function getStarterQuestions(connectionId: string, max = 4): Promise<string[]> {
   const out: string[] = [];
 
   // 1. Verified queries — real curated questions. Exclude bookmarks (whose
   //    `question` is a saved-query NAME, not a question) and disabled ones.
+  //    Curated is not the same as still-permitted: a query written before the
+  //    scope was narrowed still names tables the executor now refuses. Each one
+  //    carries its own SQL, so it is checked against the same guard the executor
+  //    runs rather than being trusted for having been curated once.
   const verified = await db
-    .select({ question: verifiedQueries.question })
+    .select({ question: verifiedQueries.question, sql: verifiedQueries.sql })
     .from(verifiedQueries)
     .where(and(eq(verifiedQueries.connectionId, connectionId), eq(verifiedQueries.isDisabled, false), eq(verifiedQueries.isBookmark, false)))
     .limit(max);
-  for (const v of verified) if (v.question?.trim()) out.push(v.question.trim());
+  if (verified.length > 0) {
+    const [conn] = await db.select({ dialect: connections.dialect }).from(connections).where(eq(connections.id, connectionId));
+    for (const v of verified) {
+      if (!v.question?.trim()) continue;
+      const verdict = await assertSqlInScope({ connectionId, sql: v.sql, dialect: conn?.dialect as Dialect });
+      if (verdict.status !== 'ok') continue;
+      out.push(v.question.trim());
+    }
+  }
 
   if (out.length >= max) return out.slice(0, max);
 
@@ -34,7 +54,7 @@ export async function getStarterQuestions(connectionId: string, max = 4): Promis
   const scopedTables = filterTablesToScope(
     scope,
     await db
-      .select({ tableName: schemaTables.tableName, rows: schemaTables.rowCount, schemaName: schemaTables.schemaName })
+      .select({ id: schemaTables.id, tableName: schemaTables.tableName, rows: schemaTables.rowCount, schemaName: schemaTables.schemaName })
       .from(schemaTables)
       .where(eq(schemaTables.connectionId, connectionId))
       .orderBy(desc(schemaTables.rowCount)),
@@ -46,14 +66,12 @@ export async function getStarterQuestions(connectionId: string, max = 4): Promis
   // A table with a date/timestamp column → a trend question (type is known from schema).
   for (const t of tables) {
     if (out.length >= max) break;
-    const [tRow] = await db.select({ id: schemaTables.id, schemaName: schemaTables.schemaName }).from(schemaTables)
-      .where(and(eq(schemaTables.connectionId, connectionId), eq(schemaTables.tableName, t.tableName)));
-    // Re-resolving by bare name can land on a same-named table in a dataset the
-    // scope withholds, so re-check rather than trusting the name round-trip.
-    if (!tRow) continue;
-    if (isScopeActive(scope) && filterTablesToScope(scope, [{ schemaName: tRow.schemaName, tableName: t.tableName }]).length === 0) continue;
+    // Use the id carried down from the scoped query above. Re-resolving by bare
+    // name would pick an arbitrary row when two datasets hold the same table
+    // name, which on a multi-dataset connection silently drops the legitimate
+    // in-scope suggestion depending on physical row order.
     const timeCol = await db.select({ name: schemaColumns.columnName, type: schemaColumns.dataType })
-      .from(schemaColumns).where(eq(schemaColumns.tableId, tRow.id));
+      .from(schemaColumns).where(eq(schemaColumns.tableId, t.id));
     const tc = timeCol.find((c) => /date|time|timestamp/i.test(c.type));
     if (tc) { out.push(`Show ${t.tableName} counts over time by ${tc.name}.`); break; }
   }

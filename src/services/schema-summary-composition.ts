@@ -34,10 +34,12 @@ export async function describeViews(connectionId: string): Promise<string> {
 }
 
 /** Said instead of a table listing when `viewsOnly` is on but nothing is
- *  curated yet, so the agent reports an empty governed layer rather than
- *  guessing at table names it has not been shown. */
+ *  curated yet, so the reader sees an empty governed layer rather than guessing
+ *  at table names it has not been shown. Phrased as a statement of fact, not an
+ *  instruction: the same string is a schema payload for MCP clients, which
+ *  should decide for themselves what to do about it. */
 const NO_GOVERNED_VIEWS_NOTE =
-  '-- This connection is restricted to governed views, and none are defined yet. No tables are available to query; tell the user a governed view must be created first.';
+  '-- This connection is restricted to governed views, and none are defined yet. No tables are available to query on it.';
 
 export interface ComposeSummaryInput {
   /** Output of `describeViews`, or `''` when nothing is active. */
