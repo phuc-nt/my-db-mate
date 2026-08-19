@@ -56,7 +56,8 @@ Cài xong **thử được ngay, không cần database**: trang Connections có 
 | Cảnh báo dữ liệu bất thường | Alerts | ✅ Data-drift monitor (snapshot-diff, ngưỡng tường minh, không ML mờ) |
 | Giá | ~$75/user/tháng (Creator) | $0 self-host — chỉ trả API key LLM của chính bạn |
 | **Kéo-thả canvas thủ công (VizQL)** | ✅ | ❌ Có chủ đích không làm — thay bằng AI-assist ở trên; cần canvas thủ công hãy dùng [Apache Superset](https://superset.apache.org/) |
-| Prep/ETL · governance doanh nghiệp · multi-user RBAC | ✅ | ❌ Chưa có (đang ở phạm vi single-user self-host) |
+| Lớp semantic / governed data source | Published Data Source, certified | ✅ **Governed scope + virtual datamart** — chốt bảng agent được đọc (chặn lúc chạy), hoặc thay hẳn schema thô bằng view đã duyệt |
+| Prep/ETL · multi-user RBAC · quản trị cấp tổ chức | ✅ | ❌ Chưa có (đang ở phạm vi single-user self-host) |
 
 ![Dashboard: heatmap, combo (bar + line), bar — 11 loại chart, spec = render mapping](docs/images/dashboard-chart-types.png)
 
@@ -85,6 +86,22 @@ Chi tiết: [Metrics & digest trong user guide](docs/user-guide.md) · [features
 
 ---
 
+## Chốt ranh giới dữ liệu (governed scope)
+
+Agent càng tự chủ thì câu hỏi "nó được đọc gì" càng quan trọng. My DB Mate cho chốt ranh giới **theo từng connection**, và ranh giới đó được **chặn lúc chạy query**, không phải chỉ dặn dò trong prompt.
+
+**Chọn bảng agent được đọc.** Mọi thứ ngoài danh sách bị từ chối khi query chạy. Kiểm bằng AST đầy đủ nên bảng giấu trong subquery ở WHERE, thân CTE, derived table hay nhánh UNION đều bị bắt như `FROM` trực tiếp. SQL không parse được thì **chặn**, không cho đi qua — lỗ hổng chuẩn hoá thành lời từ chối, không thành đường vòng.
+
+**Governed views only — thay hẳn schema thô.** Định nghĩa các `SELECT` đã duyệt ngay trong app (inline thành CTE lúc chạy, không cần ai có quyền ghi vào warehouse). Bật chế độ này thì model chỉ thấy view, không thấy cả bảng đã tick trong scope — câu trả lời đến từ định nghĩa đã thống nhất thay vì join tự ráp.
+
+**Thu hẹp ranh giới hiện rõ thiệt hại trước khi làm.** Nút "Check impact" liệt kê metric, saved query, widget, lịch chạy sẽ hỏng; khi áp dụng thì tạm dừng những cái không ai trông, và **xoá cache mà share link còn phục vụ** (widget cache, snapshot notebook/report). Ranh giới mà để lại dữ liệu hôm qua trên trang public thì chỉ là trang trí.
+
+**Ranh giới là thứ agent *được thấy*, không chỉ thứ nó *được chạy*.** Schema summary, payload MCP `get_schema_context`, tool `schema_details`, ghi chú bảng-lớn, và câu hỏi gợi ý đầu phiên chat đều lọc theo scope — nên bảng bị giữ lại không bao giờ bị gọi tên, báo kích thước, hay đem ra gợi ý.
+
+**Datamart advisor (ưu tiên BigQuery).** Đọc đúng những gì app đã có — schema, quan hệ, profile cột, và lịch sử query **thành công** của chính connection (đếm theo *hình dạng* query, bỏ literal) — rồi đề xuất 2–4 mart, mỗi cái nêu rõ một grain và viết hẳn giả định ra. Mỗi câu lệnh được **dry-run thật** trên BigQuery (không tính tiền, không trừ byte-budget); câu nào không chạy được thì hiện mờ kèm đúng lý do warehouse trả về. Xuất DDL hoặc scaffold dbt, hoặc adopt thành virtual view — **advisor không chạy gì cả**.
+
+---
+
 ## Phân tích sâu (OLAP) — anomaly, monitor, warehouse
 
 Không chỉ chat one-shot. My DB Mate làm được các tác vụ phân tích sâu, chạy cả trên warehouse (BigQuery) với chi phí kiểm soát chặt.
@@ -104,6 +121,8 @@ Không chỉ chat one-shot. My DB Mate làm được các tác vụ phân tích 
 **BigQuery với cost-safety 3 lớp.** Warehouse tính tiền theo bytes quét, nên mỗi query interactive được **dry-run ước tính + xác nhận** trước khi chạy; mỗi job mang **hard cap `maximumBytesBilled`** (BigQuery tự từ chối trước khi tính tiền nếu vượt); và phân tích nền (dashboards/metrics/reports/anomaly/monitor) đi qua **daily byte-budget** — với **ưu tiên công bằng**: tác vụ bảo trì (monitor/anomaly) chỉ được dùng tối đa nửa budget ngày, chừa chỗ cho refresh quan trọng hơn.
 
 ![BigQuery: connection form + cost-safety (per-query cap, daily budget, offline mode)](docs/images/bigquery-cost-safety.png)
+
+**Dataset chia sẻ từ project khác.** BigQuery chỉ liệt kê dataset thuộc project của chính connection, nên dataset được grant từ nơi khác (public dataset, cross-project grant) vô hình với sync cho tới khi được ghim. Điền `project.dataset` vào ô **External datasets** trên form connection là sync như bình thường; tên bảng sau đó được viết đủ project lúc render và lúc chạy, để model sinh ra tên mà warehouse thật sự resolve được.
 
 Chi tiết: [features.md](docs/features.md) · [user-guide.md](docs/user-guide.md).
 

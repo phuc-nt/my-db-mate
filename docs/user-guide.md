@@ -180,6 +180,13 @@ Mỗi connection mở thành **một workspace** tại `/db/<id>` với thanh se
 - **Data Health** — quét thủ công, gắn cờ cột nhiều NULL / một-giá-trị / dạng-id, kèm badge quét-một-phần.
 - **Notebooks** — lưu một phiên chat thành notebook chỉ-đọc, chia sẻ được (câu hỏi → SQL → kết quả → tường thuật); cột đánh dấu nhạy cảm sẽ bị bỏ khỏi bản chia sẻ.
 
+### Chốt ranh giới dữ liệu (governed scope)
+- **Chọn bảng agent được đọc** — vào connection → trang **Schema** → nút **Scope**, tick các bảng muốn cho phép. Bảng ngoài danh sách bị **từ chối lúc chạy query**, không phải chỉ dặn trong prompt: bảng giấu trong subquery, CTE, derived table hay nhánh UNION đều bị bắt. SQL không parse được thì chặn luôn. Để trống scope = giữ nguyên hành vi cũ (đọc được tất cả).
+- **Governed views only** — bật ô này thì model chỉ thấy các view đã duyệt, **không thấy cả bảng đã tick**. Dùng khi muốn câu trả lời bám định nghĩa đã thống nhất thay vì join tự ráp. Định nghĩa view ngay trong app ở **Context Studio → tab Views**, không cần quyền ghi vào database.
+- **Trước khi thu hẹp, bấm "Check impact"** — liệt kê metric / saved query / widget / lịch chạy sẽ hỏng vì ranh giới mới. Khi áp dụng: những cái không ai trông được tạm dừng, và cache mà share link còn phục vụ (widget, snapshot notebook/report) bị xoá — nếu không thì link công khai vẫn phát dữ liệu vừa cấm.
+- **Ranh giới áp cả lên thứ agent được *thấy*** — schema summary, payload MCP, tool `schema_details`, ghi chú bảng-lớn, và câu hỏi gợi ý đầu phiên chat đều lọc theo scope. Bảng bị giữ lại không bị gọi tên, không bị báo số dòng, không bị đem ra gợi ý. Câu hỏi verified viết từ trước khi thu hẹp scope cũng bị ẩn nếu SQL của nó chạm vùng cấm.
+- **Datamart advisor** (ưu tiên BigQuery, vào từ trang **Schema**) — đề xuất 2–4 bảng tổng hợp từ schema + quan hệ + lịch sử query thành công của chính connection. Mỗi câu lệnh được **dry-run thật** (không tính tiền); câu nào không chạy được hiện mờ kèm lý do. Xuất DDL / scaffold dbt cho team data chạy bằng credential của họ, hoặc **adopt** thành virtual view 1 click. **Advisor không tự chạy `CREATE` gì cả.**
+
 ### Kết nối Claude với DB của bạn (MCP)
 Tạo API key (giới hạn theo connection) trong app, rồi:
 
@@ -196,12 +203,13 @@ Claude sẽ có `ask_database` / `run_sql` / `get_schema_context` / `search_veri
 
 Sản phẩm đang ở phạm vi **self-hosted, single-user (dogfood)**. Các mục sau **cố ý** để ngoài phạm vi hiện tại:
 
-- **Multi-user / RBAC / hàng đợi duyệt** — chưa có phân quyền nhiều người dùng. Trước khi mở ra internet, hãy đặt một auth proxy phía trước.
+- **Multi-user / RBAC / hàng đợi duyệt** — chưa có phân quyền nhiều người dùng. Trước khi mở ra internet, hãy đặt một auth proxy phía trước. (Governed scope chốt ranh giới *của connection*, áp cho mọi người dùng connection đó — không phải phân quyền theo người.)
 - **Chat xuyên nhiều DB** — một phiên chat hiện chỉ gắn với một connection.
 - **Chỉ đọc (read-only)** — app không ghi/sửa dữ liệu; đây là ràng buộc thiết kế, không phải thiếu sót.
 - **TLS mặc định không verify cert** — chế độ "Encrypt only" chỉ **mã hoá**, không verify certificate (kênh không chống MITM). Khi đường truyền tới DB đi qua mạng không tin cậy, hãy chọn **"Encrypt + verify certificate"** (dán CA cert nếu provider dùng private CA).
 - **Share link là "capability"** — link chia sẻ dashboard/report dùng chuỗi 128-bit khó đoán; **ai có link đều xem được** kết quả cache. Hãy coi share link như mật khẩu; chỉ dùng cho localhost/LAN hoặc chia sẻ tin cậy.
 - **Eval-regression guard trên production DB thật** — chưa có.
+- **BigQuery — dataset từ project khác**: BigQuery chỉ liệt kê dataset của project thuộc connection, nên dataset được grant từ nơi khác (public dataset, cross-project grant) không tự sync. Điền `project.dataset` vào ô **External datasets** trên form connection để ghim.
 - **BigQuery — background analytics giờ hỗ trợ.** Dashboards/metrics/reports/anomaly detection/data-drift monitor giờ chạy cho BigQuery trong ngân sách byte hàng ngày (+ offline mode cache tuỳ chọn). Các tính năng còn lại **cố ý bị chặn** cho đến khi có nhu cầu: data profiling, data-quality/health checks, accelerator (BigQuery có cơ chế cache riêng), mine query history, MCP tool execution, scheduled-query scheduler (cron), notebook re-run, chạy query từ schema browser, eval harness, và nút re-run trên bookmark. Mỗi tính năng trên báo lỗi rõ ràng ("chưa hỗ trợ BigQuery") thay vì chạy ngầm. Đây là quyết định phạm vi có chủ đích, không phải thiếu sót.
 
 ---

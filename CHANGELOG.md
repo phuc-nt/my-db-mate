@@ -4,6 +4,90 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [0.13.0] — 2026-08-19
+
+A connection can now be given a boundary — the curated tables the agent may
+read, or a governed view layer standing in for the raw schema entirely — and
+that boundary is enforced at query time rather than merely requested in the
+prompt. BigQuery learns to name tables shared in from other projects. The
+release closes with a sweep that makes the agent's *context* honor the same
+boundary its *executor* already did.
+
+### Governed scope — a boundary the agent cannot talk its way past
+
+- **Per-connection scope.** Pick the tables the agent may read; everything else
+  is refused when the query runs, not discouraged in the prompt. Enforcement is
+  a full-AST reference extractor, so a table hidden in a WHERE-subquery, a CTE
+  body, a derived table, or a UNION branch is caught exactly like a direct
+  `FROM`. SQL that cannot be parsed is **blocked rather than waved through** — a
+  normalization gap becomes a refusal, never a bypass.
+- **Narrowing shows its casualties before it happens.** "Check impact" lists the
+  metrics, saved queries, widgets, and schedules the proposed boundary would
+  break; applying pauses the unattended ones and evicts cached rows a share link
+  would otherwise keep serving (widget caches, notebook and report snapshots). A
+  boundary that leaves yesterday's forbidden rows on a public page is cosmetic.
+- **Virtual datamart.** Curated `SELECT`s defined in the product and inlined as
+  CTEs at query time, so a raw warehouse gains a governed layer without anyone
+  holding write access to it. Under **Governed views only** the model may read
+  the views and nothing else — not even the tables ticked in scope — so answers
+  come from agreed definitions instead of joins assembled on the fly. Views-only
+  is judged *before* expansion: once a view is inlined its base tables are
+  indistinguishable from ones the caller typed.
+- **Datamart advisor** (BigQuery-first). Reads only what the app already holds —
+  synced schema, relationships, column profiles, and the connection's own
+  *successful* query history counted by query shape — and proposes 2–4 marts,
+  each with one stated grain and its assumptions written out. Every statement is
+  checked by a real BigQuery dry run (never billed, never charged against the
+  daily byte budget); one that will not run is shown disabled with the
+  warehouse's own reason. Export DDL or a dbt scaffold, or adopt statements as
+  virtual views — **the advisor executes nothing**, and adoption passes the same
+  name, safety, and scope checks as a hand-written view.
+
+### BigQuery — datasets shared in from another project
+
+- A dataset granted from elsewhere (a public dataset, a cross-project grant) is
+  invisible to sync until pinned, because BigQuery's dataset listing only ever
+  returns the connection's own project. Name it as `project.dataset` under
+  **External datasets** on the connection form and it syncs like any other.
+- Synced tables now record the **catalog that owns them** separately from the
+  schema, and the owning project is spelled out at render and execute time, so
+  the model writes a name the warehouse actually resolves. The project is never
+  written into the schema name itself — a scope entry carrying a project prefix
+  would match nothing and silently disable the boundary.
+
+### Fixed — the agent's context now honors the same boundary as its executor
+
+The scope was enforced correctly at query time from the start, but several
+places that *build the prompt* read the synced schema directly and bypassed it.
+Nothing leaked past the executor; what leaked was metadata, and the prompt
+contradicted itself by listing tables `run_sql` would refuse.
+
+- **The schema summary is filtered to the scope**, and so is everything built
+  from it: the MCP `get_schema_context` payload, the agent's own
+  `schema_details` tool, investigate-mode decomposition, and follow-up
+  suggestions. Foreign keys survive only when both ends are in scope.
+- **The big-table policy note no longer names or sizes a withheld table.** This
+  was caught in a real chat answer: the agent correctly refused to query a table
+  outside the scope, then cited its row count anyway — the number had reached it
+  through the system prompt.
+- **Starter questions stay inside the boundary.** A one-click prompt naming a
+  withheld table hands the user a dead button. Curated verified queries get no
+  exemption: each is re-checked against its own SQL, because a scope can be
+  narrowed long after the question was written.
+- **`viewsOnly` fails closed.** A connection restricted to governed views with
+  none defined yet previously fell through to the raw table listing — the check
+  tested a string that was empty in exactly the case the restriction exists for.
+  It now states that the governed layer is empty instead.
+- Under `viewsOnly`, governed views are described even when scope resolution
+  matches no synced table at all; that combination previously produced a blank
+  prompt.
+- Starter questions resolved a table by bare name, so two datasets holding the
+  same table name let an arbitrary row win and the legitimate in-scope
+  suggestion disappeared depending on physical row order.
+- Governed views are now described alongside the tables even on connections with
+  no scope set, so a connection that has curated definitions points at them
+  first. This is additive — the raw listing is unchanged.
+
 ## [0.12.0] — 2026-08-01
 
 Conversations finally persist where you can see them, verification turns
