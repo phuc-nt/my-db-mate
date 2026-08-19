@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { connections, schemaTables, schemaColumns } from '../db/schema';
+import { verifiedQueries } from '../db/context-schema';
 import { getStarterQuestions } from './starter-questions-service';
 import { getBigTables } from './agent-service';
 import { setScope, type SchemaScope } from './schema-scope-service';
@@ -44,6 +45,10 @@ async function seed(connectionId: string) {
 let scopedId: string;
 let unscopedId: string;
 let viewsOnlyId: string;
+/** Two datasets holding a same-named table, the withheld one synced first. */
+let twinId: string;
+/** Curated questions written before the scope was narrowed around them. */
+let curatedId: string;
 
 beforeAll(async () => {
   scopedId = await makeConnection('starter-scope-scoped', { tables: ['orders'] });
@@ -55,6 +60,27 @@ beforeAll(async () => {
   // test passes even when the viewsOnly branch is deleted.
   viewsOnlyId = await makeConnection('starter-scope-views-only', { tables: ['orders', 'events'], viewsOnly: true });
   await seed(viewsOnlyId);
+
+  // `raw.events` is withheld and `mart.events` is granted. The withheld twin is
+  // inserted first so a lookup by bare name lands on it, which is what made the
+  // in-scope suggestion disappear depending on physical row order.
+  twinId = await makeConnection('starter-scope-twin', { tables: ['mart.events'] });
+  for (const schemaName of ['raw', 'mart']) {
+    const [t] = await db
+      .insert(schemaTables)
+      .values({ connectionId: twinId, tableName: 'events', schemaName, catalogName: null, rowCount: 2_400_000 })
+      .returning({ id: schemaTables.id });
+    await db.insert(schemaColumns).values([
+      { tableId: t.id, columnName: 'created_at', dataType: 'timestamp', isPrimaryKey: false, ordinalPosition: 1 },
+    ]);
+  }
+
+  curatedId = await makeConnection('starter-scope-curated', { tables: ['orders'] });
+  await seed(curatedId);
+  await db.insert(verifiedQueries).values([
+    { connectionId: curatedId, question: 'How many orders last month?', sql: 'SELECT count(*) FROM orders' },
+    { connectionId: curatedId, question: 'How many events last month?', sql: 'SELECT count(*) FROM events' },
+  ]);
 });
 
 afterAll(async () => {
@@ -74,6 +100,16 @@ describe('getStarterQuestions', () => {
 
   it('still picks the largest table on an unscoped connection', async () => {
     expect((await getStarterQuestions(unscopedId)).join('\n')).toContain('events');
+  });
+
+  it('drops a curated question whose query reaches outside the scope', async () => {
+    const qs = (await getStarterQuestions(curatedId)).join('\n');
+    expect(qs).toContain('How many orders last month?');
+    expect(qs).not.toContain('How many events last month?');
+  });
+
+  it('still offers the in-scope table when a withheld dataset holds the same name', async () => {
+    expect((await getStarterQuestions(twinId)).join('\n')).toContain('counts over time by created_at');
   });
 });
 
