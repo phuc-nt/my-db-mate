@@ -16,7 +16,7 @@ const BLANK = {
   // SSH tunnel (optional). authMethod 'key' → sshSecret is a PEM private key; 'password' → a password.
   sshOn: false, sshHost: '', sshPort: '22', sshUser: '', sshAuthMethod: 'key' as 'key' | 'password', sshSecret: '',
   // BigQuery (write-only service-account JSON, same "blank keeps current" pattern as password/SSH key).
-  bqProjectId: '', bqServiceAccountJson: '', bqMaxBytesPerQuery: String(BQ_DEFAULT_MAX_BYTES),
+  bqProjectId: '', bqExtraDatasets: '', bqServiceAccountJson: '', bqMaxBytesPerQuery: String(BQ_DEFAULT_MAX_BYTES),
   bqDailyBytesBudget: String(BQ_DEFAULT_DAILY_BUDGET), bqOfflineMode: false,
   // DuckDB file: which source shape + the path (must be inside DUCKDB_DATA_DIR).
   duckdbMode: 'parquet' as 'duckdb' | 'parquet' | 'csv-dir',
@@ -64,7 +64,12 @@ export default function ConnectionsPage() {
     const kind = kindForEngine(form.engine);
     if (form.engine === 'bigquery') {
       return {
-        name: form.name, kind, dialect: form.engine, config: { projectId: form.bqProjectId.trim() },
+        name: form.name, kind, dialect: form.engine,
+        config: {
+          projectId: form.bqProjectId.trim(),
+          // One dataset per line or comma-separated; the server validates the shape.
+          extraDatasets: form.bqExtraDatasets.split(/[\n,]/).map((d) => d.trim()).filter(Boolean),
+        },
         ...(form.bqServiceAccountJson.trim() ? { bigqueryServiceAccountJson: form.bqServiceAccountJson.trim() } : {}),
         bigqueryMaxBytesPerQuery: Number(form.bqMaxBytesPerQuery) || BQ_DEFAULT_MAX_BYTES,
         bigqueryDailyBytesBudget: Number(form.bqDailyBytesBudget) || BQ_DEFAULT_DAILY_BUDGET,
@@ -141,6 +146,7 @@ export default function ConnectionsPage() {
       sshAuthMethod: (cfg.sshAuthMethod === 'password' ? 'password' : 'key') as 'key' | 'password',
       sshSecret: '', // never pre-filled; blank keeps the existing key
       bqProjectId: String(cfg.projectId ?? ''),
+      bqExtraDatasets: Array.isArray(cfg.extraDatasets) ? (cfg.extraDatasets as unknown[]).map(String).join('\n') : '',
       bqServiceAccountJson: '', // never pre-filled; blank keeps the existing service-account JSON
       bqMaxBytesPerQuery: String(c.bigqueryMaxBytesPerQuery ?? BQ_DEFAULT_MAX_BYTES),
       bqDailyBytesBudget: String(c.bigqueryDailyBytesBudget ?? BQ_DEFAULT_DAILY_BUDGET),
@@ -236,6 +242,16 @@ export default function ConnectionsPage() {
           ) : isBigQuery ? (
             <>
               <input className="col-span-2 rounded border p-2 dark:bg-neutral-900" placeholder="GCP project ID" value={form.bqProjectId} onChange={(e) => setForm({ ...form, bqProjectId: e.target.value })} />
+              <label className="col-span-2 text-sm text-neutral-600 dark:text-neutral-400">
+                External datasets
+                <textarea className="mt-1 w-full rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={2}
+                  placeholder="bigquery-public-data.thelook_ecommerce (one project.dataset per line)"
+                  value={form.bqExtraDatasets} onChange={(e) => setForm({ ...form, bqExtraDatasets: e.target.value })} />
+                <span className="text-xs text-neutral-500">
+                  Datasets shared from another project. Sync only ever lists this project&apos;s own, so anything from
+                  elsewhere has to be named here to be discovered.
+                </span>
+              </label>
               <textarea className="col-span-2 rounded border p-2 font-mono text-xs dark:bg-neutral-900" rows={6}
                 placeholder={editingId ? 'Service-account JSON key — blank keeps the current one' : 'Service-account JSON key (paste the full downloaded file contents)'}
                 value={form.bqServiceAccountJson} onChange={(e) => setForm({ ...form, bqServiceAccountJson: e.target.value })} />
