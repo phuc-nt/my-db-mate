@@ -75,6 +75,13 @@ export interface ConnectionProvider {
   introspectSchema(): Promise<IntrospectedSchema>;
 
   /**
+   * Which project owns each of the named datasets, for dialects where a name
+   * resolves against a project. Optional: only BigQuery has the notion, and only
+   * BigQuery can get it wrong by defaulting to the connection's own project.
+   */
+  resolveDatasetProjects?(datasets: string[]): Promise<Record<string, string>>;
+
+  /**
    * Execute a validated read-only SQL statement. Providers enforce read-only at
    * the physical layer (readonly handle / read-only transaction re-applied per
    * acquire). The SQL must already have passed safety-service validation.
