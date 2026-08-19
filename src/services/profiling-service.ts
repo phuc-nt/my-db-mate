@@ -12,6 +12,7 @@ import { getProvider } from './connection-service';
 import { capRows } from './safety/safety-service';
 import { executeQuery } from './query-executor-service';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
+import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { getScope, isScopeActive, isRefInScope } from './schema-scope-service';
 import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
 
@@ -36,7 +37,7 @@ async function assertKnownColumn(connectionId: string, tableName: string, column
   const [c] = await db.select().from(schemaColumns)
     .where(and(eq(schemaColumns.tableId, t.id), eq(schemaColumns.columnName, columnName)));
   if (!c) throw new Error(`Unknown column: ${tableName}.${columnName}`);
-  return { tableName: t.tableName, columnName: c.columnName, schemaName: t.schemaName };
+  return { tableName: t.tableName, columnName: c.columnName, schemaName: t.schemaName, catalogName: t.catalogName };
 }
 
 /** Run one profiling read. Non-BigQuery keeps the historical direct
@@ -61,7 +62,11 @@ export async function profileColumn(connectionId: string, tableName: string, col
   ({ tableName, columnName } = known);
   const provider = await getProvider(connectionId);
   try {
-    const t = qualifiedTableRef(provider.dialect, tableName, known.schemaName);
+    const t = qualifiedTableRef(
+      provider.dialect,
+      tableName,
+      composeSchemaPrefix(provider.dialect, known.catalogName, known.schemaName),
+    );
     const c = quoteColumn(provider.dialect, columnName);
     const read = (sql: string) => runProfilingRead(connectionId, provider, sql);
 

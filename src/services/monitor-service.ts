@@ -13,6 +13,7 @@ import { db } from '../db/client';
 import { monitorSnapshots } from '../db/monitor-schema';
 import { schemaTables, schemaColumns } from '../db/schema';
 import { qualifiedTableRef } from '../lib/table-ref';
+import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { executeQuery } from './query-executor-service';
 export { diffSnapshots, diffAgainstBaseline, DEFAULT_THRESHOLDS } from '../lib/monitor-diff';
 export type { MonitorThresholds, MonitorFinding, Snapshot } from '../lib/monitor-diff';
@@ -34,8 +35,9 @@ export async function captureSnapshot(connectionId: string, dialect: string, tab
   const cols = await db.select().from(schemaColumns).where(eq(schemaColumns.tableId, t.id));
   const numericCols = cols.filter((c) => NUMERIC_RE.test(c.dataType)).slice(0, MAX_COLS);
 
-  // BigQuery requires a dataset-qualified table ref; other dialects use a bare quoted name.
-  const qt = qualifiedTableRef(dialect, t.tableName, t.schemaName);
+  // BigQuery requires a dataset-qualified table ref, plus the owning project when
+  // the dataset lives in another one; other dialects use a bare quoted name.
+  const qt = qualifiedTableRef(dialect, t.tableName, composeSchemaPrefix(dialect, t.catalogName, t.schemaName));
   // One aggregate pass: COUNT(*) + per-column null counts and averages.
   const parts = [`COUNT(*) AS row_count`];
   for (const c of numericCols) {

@@ -23,6 +23,7 @@ import { getConnection } from './connection-service';
 import { executeQuery } from './query-executor-service';
 import { madOutlier, MIN_MAD_OBS } from '../lib/robust-stats';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
+import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 
 const OUTLIER_Z = 3;
 /** Bounded sample size for the in-app MAD outlier check — big enough to represent the
@@ -47,7 +48,7 @@ async function assertKnownColumn(connectionId: string, table: string, column: st
   const [c] = await db.select().from(schemaColumns)
     .where(and(eq(schemaColumns.tableId, t.id), eq(schemaColumns.columnName, column)));
   if (!c) throw new Error(`Unknown column: ${table}.${column}`);
-  return { column: c.columnName, dataType: c.dataType, schemaName: t.schemaName };
+  return { column: c.columnName, dataType: c.dataType, schemaName: t.schemaName, catalogName: t.catalogName };
 }
 
 export interface AnomalyReport {
@@ -73,12 +74,13 @@ export interface AnomalyReport {
  * the agent doesn't hallucinate around a partial result.
  */
 export async function detectAnomalies(connectionId: string, table: string, column: string): Promise<AnomalyReport> {
-  const { column: col, dataType, schemaName } = await assertKnownColumn(connectionId, table, column);
+  const { column: col, dataType, schemaName, catalogName } = await assertKnownColumn(connectionId, table, column);
   const conn = await getConnection(connectionId);
   if (!conn) return { table, column, total: 0, nullRate: 0, note: 'Connection not found.' };
   const dialect = conn.dialect;
-  // BigQuery requires a dataset-qualified table ref; other dialects use a bare quoted name.
-  const t = qualifiedTableRef(dialect, table, schemaName);
+  // BigQuery requires a dataset-qualified table ref, plus the owning project when
+  // the dataset lives in another one; other dialects use a bare quoted name.
+  const t = qualifiedTableRef(dialect, table, composeSchemaPrefix(dialect, catalogName, schemaName));
   const c = quoteColumn(dialect, col);
 
   /** Run through executeQuery (budgeted for BigQuery). Returns rows, or null on any

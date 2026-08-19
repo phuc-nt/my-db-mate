@@ -373,8 +373,17 @@ export async function collectAdvisorInputs(connectionId: string): Promise<Adviso
   // because a dataset shared from another project resolves nowhere under the
   // connection's own project — and listing datasets is a metadata call, not a
   // query, so it is free and never billed.
+  // Sync already recorded the owning project of every dataset it introspected, so
+  // start from that and only ask the warehouse about datasets it left unresolved —
+  // rows synced before catalogs were persisted, in practice.
+  const persistedProjects: Record<string, string> = {};
+  for (const t of visible) {
+    if (t.schemaName && t.catalogName && !persistedProjects[t.schemaName]) {
+      persistedProjects[t.schemaName] = t.catalogName;
+    }
+  }
   const datasetProjects = dialect === 'bigquery'
-    ? await resolveDatasetProjects(connectionId, tables, degradedReasons)
+    ? await resolveDatasetProjects(connectionId, tables, degradedReasons, persistedProjects)
     : {};
 
   return {
@@ -405,16 +414,20 @@ async function resolveDatasetProjects(
   connectionId: string,
   tables: AdvisorTable[],
   degradedReasons: string[],
+  persisted: Record<string, string> = {},
 ): Promise<Record<string, string>> {
-  const wanted = [...new Set(
+  const surveyed = [...new Set(
     tables.map((t) => t.schemaName).filter((s): s is string => !!s && !s.includes('.')),
   )];
-  if (wanted.length === 0) return {};
+  const known = Object.fromEntries(surveyed.filter((d) => persisted[d]).map((d) => [d, persisted[d]]));
+  const wanted = surveyed.filter((d) => !known[d]);
+  // Everything the sync recorded — no warehouse round-trip needed at all.
+  if (wanted.length === 0) return known;
 
   const provider = await getProvider(connectionId);
   try {
-    if (!provider.resolveDatasetProjects) return {};
-    const out = await provider.resolveDatasetProjects(wanted);
+    if (!provider.resolveDatasetProjects) return known;
+    const out = { ...known, ...(await provider.resolveDatasetProjects(wanted)) };
     const unresolved = wanted.filter((d) => !out[d]);
     if (unresolved.length > 0) {
       degradedReasons.push(
@@ -423,7 +436,7 @@ async function resolveDatasetProjects(
     }
     return out;
   } catch {
-    return {};
+    return known;
   } finally {
     await provider.close();
   }
