@@ -14,9 +14,13 @@ Sản phẩm này dành cho DevOps/DBA quản lý database lớn trong productio
 
 Vấn đề không phải là convert câu hỏi thành SQL. LLM giờ làm việc đó khá tốt rồi. Vấn đề là context để AI generate đúng: `usr_stat_cd` nghĩa là gì, "khách hàng active" map vào cấu trúc DB nào, những quy ước chỉ có trong đầu DBA chứ không nằm trong schema. LLM đoán được tên viết tắt thông thường, nhưng không đoán được enum code mờ nghĩa hay tri thức riêng của từng hệ thống. Chỗ đó phải do người dùng bồi đắp dần, không có LLM nào tự lấp được.
 
-Nên My DB Mate không đặt cược vào text-to-SQL. Nó đặt cược vào một lớp context (glossary, chú thích schema, verified queries) mà bạn xây theo thời gian, để AI hiểu đúng hệ thống của bạn hơn.
+Nên My DB Mate không đặt cược vào text-to-SQL. Nó đặt cược vào hai thứ không mất giá khi model giỏi lên:
 
-Và vì đây là DB production, an toàn là điều kiện bắt buộc chứ không phải tính năng thêm: chỉ đọc ép ở nhiều tầng, mọi truy vấn qua một điểm kiểm duyệt, credential mã hoá, mọi lần chạy có audit log.
+**Lớp context bạn bồi đắp** — glossary, chú thích schema, governed metrics, verified queries. Đây là *quyết định của tổ chức* ("khách active" tính thế nào, status nào vào doanh thu), không suy ra được từ data dù model thông minh đến đâu.
+
+**Ranh giới bạn chốt** — và ranh giới ở đây áp **cả hai mặt**: thứ agent được *chạy* lẫn thứ agent được *thấy*. Bạn chọn bảng agent được đọc (hoặc chỉ cho đọc lớp governed views); truy vấn ra ngoài bị chặn lúc chạy bằng kiểm tra AST đầy đủ, đồng thời agent không nhìn thấy tên/kích thước bảng nó không được đọc — nên nó không gợi ý, không trích dẫn. Thu hẹp ranh giới thì thấy trước cái gì sẽ hỏng, và cache của dữ liệu vừa cấm bị xoá.
+
+Vì đây là DB production, an toàn là điều kiện bắt buộc chứ không phải tính năng thêm: chỉ đọc ép ở nhiều tầng, mọi truy vấn qua một điểm kiểm duyệt, credential mã hoá, mọi lần chạy có audit log.
 
 ---
 
