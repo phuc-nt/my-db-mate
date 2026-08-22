@@ -4,6 +4,53 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [Unreleased]
+
+### Setup that fails early instead of on the first question
+
+The install path used to fail late and quietly. `cp .env.example .env` produced a
+syntactically valid placeholder key, so the app built a model, looked configured,
+and died at the provider on the user's very first question — the worst possible
+place to discover the install was never finished.
+
+- **A doctor for the install.** `GET /api/health` reports app DB, migrations
+  applied vs. shipped, LLM configuration, embeddings, and demo-directory
+  writability, with `?live=1` spending one tiny completion to prove the key
+  actually works. One service backs the endpoint, `setup.sh --check`, and the
+  in-app onboarding state, so the three surfaces cannot drift apart. The report
+  carries statuses and provider/model names only — never key material — because
+  the endpoint sits behind no auth layer.
+- **The placeholder is treated as unset.** `getModel()` rejects the
+  `.env.example` literals outright, so the failure is a typed
+  `llm_not_configured` — "No LLM configured" — rather than a provider 401 with no
+  hint about which knob to turn. `missing` and `placeholder` stay distinguishable
+  in the health report because they need different advice.
+- **`setup.sh` stops producing broken installs.** It now validates the key's
+  shape, warns when left blank, and *blanks* the placeholder instead of leaving
+  it in place. New flags: `--check`, `--key <k>`, `--no-prompt`, `--help`.
+- **Onboarding checklist.** The Connections page shows a three-step card —
+  configure an LLM, try the sample database, connect your own — derived from real
+  state rather than a stored flag, so it stays honest after a key rotation or a
+  deleted demo. It renders nothing once all three are done, leaving established
+  installs visually unchanged. A missing key also raises a banner, and chat
+  answers with guidance and a Settings link instead of a raw error.
+- **The live probe cannot be turned into a bill.** `?live=1` is the only check
+  that spends money and the endpoint has no auth in front of it, so its result is
+  cached for a minute — a loop collapses to one completion per minute, while a
+  hand-run `setup.sh --check` still gets a real round-trip. A reused answer says
+  `cached Ns ago` rather than passing itself off as fresh.
+- **The doctor keeps its own secrets.** Every `detail` in the report is capped
+  and stripped of the key the live probe just sent — a provider (or a
+  user-supplied OpenAI-compatible endpoint) that echoes the submitted key in its
+  rejection body cannot turn an unauthenticated health check into a way to read
+  it. A placeholder saved through the Settings page is caught the same way one in
+  `.env` is, and the LLM check reads past its cache so a key rotated outside the
+  process cannot be reported as working.
+- **Docs.** Quick start is pull-first and ends with a health check; the user
+  guide gains troubleshooting and upgrade/backup sections (including the
+  `CREDENTIAL_ENC_KEY` caveat — losing it means re-entering every credential);
+  `agent-setup.md` verifies installs through the health endpoint.
+
 ## [0.13.0] — 2026-08-19
 
 A connection can now be given a boundary — the curated tables the agent may

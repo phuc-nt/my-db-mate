@@ -31,7 +31,7 @@ function buildModel(provider: LlmProviderId, apiKey: string, model: string, base
 
 /** Per-provider env fallback (key + model + a sensible default model name).
  *  keyRequired=false: Ollama runs without any key. */
-const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; defaultModel: string; keyRequired: boolean; baseUrlVar?: string }> = {
+export const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; defaultModel: string; keyRequired: boolean; baseUrlVar?: string }> = {
   openrouter: { keyVar: 'OPENROUTER_API_KEY', modelVar: 'OPENROUTER_MODEL', defaultModel: 'qwen/qwen3.7-max', keyRequired: true },
   openai: { keyVar: 'OPENAI_API_KEY', modelVar: 'OPENAI_MODEL', defaultModel: 'gpt-5.2', keyRequired: true },
   anthropic: { keyVar: 'ANTHROPIC_API_KEY', modelVar: 'ANTHROPIC_MODEL', defaultModel: 'claude-sonnet-5', keyRequired: true },
@@ -39,8 +39,33 @@ const ENV_FALLBACK: Record<LlmProviderId, { keyVar: string; modelVar: string; de
   ollama: { keyVar: 'OLLAMA_API_KEY', modelVar: 'OLLAMA_MODEL', defaultModel: 'qwen3', keyRequired: false, baseUrlVar: 'OLLAMA_BASE_URL' },
 };
 
-function isProvider(v: string | undefined): v is LlmProviderId {
+export function isProvider(v: string | undefined): v is LlmProviderId {
   return v === 'openrouter' || v === 'openai' || v === 'anthropic' || v === 'google' || v === 'ollama';
+}
+
+/**
+ * The literal placeholders shipped in `.env.example`. A fresh `cp .env.example .env`
+ * leaves these in place, and they are syntactically valid keys — so without this
+ * guard the app looks configured, builds a model, and fails at the provider with a
+ * 401 on the user's FIRST question. Treating them as unset moves the failure to
+ * setup time with an actionable message instead.
+ */
+const ENV_KEY_PLACEHOLDERS = new Set(['sk-or-...', 'sk-...', 'sk-ant-...']);
+
+/** A key that is absent, blank, or still the `.env.example` placeholder. */
+export function isPlaceholderKey(key: string | undefined): boolean {
+  const k = key?.trim();
+  return !k || ENV_KEY_PLACEHOLDERS.has(k);
+}
+
+/** Thrown when no usable LLM config exists. Carried as a code so callers can map
+ *  it to guidance ("open Settings") instead of surfacing a raw provider error. */
+export const LLM_NOT_CONFIGURED = 'llm_not_configured';
+
+export function llmNotConfiguredError(keyVar: string): Error {
+  const err = new Error(`No LLM configured — set one in Settings or provide ${keyVar}`);
+  (err as Error & { code?: string }).code = LLM_NOT_CONFIGURED;
+  return err;
 }
 
 export async function getModel(): Promise<LanguageModel> {
@@ -51,7 +76,7 @@ export async function getModel(): Promise<LanguageModel> {
   const provider: LlmProviderId = isProvider(process.env.LLM_PROVIDER) ? process.env.LLM_PROVIDER : 'openrouter';
   const cfg = ENV_FALLBACK[provider];
   const apiKey = process.env[cfg.keyVar];
-  if (!apiKey && cfg.keyRequired) throw new Error(`No LLM configured — set one in Settings or provide ${cfg.keyVar}`);
+  if (cfg.keyRequired && isPlaceholderKey(apiKey)) throw llmNotConfiguredError(cfg.keyVar);
   const baseUrl = cfg.baseUrlVar ? process.env[cfg.baseUrlVar] : undefined;
   return buildModel(provider, apiKey ?? '', process.env[cfg.modelVar] ?? cfg.defaultModel, baseUrl);
 }

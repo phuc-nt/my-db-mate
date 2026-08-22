@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
 import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
+import { deriveOnboardingSteps } from '../../lib/onboarding-steps';
+import { OnboardingChecklistCard } from '../../components/onboarding-checklist-card';
 
 interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; bigqueryMaxBytesPerQuery?: number; bigqueryDailyBytesBudget?: number; bigqueryOfflineMode?: boolean }
 
@@ -31,8 +33,18 @@ export default function ConnectionsPage() {
   const [busy, setBusy] = useState(false);
   const [presetNote, setPresetNote] = useState('');
 
+  // The LLM's real state, from the single source of truth the doctor endpoint and
+  // setup.sh also read. Never with `live=1`: that spends a token, and a page load
+  // is not a good reason to bill the user.
+  const [llmStatus, setLlmStatus] = useState<string | undefined>(undefined);
+
   const load = () => fetch('/api/connections').then((r) => r.json()).then(setConns).then(() => setLoaded(true));
-  useEffect(() => { load(); }, []);
+  const loadHealth = () => fetch('/api/health')
+    .then((r) => r.json())
+    .then((h) => setLlmStatus(h?.checks?.llm?.status))
+    // A health check that fails must not break the page it decorates.
+    .catch(() => setLlmStatus(undefined));
+  useEffect(() => { load(); loadHealth(); }, []);
 
   /** Switching engine sets the conventional default port (like DBeaver). */
   function setEngine(engine: Engine) {
@@ -179,9 +191,23 @@ export default function ConnectionsPage() {
   const isBigQuery = form.engine === 'bigquery';
   const isDuckDb = form.engine === 'duckdb';
 
+  const onboardingSteps = deriveOnboardingSteps({ llmStatus, connectionNames: conns.map((c) => c.name) });
+  // Shown even when connections already exist: a key can stop working after a
+  // rotation, and the failure would otherwise only appear inside a chat.
+  const llmUnconfigured = llmStatus !== undefined && llmStatus !== 'configured';
+
   return (
     <main className="mx-auto max-w-3xl p-6">
       <h1 className="mb-4 text-2xl font-semibold">Connections</h1>
+
+      {llmUnconfigured && (
+        <div data-testid="llm-banner" className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+          ⚠ No LLM configured — chat cannot answer until you add a provider key.{' '}
+          <Link href="/settings" className="font-medium text-blue-700 underline dark:text-blue-300">Open Settings</Link>
+        </div>
+      )}
+
+      {loaded && <OnboardingChecklistCard steps={onboardingSteps} onTryDemo={tryDemo} busy={busy} />}
 
       <div className="mb-6 rounded-lg border border-neutral-300 p-4 dark:border-neutral-700">
         <div className="mb-3 flex items-center justify-between">

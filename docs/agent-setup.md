@@ -36,15 +36,22 @@ Run the setup script — it creates `.env`, generates the credential-encryption 
 ./setup.sh
 ```
 
-`setup.sh` is interactive (it reads the OpenRouter key from stdin). If you cannot drive an interactive prompt, do it non-interactively instead:
+`setup.sh` is interactive (it reads the OpenRouter key from stdin). If you cannot
+drive an interactive prompt, pass the key as a flag or skip it explicitly:
 
 ```bash
-cp .env.example .env
-# generate the AES-256-GCM key for credential encryption:
-KEY=$(openssl rand -hex 32)
-# write it into .env (portable sed):
-sed -i.bak "s|^CREDENTIAL_ENC_KEY=.*|CREDENTIAL_ENC_KEY=${KEY}|" .env && rm -f .env.bak
+./setup.sh --key sk-or-THE_KEY     # non-interactive, key supplied
+./setup.sh --no-prompt             # non-interactive, add the key later in Settings
 ```
+
+Both write the generated `CREDENTIAL_ENC_KEY` for you. `--no-prompt` deliberately
+leaves `OPENROUTER_API_KEY` **blank** rather than keeping the `.env.example`
+placeholder: a placeholder looks configured, builds a model, and then fails at the
+provider on the human's very first question. Blank is reported honestly as
+"not configured" by the app and by `--check`.
+
+Do **not** hand-roll `cp .env.example .env` — that is the path that leaves the
+placeholder in place.
 
 **Then ask the human for their OpenRouter API key** (from <https://openrouter.ai>, format `sk-or-...`) and write it in:
 
@@ -91,15 +98,40 @@ npm run dev                          # http://localhost:3000
 ```
 </details>
 
-## 4. Verify the LLM connection
+## 4. Verify the install
 
-Before handing off, sanity-check that the human's key + model actually work:
+Before handing off, ask the app itself whether it is actually usable:
+
+```bash
+./setup.sh --check      # app DB, migrations, LLM key (live call), embeddings, demo dir
+```
+
+It exits non-zero when anything is wrong, so it works as a gate in a script. The
+same report is available as JSON if you prefer to parse it:
+
+```bash
+curl -s localhost:3000/api/health?live=1
+```
+
+`live=1` spends one tiny completion to prove the key really works; without it the
+LLM check only reports whether a key is configured. The response contains statuses
+and provider/model names only — **never** key material — so it is safe to show the
+human.
+
+The live result is cached for a minute, so calling it in a loop cannot run up the
+human's provider bill. A reused answer says `cached Ns ago` in its `detail` — if
+you just changed the key and need a fresh verdict, wait out the minute rather than
+trusting a cached `reachable`.
+
+Read `checks.llm.status`: `configured` (good), `missing` (no key), `placeholder`
+(`.env` still holds the `.env.example` value — the human will hit a 401 on their
+first question). For a deeper model-quality gate:
 
 ```bash
 npm run smoke:llm     # model tool-calling + accuracy gate against OPENROUTER_API_KEY
 ```
 
-If it fails, the usual causes are a bad/empty `OPENROUTER_API_KEY` or no credit on the OpenRouter account — report the exact error to the human.
+If the LLM checks fail, the usual causes are a bad/empty `OPENROUTER_API_KEY` or no credit on the OpenRouter account — report the exact error to the human.
 
 ## 5. Connect the human's database
 
@@ -118,6 +150,11 @@ Then walk them through it in the UI (or do it with them):
 5. Click **Add & sync** — it scans the schema (tables/columns/keys/row counts).
 
 ## 6. Guide the human through using it
+
+The `/connections` page shows a **"Getting started" checklist** (configure LLM →
+try the sample DB → connect a real DB) reflecting real state. Use it as the
+hand-off screen: whatever is still unticked is what the human still has to do. It
+disappears by itself once all three are done.
 
 Once a connection is synced, give the human a short guided tour — either drive the UI yourself and narrate, or hand them the [user guide (Vietnamese)](user-guide.md) and highlight the first things to try:
 

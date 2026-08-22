@@ -20,7 +20,12 @@ import {
   upsertTableAnnotation,
 } from './context-service';
 
-export const DEMO_CONNECTION_NAME = 'Demo — Online Shop';
+import { DEMO_CONNECTION_NAME } from '../lib/demo-constants';
+// Re-exported so the many server-side importers that predate the move keep
+// their import path. The constant itself lives in `lib/` because importing this
+// service from a client component pulls DuckDB's native bindings into the
+// browser bundle.
+export { DEMO_CONNECTION_NAME };
 
 const DEMO_DIR = path.resolve(process.cwd(), '.demo');
 const DEMO_DB_PATH = path.join(DEMO_DIR, 'demo-shop.db');

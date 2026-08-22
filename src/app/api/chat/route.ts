@@ -14,6 +14,7 @@ import {
   INVESTIGATE_FINDING_MAX_SQL,
 } from '../../../services/finding-investigation-service';
 import { getSchemaSummary } from '../../../services/schema-sync-service';
+import { LLM_NOT_CONFIGURED } from '../../../services/llm-service';
 import {
   decomposeQuestion,
   splitBudget,
@@ -183,30 +184,45 @@ export async function POST(req: Request) {
     // decompose:false → fall through to the standard single-loop investigate path.
   }
 
-  const result = await streamAgentAnswer({
-    connectionId,
-    dialect: conn.dialect,
-    // Model-history window (H5): a rehydrated session ships its whole transcript
-    // (30-query investigations, vote payloads) — cap what the model re-reads per
-    // send. The UI keeps the full transcript; only the model payload is windowed.
-    messages: await convertToModelMessages(messages.slice(-MODEL_HISTORY_WINDOW)),
-    sessionId,
-    mode: resolvedMode,
-    findingContext,
-    maxSqlSteps: target ? INVESTIGATE_FINDING_MAX_SQL : undefined,
-    // Wiring the request signal makes a client Stop actually halt the server-side
-    // agent — no more tokens/queries/budget spent after the user stops. Investigate
-    // mode deliberately does NOT get this: its conclusion must survive the user
-    // navigating away, so it keeps draining via consumeStream() below.
-    abortSignal: isInvestigate ? undefined : req.signal,
-    // High-stakes candidate voting is chat-only: force-false in investigate /
-    // investigate-from-finding so a `highStakes:true` body can't trigger it there.
-    highStakes: !!highStakes && resolvedMode === 'chat',
-    // AUTO high-stakes (governed-metric questions verify unasked) is opted in by
-    // THIS interactive route only — headless callers (MCP/schedule/eval) must
-    // never silently gain the extra cost (red-team H1).
-    allowAutoHighStakes: true,
-  });
+  // `getModel()` throws before any streaming starts when no usable key exists.
+  // Letting that surface as a bare 500 is what made a fresh install feel broken
+  // rather than unconfigured, so it becomes a typed payload the UI can explain.
+  // Only THIS code is special-cased — every other failure keeps its old path.
+  let result: Awaited<ReturnType<typeof streamAgentAnswer>>;
+  try {
+    result = await streamAgentAnswer({
+      connectionId,
+      dialect: conn.dialect,
+      // Model-history window (H5): a rehydrated session ships its whole transcript
+      // (30-query investigations, vote payloads) — cap what the model re-reads per
+      // send. The UI keeps the full transcript; only the model payload is windowed.
+      messages: await convertToModelMessages(messages.slice(-MODEL_HISTORY_WINDOW)),
+      sessionId,
+      mode: resolvedMode,
+      findingContext,
+      maxSqlSteps: target ? INVESTIGATE_FINDING_MAX_SQL : undefined,
+      // Wiring the request signal makes a client Stop actually halt the server-side
+      // agent — no more tokens/queries/budget spent after the user stops. Investigate
+      // mode deliberately does NOT get this: its conclusion must survive the user
+      // navigating away, so it keeps draining via consumeStream() below.
+      abortSignal: isInvestigate ? undefined : req.signal,
+      // High-stakes candidate voting is chat-only: force-false in investigate /
+      // investigate-from-finding so a `highStakes:true` body can't trigger it there.
+      highStakes: !!highStakes && resolvedMode === 'chat',
+      // AUTO high-stakes (governed-metric questions verify unasked) is opted in by
+      // THIS interactive route only — headless callers (MCP/schedule/eval) must
+      // never silently gain the extra cost (red-team H1).
+      allowAutoHighStakes: true,
+    });
+  } catch (e) {
+    if ((e as { code?: string })?.code === LLM_NOT_CONFIGURED) {
+      return new Response(
+        JSON.stringify({ error: (e as Error).message, code: LLM_NOT_CONFIGURED }),
+        { status: 503, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    throw e;
+  }
 
   // Persist the finished assistant turn (transcript history + notebook-from-session
   // read the UI parts). In investigate mode consumeStream() drives the model to
