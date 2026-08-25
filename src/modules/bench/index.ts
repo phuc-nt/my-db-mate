@@ -26,6 +26,7 @@ export { costUsd, MODEL_PRICES, PRICES_AS_OF } from './bench-pricing';
 export type { ModelPrice, TokenUsage } from './bench-pricing';
 
 export { resolveActiveModel, assertModel } from './bench-model';
+export { checkProviderReady, assertProviderReady } from './bench-preflight';
 export type { ResolvedModel } from './bench-model';
 
 export { runQuestion, QUESTION_TIMEOUT_MS } from './bench-runner';

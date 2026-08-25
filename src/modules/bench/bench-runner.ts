@@ -30,6 +30,41 @@ import { costUsd, type TokenUsage } from './bench-pricing';
  *  explores the schema first, so this is the loop budget, not the query one. */
 export const QUESTION_TIMEOUT_MS = 180_000;
 
+/** Extra attempts for a question whose failure looks like the provider rather
+ *  than the model. Small: the point is to survive a blip, not to grind against
+ *  a real outage, and a run that needs many retries should be re-run instead. */
+export const PROVIDER_RETRIES = 2;
+export const PROVIDER_RETRY_BACKOFF_MS = 3_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Whether a thrown error is the provider failing rather than the model answering
+ * badly.
+ *
+ * Deliberately narrow. Retrying a genuine agent bug would hide it and inflate
+ * the score, so only failures that cannot be the model's reasoning qualify:
+ * an empty stream, a rate limit, an upstream 5xx, or a dropped socket.
+ *
+ * Note what retrying cannot fix. The AI SDK reports an exhausted account as
+ * `AI_NoOutputGeneratedError` — the same empty-stream message as a real blip —
+ * so a run that has run out of credit retries every question and still scores
+ * zero. `assertProviderReady` is what catches that case, before the run starts.
+ */
+export function isTransientProviderError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return (
+    msg.includes('no output generated')
+    || msg.includes('rate limit')
+    || msg.includes('429')
+    || /\b5\d\d\b/.test(msg)
+    || msg.includes('econnreset')
+    || msg.includes('etimedout')
+    || msg.includes('fetch failed')
+    || msg.includes('socket hang up')
+  );
+}
+
 export interface BenchRecord {
   questionId: number;
   dbId: string;
@@ -138,16 +173,28 @@ export async function runQuestion(params: {
 
   let text: string;
   let steps: readonly { usage?: { inputTokens?: number; outputTokens?: number } }[];
-  try {
-    const answer = await withTimeout(
-      runAgentAnswer({ connectionId, dialect: conn.dialect, question: q.question, actor: 'bench' }),
-      QUESTION_TIMEOUT_MS, 'agent loop',
-    );
-    text = answer.text;
-    steps = answer.steps as typeof steps;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return fail(isTimeout(e) ? 'timeout' : 'agent_error', msg, { goldRowCount: goldRows.length });
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      const answer = await withTimeout(
+        runAgentAnswer({ connectionId, dialect: conn.dialect, question: q.question, actor: 'bench' }),
+        QUESTION_TIMEOUT_MS, 'agent loop',
+      );
+      text = answer.text;
+      steps = answer.steps as typeof steps;
+      break;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isTimeout(e)) return fail('timeout', msg, { goldRowCount: goldRows.length });
+      if (!isTransientProviderError(e) || attempt > PROVIDER_RETRIES) {
+        return fail('agent_error', msg, { goldRowCount: goldRows.length });
+      }
+      // A provider hiccup is not a wrong answer. Left unretried it scores the
+      // same as a model that reasoned badly, and a run that hit four of them
+      // reports an accuracy several points below what the model actually earned.
+      await sleep(PROVIDER_RETRY_BACKOFF_MS * attempt);
+    }
   }
 
   const usage = sumUsage(steps);

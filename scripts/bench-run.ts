@@ -21,7 +21,7 @@ import { randomBytes } from 'node:crypto';
 import {
   loadQuestions, stratifiedSample, ensureBenchConnection, cleanupBenchConnections,
   loadEvidenceAsContext, clearBenchContext, countBenchContext,
-  runQuestion, tallyVerdicts, assertModel, PRICES_AS_OF,
+  runQuestion, tallyVerdicts, assertModel, assertProviderReady, PRICES_AS_OF,
   type BenchQuestion, type BenchRecord, type Verdict,
 } from '@/modules/bench';
 
@@ -101,6 +101,12 @@ async function main(): Promise<void> {
   const active = await assertModel(args.model);
   console.log(`model: ${active.model} (${active.provider}, from ${active.source})`);
 
+  // An account that cannot pay fails every question as an empty stream and
+  // reports EX = 0% in fifteen seconds, which reads as a measurement rather
+  // than an outage. Refuse to start instead of publishing that zero.
+  const ready = await assertProviderReady(active.provider, process.env.OPENROUTER_API_KEY);
+  console.log(`provider: ${ready.detail}`);
+
   const all = await loadQuestions();
   const questions: BenchQuestion[] = args.subset === null
     ? all
@@ -156,7 +162,15 @@ async function main(): Promise<void> {
   }
 
   const correct = records.filter((r) => r.verdict === 'correct').length;
-  const costs = records.map((r) => r.costUsd).filter((c): c is number => c !== null);
+  // A record is unpriced either because the model has no listed price or because
+  // the question never reached the model at all (an `agent_error` spends nothing
+  // and reports null). Only the first case makes the run's total unknowable, so
+  // the two are separated here: otherwise one transient provider error blanks the
+  // cost of an otherwise fully-priced run, which reads as "we cannot price this
+  // model" when the truth is "19 of 20 questions cost this much".
+  const spending = records.filter((r) => r.inputTokens > 0 || r.outputTokens > 0);
+  const costs = spending.map((r) => r.costUsd).filter((c): c is number => c !== null);
+  const allSpendingPriced = costs.length === spending.length;
   const summary = {
     model: args.model,
     provider: active.provider,
@@ -174,7 +188,11 @@ async function main(): Promise<void> {
     totalInputTokens: records.reduce((n, r) => n + r.inputTokens, 0),
     totalOutputTokens: records.reduce((n, r) => n + r.outputTokens, 0),
     // null when the model has no listed price — never a guessed dollar figure.
-    totalCostUsd: costs.length === records.length ? round4(costs.reduce((a, b) => a + b, 0)) : null,
+    totalCostUsd: allSpendingPriced ? round4(costs.reduce((a, b) => a + b, 0)) : null,
+    /** Questions that never reached the model, so contributed no cost. Reported
+     *  because a total covering 16 of 20 questions is not the same number as one
+     *  covering all 20, and the difference must not be invisible. */
+    unbilledQuestions: records.length - spending.length,
     pricesAsOf: PRICES_AS_OF,
     wallClockSec: Math.round((Date.now() - started) / 1000),
     finishedAt: new Date().toISOString(),
@@ -184,7 +202,8 @@ async function main(): Promise<void> {
   console.log(`\nEX = ${summary.executionAccuracyPct}%  (${correct}/${records.length})`);
   console.log(`verdicts: ${JSON.stringify(summary.verdicts)}`);
   console.log(`by difficulty: ${JSON.stringify(summary.byDifficulty)}`);
-  console.log(`cost: ${summary.totalCostUsd === null ? 'unpriced model' : `$${summary.totalCostUsd}`}  wall: ${summary.wallClockSec}s`);
+  const unbilled = summary.unbilledQuestions > 0 ? ` (${summary.unbilledQuestions} unbilled)` : '';
+  console.log(`cost: ${summary.totalCostUsd === null ? 'unpriced model' : `$${summary.totalCostUsd}`}${unbilled}  wall: ${summary.wallClockSec}s`);
   console.log(`artifact: ${dir}`);
 
   // Bench connections are removed by default so a benchmark run leaves the app's

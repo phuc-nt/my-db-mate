@@ -148,6 +148,22 @@ The count is asserted to be zero before each `--no-context` question. A stale
 term from an earlier run would silently invalidate the ablation, and in the
 direction that flatters it.
 
+## Preflight
+
+`--model` is asserted (below), and on OpenRouter the account balance is checked
+before the first question. An exhausted account returns HTTP 402, which the AI
+SDK surfaces as `AI_NoOutputGeneratedError` — the same empty-stream error as a
+transient blip — so every question fails, the run finishes in fifteen seconds,
+and the artifact records `EX = 0%` as though it had measured something. Two such
+runs were produced and briefly mistaken for non-determinism before the cause was
+found. The balance check refuses to start rather than publish that zero.
+
+Failures that genuinely are transient (rate limits, upstream 5xx, dropped
+sockets, empty streams) are retried twice with backoff. The predicate is
+deliberately narrow: retrying a real agent bug would hide it and inflate the
+score, so schema errors, gate refusals, and crashes in our own code are never
+retried.
+
 ## Cost
 
 Prices come from a static table (`bench-pricing.ts`), read from OpenRouter's
@@ -206,3 +222,4 @@ _Populated from run artifacts; see the run id beside each number._
 |---|---|
 | 2026-08-25 | Initial harness. Dataset pinned at `minidev-2025-07-22-v2`. |
 | 2026-08-25 | Bench connections scoped per run id; cleanup no longer deletes a concurrent run's connections. |
+| 2026-08-25 | Provider balance preflight; transient provider failures retried; `no_sql` answers keep their prose. |
