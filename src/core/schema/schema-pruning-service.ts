@@ -8,9 +8,9 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '@/core/db/schema';
 import { manualRelationships, tableAnnotations } from '@/core/db/context-schema';
-import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
-import { getScope, filterTablesToScope, type SchemaScope } from './schema-scope-service';
-import { composeSummary, describeViews } from './schema-summary-composition';
+import { composeSchemaPrefix } from '@/lib/table-catalog-prefix';
+import { getScope, filterTablesToScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
+import { composeSummary, describeViews } from '@/core/schema/schema-summary-composition';
 
 const PRUNE_THRESHOLD = 200;
 const MAX_HOPS = 2;

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getConnection } from '@/core/connections/connection-service';
 import { WorkspaceRail } from '../../../components/workspace-rail';
-import { getScope, isScopeActive } from '../../../services/schema-scope-service';
+import { getScope, isScopeActive } from '@/core/boundary/schema-scope-service';
 
 /** Per-connection workspace: one shared header (name · engine · read-only badge)
  *  + section strip (Chat / Schema / Context / Automations) above every section.

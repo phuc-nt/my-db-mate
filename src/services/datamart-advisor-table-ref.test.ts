@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { advisorPromptTableRef, advisorQualifiedName } from './datamart-advisor-service';
 import { extractScopeRefs } from '../lib/sql-scope-refs';
-import { isRefInScope } from './schema-scope-service';
+import { isRefInScope } from '@/core/boundary/schema-scope-service';
 
 describe('the table reference handed to the model', () => {
   it('spells out the owning project on BigQuery', () => {

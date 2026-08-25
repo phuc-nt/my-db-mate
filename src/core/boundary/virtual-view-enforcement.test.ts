@@ -14,8 +14,8 @@ import { resolve } from 'node:path';
 import { db } from '@/core/db/client';
 import { connections, schemaTables } from '@/core/db/schema';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { setScope } from './schema-scope-service';
-import { createView, invalidateViewCache, updateView, VirtualViewError } from './virtual-view-service';
+import { setScope } from '@/core/boundary/schema-scope-service';
+import { createView, invalidateViewCache, updateView, VirtualViewError } from '@/core/boundary/virtual-view-service';
 
 const DB_PATH = resolve(process.cwd(), '.testdata/scope-governance.sqlite');
 const VIEW_SQL = "SELECT region, ROUND(SUM(revenue),2) AS revenue FROM mart_orders WHERE status='P' GROUP BY region";
@@ -142,7 +142,7 @@ describe('a definition is validated before it can be saved', () => {
 });
 
 async function currentViewId(): Promise<string> {
-  const { listViews } = await import('./virtual-view-service');
+  const { listViews } = await import('@/core/boundary/virtual-view-service');
   const [v] = await listViews(connId);
   return v.id;
 }

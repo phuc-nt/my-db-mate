@@ -9,9 +9,9 @@
  * the same connection described itself differently depending on which caller
  * the agent reached through.
  */
-import { listViews } from './virtual-view-service';
-import { VERBATIM_NAME_NOTE } from '../lib/table-catalog-prefix';
-import type { SchemaScope } from './schema-scope-service';
+import { listViews } from '@/core/boundary/virtual-view-service';
+import { VERBATIM_NAME_NOTE } from '@/lib/table-catalog-prefix';
+import type { SchemaScope } from '@/core/boundary/schema-scope-service';
 
 /**
  * The governed views, presented to the agent as tables it should prefer.

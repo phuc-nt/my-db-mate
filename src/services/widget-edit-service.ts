@@ -14,7 +14,7 @@ import { dashboardWidgets } from '@/core/db/dashboard-schema';
 import { getModel } from './llm-service';
 import { getLlmSettings } from './settings-service';
 import { getConnection } from '@/core/connections/connection-service';
-import { getPrunedSchemaSummary } from './schema-pruning-service';
+import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { normalizePlaceholderQuotes, probeWidget, type WidgetProbe } from './dashboard-generation-service';
 import { updateWidgetSql, type WidgetSqlUpdateResult } from './dashboard-service';
 import { validateChartSpec } from './chart-spec-service';

@@ -4,7 +4,7 @@ import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys } from '@/core/db/schema';
 import { manualRelationships } from '@/core/db/context-schema';
 import { getConnection } from '@/core/connections/connection-service';
-import { getScope, isScopeActive, filterTablesToScope, isRefInScope } from '../../../../../services/schema-scope-service';
+import { getScope, isScopeActive, filterTablesToScope, isRefInScope } from '@/core/boundary/schema-scope-service';
 
 export const runtime = 'nodejs';
 

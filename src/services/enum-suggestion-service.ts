@@ -14,7 +14,7 @@ import { generateText } from 'ai';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { knowledgeSuggestions, columnAnnotations } from '@/core/db/context-schema';
-import { profileColumn } from './profiling-service';
+import { profileColumn } from '@/core/schema/profiling-service';
 import { getModel } from './llm-service';
 
 const DEFAULT_MAX_COLUMNS = 60;

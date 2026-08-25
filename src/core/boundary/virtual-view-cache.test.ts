@@ -13,8 +13,8 @@ import { eq } from 'drizzle-orm';
 import { resolve } from 'node:path';
 import { db } from '@/core/db/client';
 import { connections, schemaColumns, schemaTables } from '@/core/db/schema';
-import { createView, deleteView, expandForConnection, previewDefinition, updateView } from './virtual-view-service';
-import { setScope } from './schema-scope-service';
+import { createView, deleteView, expandForConnection, previewDefinition, updateView } from '@/core/boundary/virtual-view-service';
+import { setScope } from '@/core/boundary/schema-scope-service';
 
 const DB_PATH = resolve(process.cwd(), '.testdata/scope-governance.sqlite');
 

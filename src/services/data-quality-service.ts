@@ -20,7 +20,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
-import { profileColumn } from './profiling-service';
+import { profileColumn } from '@/core/schema/profiling-service';
 import { getConnection } from '@/core/connections/connection-service';
 
 const DEFAULT_MAX_COLUMNS = Number(process.env.DATA_QUALITY_MAX_COLUMNS ?? 60);

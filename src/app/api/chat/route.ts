@@ -13,7 +13,7 @@ import {
   buildFindingContext,
   INVESTIGATE_FINDING_MAX_SQL,
 } from '../../../services/finding-investigation-service';
-import { getSchemaSummary } from '../../../services/schema-sync-service';
+import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { LLM_NOT_CONFIGURED } from '../../../services/llm-service';
 import {
   decomposeQuestion,

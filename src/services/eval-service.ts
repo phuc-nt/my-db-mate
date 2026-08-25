@@ -14,7 +14,7 @@ import { getConnection, getProvider } from '@/core/connections/connection-servic
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { assertNotBigQuery, type Dialect } from '@/core/connections/providers/provider-interface';
-import { assertSqlInScope } from './schema-scope-service';
+import { assertSqlInScope } from '@/core/boundary/schema-scope-service';
 
 export async function addEvalQuery(input: { connectionId: string; question: string; goldSql: string; complexity?: string }) {
   const [row] = await db.insert(evalQueries).values(input).returning();

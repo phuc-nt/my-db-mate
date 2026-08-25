@@ -12,7 +12,7 @@ import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
 import { eq } from 'drizzle-orm';
 import { createConnection } from '@/core/connections/connection-service';
-import { syncSchema } from './schema-sync-service';
+import { syncSchema } from '@/core/schema/schema-sync-service';
 import {
   addGlossaryTerm,
   addVerifiedQuery,

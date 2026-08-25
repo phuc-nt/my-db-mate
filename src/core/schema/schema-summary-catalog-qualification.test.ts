@@ -13,8 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
-import { getSchemaSummary } from './schema-sync-service';
-import { getPrunedSchemaSummary } from './schema-pruning-service';
+import { getSchemaSummary } from '@/core/schema/schema-sync-service';
+import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 
 let crossProjectConnId: string;
 let ownProjectConnId: string;

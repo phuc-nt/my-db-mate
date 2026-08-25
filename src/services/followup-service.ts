@@ -8,7 +8,7 @@
  * and the schema summary — never raw result-set cell values.
  */
 import { generateText } from 'ai';
-import { getSchemaSummary } from './schema-sync-service';
+import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { getRelevantContext, renderContextForPrompt } from './context-service';
 import { getModel } from './llm-service';
 

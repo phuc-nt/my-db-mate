@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, schemaTables } from '@/core/db/schema';
-import { assertSqlInScope, setScope } from './schema-scope-service';
+import { assertSqlInScope, setScope } from '@/core/boundary/schema-scope-service';
 
 let connId: string;
 

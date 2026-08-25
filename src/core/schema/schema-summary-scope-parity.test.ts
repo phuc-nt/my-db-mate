@@ -14,9 +14,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '@/core/db/schema';
 import { virtualViews } from '@/core/db/context-schema';
-import { getSchemaSummary } from './schema-sync-service';
-import { getPrunedSchemaSummary } from './schema-pruning-service';
-import { setScope, type SchemaScope } from './schema-scope-service';
+import { getSchemaSummary } from '@/core/schema/schema-sync-service';
+import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
+import { setScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
 
 const created: string[] = [];
 

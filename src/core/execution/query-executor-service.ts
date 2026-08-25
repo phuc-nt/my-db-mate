@@ -26,8 +26,8 @@ import { getWatermarkConfig } from '@/services/accelerator/watermark-config-serv
 import { runAcceleratedQuery } from '@/services/accelerator/duckdb-executor-service';
 import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from '@/services/accelerator/bigquery-duckdb-extract-service';
 import { extractLineage } from '@/lib/sql-lineage';
-import { assertSqlInScope, type SchemaScope } from '@/services/schema-scope-service';
-import { expandForConnection } from '@/services/virtual-view-service';
+import { assertSqlInScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
+import { expandForConnection } from '@/core/boundary/virtual-view-service';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from '@/core/connections/providers/provider-interface';
 import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from '@/services/bigquery-daily-budget-service';
 

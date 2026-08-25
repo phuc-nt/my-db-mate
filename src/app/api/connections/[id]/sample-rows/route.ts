@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sampleRows } from '../../../../../services/schema-browser-service';
+import { sampleRows } from '@/core/schema/schema-browser-service';
 import { toJsonSafe } from '../../../../../lib/json-safe';
 
 export const runtime = 'nodejs';

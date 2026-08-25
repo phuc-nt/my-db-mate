@@ -18,7 +18,7 @@ import { connections, schemaTables } from '@/core/db/schema';
 import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
 import { notebooks } from '@/core/db/notebook-schema';
 import { reports, reportSources, reportVersions } from '@/core/db/report-schema';
-import { evictImpactedSnapshots, findImpactedArtifacts } from './schema-scope-impact-service';
+import { evictImpactedSnapshots, findImpactedArtifacts } from '@/core/boundary/schema-scope-impact-service';
 
 const DB_PATH = resolve(process.cwd(), '.testdata/scope-governance.sqlite');
 const MART_ONLY = { tables: ['mart_orders'] };

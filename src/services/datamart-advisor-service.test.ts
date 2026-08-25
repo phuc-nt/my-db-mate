@@ -24,7 +24,7 @@ import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns, schemaForeignKeys, queryRuns } from '@/core/db/schema';
 import { manualRelationships } from '@/core/db/context-schema';
 import { collectAdvisorInputs, adoptAsVirtualViews, type ValidatedProposal } from './datamart-advisor-service';
-import { listViews, deleteView } from './virtual-view-service';
+import { listViews, deleteView } from '@/core/boundary/virtual-view-service';
 
 let connId: string;
 

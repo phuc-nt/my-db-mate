@@ -13,7 +13,7 @@ import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
 import { verifiedQueries } from '@/core/db/context-schema';
 import { getStarterQuestions } from './starter-questions-service';
 import { getBigTables } from './agent-service';
-import { setScope, type SchemaScope } from './schema-scope-service';
+import { setScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
 
 const created: string[] = [];
 

@@ -14,7 +14,7 @@ import { and, eq, desc } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { verifiedQueries } from '@/core/db/context-schema';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
-import { getScope, filterTablesToScope, assertSqlInScope } from './schema-scope-service';
+import { getScope, filterTablesToScope, assertSqlInScope } from '@/core/boundary/schema-scope-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export async function getStarterQuestions(connectionId: string, max = 4): Promise<string[]> {

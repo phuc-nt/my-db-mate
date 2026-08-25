@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { setScope } from './schema-scope-service';
+import { setScope } from '@/core/boundary/schema-scope-service';
 
 const DB_PATH = resolve(process.cwd(), '.testdata/scope-governance.sqlite');
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getScope, setScope, type SchemaScope } from '../../../../../services/schema-scope-service';
-import { evictImpactedSnapshots, findImpactedArtifacts, pauseImpactedSchedules } from '../../../../../services/schema-scope-impact-service';
+import { getScope, setScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
+import { evictImpactedSnapshots, findImpactedArtifacts, pauseImpactedSchedules } from '@/core/boundary/schema-scope-impact-service';
 
 export const runtime = 'nodejs';
 

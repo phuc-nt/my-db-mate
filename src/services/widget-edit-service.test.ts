@@ -21,7 +21,7 @@ vi.mock('ai', async (orig) => {
   const actual = await orig<typeof import('ai')>();
   return { ...actual, generateText: async () => ({ output: mockOutput() }), Output: actual.Output };
 });
-vi.mock('./schema-pruning-service', () => ({ getPrunedSchemaSummary: async () => 'sales(id, amt, region, order_date)' }));
+vi.mock('@/core/schema/schema-pruning-service', () => ({ getPrunedSchemaSummary: async () => 'sales(id, amt, region, order_date)' }));
 vi.mock('./settings-service', () => ({ getLlmSettings: async () => ({ provider: 'anthropic' }) }));
 vi.mock('./llm-service', () => ({ getModel: async () => ({}) }));
 

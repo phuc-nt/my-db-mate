@@ -27,7 +27,7 @@ vi.mock('./context-service', () => ({
     verifiedExamples: [], metrics: [{ id: 'metric-x', name: 'Total sales', description: null, sql: 'SELECT SUM(amt) AS v FROM sales', dimensions: null, distance: 0.1 }],
   }),
 }));
-vi.mock('./schema-pruning-service', () => ({ getPrunedSchemaSummary: async () => 'sales(id, amt, region)' }));
+vi.mock('@/core/schema/schema-pruning-service', () => ({ getPrunedSchemaSummary: async () => 'sales(id, amt, region)' }));
 vi.mock('./settings-service', () => ({ getLlmSettings: async () => ({ provider: 'anthropic' }) }));
 vi.mock('./llm-service', () => ({ getModel: async () => ({}) }));
 

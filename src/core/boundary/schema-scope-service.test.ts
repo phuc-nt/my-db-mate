@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRefInScope, filterTablesToScope, isScopeActive, type SchemaScope } from './schema-scope-service';
+import { isRefInScope, filterTablesToScope, isScopeActive, type SchemaScope } from '@/core/boundary/schema-scope-service';
 
 const ref = (schemaName: string | null, tableName: string) => ({ schemaName, tableName });
 

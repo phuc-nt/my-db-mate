@@ -8,7 +8,7 @@ import { ensureSnapshot } from '../../../../../../../services/accelerator/snapsh
 import { ensureIncrementalSnapshot } from '../../../../../../../services/accelerator/incremental-snapshot-service';
 import { getWatermarkConfig } from '../../../../../../../services/accelerator/watermark-config-service';
 import { assertNotBigQuery, type Dialect } from '@/core/connections/providers/provider-interface';
-import { assertSqlInScope } from '../../../../../../../services/schema-scope-service';
+import { assertSqlInScope } from '@/core/boundary/schema-scope-service';
 
 export const runtime = 'nodejs';
 

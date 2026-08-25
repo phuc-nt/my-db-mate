@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
-import { getPrunedSchemaSummary } from './schema-pruning-service';
+import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 
 let connId: string;
 
