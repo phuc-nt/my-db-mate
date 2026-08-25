@@ -4,9 +4,9 @@
  * unverified ladder deterministically.
  */
 import { describe, expect, it } from 'vitest';
-import { adviseWorkload } from './advisor-rules';
-import { parseIndexColumns } from './workload-stats-collector';
-import type { WorkloadStats } from './workload-stats-collector';
+import { adviseWorkload } from '@/modules/db-client/workload-advisor/advisor-rules';
+import { parseIndexColumns } from '@/modules/db-client/workload-advisor/workload-stats-collector';
+import type { WorkloadStats } from '@/modules/db-client/workload-advisor/workload-stats-collector';
 import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 
 function fakeProvider(dialect: 'postgres' | 'mysql', explainPlan?: string): ConnectionProvider {

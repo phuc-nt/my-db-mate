@@ -6,8 +6,8 @@
  */
 import { NextResponse } from 'next/server';
 import { getConnection, getProvider } from '@/core/connections/connection-service';
-import { collectWorkloadStats } from '../../../../../../services/workload-advisor/workload-stats-collector';
-import { adviseWorkload } from '../../../../../../services/workload-advisor/advisor-rules';
+import { collectWorkloadStats } from '@/modules/db-client';
+import { adviseWorkload } from '@/modules/db-client';
 
 export const runtime = 'nodejs';
 // System-view reads + a handful of bounded EXPLAIN calls run inline.

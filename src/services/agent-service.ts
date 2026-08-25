@@ -25,7 +25,7 @@ import { getProvider } from '@/core/connections/connection-service';
 import { getRelevantContext, renderContextForPrompt, listGlossary } from './context-service';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { profileColumn } from '@/core/schema/profiling-service';
-import { detectAnomalies } from './anomaly-service';
+import { detectAnomalies } from '@/modules/anomaly';
 import { getModel } from '@/core/model/llm-service';
 import { renderDateContext } from '@/core/lib/date-context';
 import { missingGovernedFilters } from '../lib/metric-filter-lint';

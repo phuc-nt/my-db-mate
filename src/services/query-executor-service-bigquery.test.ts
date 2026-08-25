@@ -26,7 +26,7 @@ vi.mock('@google-cloud/bigquery', () => {
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { BigQueryConfirmationRequiredError } from '@/core/connections/providers/provider-interface';
 import { profileColumn } from '@/core/schema/profiling-service';
-import { detectAnomalies } from './anomaly-service';
+import { detectAnomalies } from '@/modules/anomaly';
 import { fetchQueryLog } from './query-history-mining-service';
 import { runEval } from './eval-service';
 import { sampleRows } from '@/core/schema/schema-browser-service';

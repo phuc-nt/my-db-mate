@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { profileConnection, getDataHealth } from '../../../../../services/data-quality-service';
+import { profileConnection, getDataHealth } from '@/modules/anomaly';
 
 export const runtime = 'nodejs';
 // Profiling runs INLINE (cost-capped) — no background runtime exists in a route.

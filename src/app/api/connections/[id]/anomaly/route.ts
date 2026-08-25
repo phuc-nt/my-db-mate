@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { detectAnomalies } from '../../../../../services/anomaly-service';
+import { detectAnomalies } from '@/modules/anomaly';
 
 export const runtime = 'nodejs';
 
