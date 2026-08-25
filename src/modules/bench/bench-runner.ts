@@ -43,6 +43,13 @@ export interface BenchRecord {
   /** Present when the verdict is a failure that carries a reason worth reading:
    *  the gate's refusal text, the database error, the thrown message. */
   note?: string;
+  /** The agent's prose answer, kept ONLY when no SQL could be extracted from it.
+   *  A `no_sql` verdict is otherwise undiagnosable after the run: the record
+   *  says the answer had no fenced block but not what it had instead, so there
+   *  is no way to tell a refusal from a prose query from a formatting slip.
+   *  Stored just for that branch because the full text of 500 answers would
+   *  dominate the artifact while adding nothing for the scorable ones. */
+  answerText?: string;
   goldRowCount: number | null;
   predictedRowCount: number | null;
   agentSteps: number;
@@ -165,6 +172,7 @@ export async function runQuestion(params: {
       note: exhausted
         ? `no SQL in answer after exhausting the ${MAX_STEPS_CHAT}-step cap`
         : 'answer contained no fenced SQL block',
+      answerText: text,
     };
   }
 
