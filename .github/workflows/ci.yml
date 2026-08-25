@@ -59,6 +59,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Module boundaries (docs/module-map.md). Fails on a circular dependency or an
+      # import that crosses a declared boundary — the check that makes the module map
+      # more than a document.
+      - name: Check module boundaries
+        run: npm run lint:boundaries
+
       - name: Apply DB migrations
         run: npm run db:migrate
 

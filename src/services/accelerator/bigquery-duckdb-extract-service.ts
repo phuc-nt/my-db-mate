@@ -7,11 +7,13 @@
  * offline counterpart to Mode 1's realtime per-query budget gate.
  *
  * Cost-safety (Red Team #1): the extract IS a real BigQuery job, so its row-fetch
- * is routed through `executeQuery({ backgroundBudgeted: true })` — the SAME single
- * budget-admission point as Mode 1 — NOT `provider.executeReadOnly` directly. A
- * huge extract is blocked by the daily budget / per-query cap exactly like a direct
- * query; there is no un-budgeted path to a BigQuery job. If admission blocks, no
- * snapshot is written.
+ * must go through the SAME single budget-admission point as Mode 1 — NOT
+ * `provider.executeReadOnly` directly. This service does not reach for the executor
+ * itself; the caller passes the budgeted fetcher in, which keeps admission at one
+ * place while leaving the dependency one-directional (the executor owns this
+ * service, not the reverse). A huge extract is blocked by the daily budget /
+ * per-query cap exactly like a direct query; there is no un-budgeted path to a
+ * BigQuery job. If admission blocks, no snapshot is written.
  *
  * Unlike the OLTP accelerator, this bypasses `planAcceleration`'s table-name model
  * (which only accepts `SELECT * FROM <table>`) and snapshots the caller's arbitrary
@@ -22,7 +24,6 @@ import { getConnection } from '../connection-service';
 import { buildProvider, type ConnectionRow } from '../connection-providers/provider-factory';
 import { BigQueryConnectionProvider } from '../connection-providers/bigquery-provider';
 import type { QueryResult } from '../connection-providers/provider-interface';
-import { executeQuery } from '../query-executor-service';
 import { ensureSnapshot, type SnapshotFetchRows } from './snapshot-cache-service';
 import { runAcceleratedQuery } from './duckdb-executor-service';
 
@@ -51,6 +52,9 @@ export class BigQueryExtractBlockedError extends Error {
 export async function extractBigQueryToDuckDB(
   connectionId: string,
   sql: string,
+  /** Budgeted row fetcher, supplied by the executor. Must route through the daily
+   *  budget / per-query cap and throw when admission refuses the job. */
+  fetchRows: SnapshotFetchRows,
   ttlMs: number = DEFAULT_EXTRACT_TTL_MS,
 ): Promise<BigQueryExtractResult> {
   const conn = await getConnection(connectionId);
@@ -59,22 +63,6 @@ export async function extractBigQueryToDuckDB(
   if (!(provider instanceof BigQueryConnectionProvider)) {
     throw new Error('DuckDB-over-BigQuery extract is only valid for BigQuery connections');
   }
-
-  // The extract's row-fetch goes through executeQuery's budget admission — the ONE
-  // enforcement point. A blocked/errored admission throws, so no snapshot is written.
-  const fetchRows: SnapshotFetchRows = async (extractSql) => {
-    const res = await executeQuery({
-      connectionId,
-      sql: extractSql,
-      actor: 'accelerator-extract',
-      backgroundBudgeted: true,
-      _bypassOfflineMode: true, // Prevent infinite recursion when extracting from an offline-mode connection
-    });
-    if (res.status !== 'ok' || !res.result) {
-      throw new BigQueryExtractBlockedError(res.blockedReason ?? res.errorMessage ?? res.status);
-    }
-    return { columns: res.result.columns, rows: res.result.rows };
-  };
 
   const { path, asOf } = await ensureSnapshot(connectionId, provider, sql, ttlMs, fetchRows);
 

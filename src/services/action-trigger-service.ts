@@ -20,7 +20,7 @@
 import { and, desc, eq, gte, lt, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { actionTriggers, actionTriggerFires, type TriggerCondition } from '../db/action-trigger-schema';
-import { vetWebhookUrl } from './schedule-service';
+import { vetWebhookUrl } from '../lib/webhook-url-guard';
 
 /** Normalized finding shape shared by both surfaces: monitor rows carry
  *  table+metric, digest lines carry the metric name. */

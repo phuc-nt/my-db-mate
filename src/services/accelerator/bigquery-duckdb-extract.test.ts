@@ -29,7 +29,7 @@ vi.mock('@google-cloud/bigquery', () => {
 });
 
 // Import AFTER vi.mock so the mock is set up
-import { executeQuery } from '../query-executor-service';
+import { executeQuery, budgetedExtractFetch } from '../query-executor-service';
 import { extractBigQueryToDuckDB } from './bigquery-duckdb-extract-service';
 
 async function createBigQueryConnection(offlineMode: boolean = false) {
@@ -332,7 +332,7 @@ describe('extractBigQueryToDuckDB (Phase 3 offline analytics)', () => {
 
         mockDryRunEstimate(String(100 * 1024 * 1024)); // 100 MB, way over 1 byte budget
 
-        const promise = extractBigQueryToDuckDB(conn.id, 'SELECT * FROM huge_table');
+        const promise = extractBigQueryToDuckDB(conn.id, 'SELECT * FROM huge_table', budgetedExtractFetch(conn.id));
 
         // Should throw BigQueryExtractBlockedError or a related error
         await expect(promise).rejects.toThrow(/extract blocked|budget/i);
@@ -356,7 +356,7 @@ describe('extractBigQueryToDuckDB (Phase 3 offline analytics)', () => {
         .returning();
 
       try {
-        const promise = extractBigQueryToDuckDB(row.id, 'SELECT 1');
+        const promise = extractBigQueryToDuckDB(row.id, 'SELECT 1', budgetedExtractFetch(row.id));
         await expect(promise).rejects.toThrow(/only valid for BigQuery/i);
       } finally {
         await db.delete(connections).where(eq(connections.id, row.id));

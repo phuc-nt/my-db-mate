@@ -24,6 +24,7 @@ import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from './accelerator
 import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-service';
 import { getWatermarkConfig } from './accelerator/watermark-config-service';
 import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
+import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from './accelerator/bigquery-duckdb-extract-service';
 import { extractLineage } from '../lib/sql-lineage';
 import { assertSqlInScope, type SchemaScope } from './schema-scope-service';
 import { expandForConnection } from './virtual-view-service';
@@ -336,17 +337,14 @@ export async function executeQuery(params: {
       // Deliberately unreachable via the OLTP confirmed/skipRiskGate flags.
       if (backgroundBudgeted || agentBudgeted) {
         // Offline mode (Mode 2): serve from a DuckDB-over-BigQuery snapshot instead of
-        // querying BigQuery live. The extract itself still goes through THIS budget path
-        // (the extract service calls executeQuery with backgroundBudgeted), so there is
-        // no un-budgeted BigQuery job. Dynamic import avoids a circular dependency
-        // (the extract service imports executeQuery). Cache-valid reads cost $0.
-        // _bypassOfflineMode prevents infinite recursion when the extract service's
-        // fetchRows callback calls executeQuery internally.
+        // querying BigQuery live. The extract's own row-fetch is the callback below,
+        // which re-enters THIS budget path, so there is no un-budgeted BigQuery job.
+        // Cache-valid reads cost $0. _bypassOfflineMode prevents infinite recursion
+        // when that callback comes back through here.
         const offlineMode = backgroundBudgeted && !_bypassOfflineMode && (conn as unknown as { bigqueryOfflineMode?: boolean }).bigqueryOfflineMode === true;
         if (offlineMode) {
-          const { extractBigQueryToDuckDB, BigQueryExtractBlockedError } = await import('./accelerator/bigquery-duckdb-extract-service');
           try {
-            const { result, asOf } = await extractBigQueryToDuckDB(connectionId, finalSql);
+            const { result, asOf } = await extractBigQueryToDuckDB(connectionId, finalSql, budgetedExtractFetch(connectionId));
             return {
               status: 'ok',
               result: { ...result, accelerated: { asOf: asOf.toISOString() } },
@@ -504,4 +502,27 @@ async function audit(row: {
     durationMs: row.durationMs ?? null,
     bytesBilled: row.bytesBilled ?? null,
   });
+}
+
+/**
+ * The budgeted row fetcher handed to the DuckDB-over-BigQuery extract. Re-enters
+ * `executeQuery` so the extract's own BigQuery job passes the same daily-budget and
+ * per-query-cap admission as any other query — `_bypassOfflineMode` stops that
+ * re-entry from bouncing back into offline mode. Exported so a test can exercise the
+ * refusal path against the real admission logic rather than a stand-in.
+ */
+export function budgetedExtractFetch(connectionId: string) {
+  return async (extractSql: string) => {
+    const res = await executeQuery({
+      connectionId,
+      sql: extractSql,
+      actor: 'accelerator-extract',
+      backgroundBudgeted: true,
+      _bypassOfflineMode: true,
+    });
+    if (res.status !== 'ok' || !res.result) {
+      throw new BigQueryExtractBlockedError(res.blockedReason ?? res.errorMessage ?? res.status);
+    }
+    return { columns: res.result.columns, rows: res.result.rows };
+  };
 }
