@@ -30,7 +30,7 @@ import { detectAnomalies } from './anomaly-service';
 import { fetchQueryLog } from './query-history-mining-service';
 import { runEval } from './eval-service';
 import { sampleRows } from '@/core/schema/schema-browser-service';
-import { rerunNotebook } from './notebook-service';
+import { rerunNotebook } from '@/modules/notebooks';
 import { createSchedule, runSchedule } from './schedule-service';
 import { captureSnapshot } from './monitor-service';
 import { notebooks } from '@/core/db/notebook-schema';

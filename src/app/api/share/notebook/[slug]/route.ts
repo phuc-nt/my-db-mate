@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSharedNotebook } from '../../../../../services/notebook-service';
+import { getSharedNotebook } from '@/modules/notebooks';
 
 export const runtime = 'nodejs';
 

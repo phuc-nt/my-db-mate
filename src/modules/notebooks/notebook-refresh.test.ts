@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractRefreshPairs } from './notebook-refresh';
+import { extractRefreshPairs } from '@/modules/notebooks/notebook-refresh';
 
 const turn = (n: number, sql: string) => `## Q${n}: question\n\n\`\`\`sql\n${sql}\n\`\`\`\n\n{{table:t${n}_1}}\n\nnarrative\n`;
 

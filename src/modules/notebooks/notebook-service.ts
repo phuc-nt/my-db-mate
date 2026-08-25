@@ -16,7 +16,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
-import { extractRefreshPairs } from '../lib/notebook-refresh';
+import { extractRefreshPairs } from '@/modules/notebooks/notebook-refresh';
 import { notebooks } from '@/core/db/notebook-schema';
 import { getMessages } from '@/core/app-state/session-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';

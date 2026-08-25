@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { rerunNotebook } from '../../../../../services/notebook-service';
+import { rerunNotebook } from '@/modules/notebooks';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
