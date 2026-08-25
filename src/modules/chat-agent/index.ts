@@ -23,6 +23,7 @@
 // 1. The agent loop.
 export { streamAgentAnswer, runAgentAnswer } from './agent-service';
 export {
+  MAX_STEPS_CHAT,
   MAX_STEPS_INVESTIGATE,
   MAX_STEPS_INVESTIGATE_DEEP,
   MAX_SQL_PER_INVESTIGATION,

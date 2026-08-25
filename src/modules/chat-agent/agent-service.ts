@@ -41,7 +41,11 @@ export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
  *  chat-tier tools (red-team H3). */
 const isInvestigative = (mode: AgentMode) => mode !== 'chat';
 
-const MAX_STEPS_CHAT = 8;
+/** Step cap for a plain chat turn. Exported so the benchmark can tell a "the
+ *  agent chose not to emit SQL" answer apart from "the agent was cut off before
+ *  it could" — two failures with different fixes that look identical in the
+ *  output. */
+export const MAX_STEPS_CHAT = 8;
 // Investigate mode plans then executes a drill-down series → higher budget (red-team H3).
 export const MAX_STEPS_INVESTIGATE = Number(process.env.INVESTIGATE_MAX_STEPS ?? 24);
 export const MAX_STEPS_INVESTIGATE_DEEP = Number(process.env.INVESTIGATE_DEEP_MAX_STEPS ?? 48);

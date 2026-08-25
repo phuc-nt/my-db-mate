@@ -13,7 +13,9 @@
     "lint:boundaries": "depcruise --config .dependency-cruiser.cjs src",
     "test:fixtures": "tsx scripts/seed-scope-governance-fixture.ts",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "bench": "tsx scripts/bench-run.ts",
+    "bench:download": "tsx scripts/bench-download.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.12",
