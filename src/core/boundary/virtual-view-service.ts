@@ -18,7 +18,7 @@ import { schemaTables } from '@/core/db/schema';
 import { getConnection, getProvider } from '@/core/connections/connection-service';
 import { validateSql } from '@/core/safety/safety-service';
 import { assertSqlInScope } from '@/core/boundary/schema-scope-service';
-import { directBaseTables, expandVirtualViews, mentionsIdentifier, type VirtualViewDef } from '@/lib/sql-view-expand';
+import { directBaseTables, expandVirtualViews, mentionsIdentifier, type VirtualViewDef } from '@/core/lib/sql-view-expand';
 import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 

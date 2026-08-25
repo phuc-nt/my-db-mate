@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { diffSnapshots, diffAgainstBaseline, DEFAULT_THRESHOLDS, type Snapshot } from '../lib/monitor-diff';
-import { MIN_MAD_OBS } from './robust-stats';
+import { MIN_MAD_OBS } from '@/core/lib/robust-stats';
 
 const snap = (rowCount: number, columns: Snapshot['columns'] = {}): Snapshot => ({ rowCount, columns });
 

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { appSettings } from '@/core/db/app-settings-schema';
-import { saveLlmSettings, getLlmSettings, clearLlmSettings } from './settings-service';
+import { saveLlmSettings, getLlmSettings, clearLlmSettings } from '@/core/app-state/settings-service';
 
 beforeEach(async () => { await clearLlmSettings(); });
 afterEach(async () => { await db.delete(appSettings).where(eq(appSettings.key, 'llm')); await clearLlmSettings(); });

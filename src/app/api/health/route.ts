@@ -5,7 +5,7 @@
  * material, never connection strings.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getSetupHealth } from '../../../services/setup-health-service';
+import { getSetupHealth } from '@/core/app-state/setup-health-service';
 
 // The health service touches node:fs, the pg driver, and the local embedding
 // model, so this route cannot run on any lighter runtime. `live=1` adds a real

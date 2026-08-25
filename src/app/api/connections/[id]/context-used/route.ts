@@ -3,7 +3,7 @@ import { and, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { glossaryTerms, verifiedQueries, columnAnnotations, tableAnnotations } from '@/core/db/context-schema';
 import { metrics } from '@/core/db/metric-schema';
-import { embed } from '../../../../../services/embedding-service';
+import { embed } from '@/core/model/embedding-service';
 
 export const runtime = 'nodejs';
 

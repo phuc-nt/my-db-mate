@@ -16,7 +16,7 @@
  * - The new version number is computed + inserted inside a transaction, guarded by
  *   UNIQUE(reportId, version), so concurrent regenerates can't collide (H6).
  */
-import { generateShareSlug } from '../lib/share';
+import { generateShareSlug } from '@/core/lib/share';
 import { generateText } from 'ai';
 import { and, asc, desc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '@/core/db/client';
@@ -26,8 +26,8 @@ import { connections } from '@/core/db/schema';
 import { verifiedQueries } from '@/core/db/context-schema';
 import { notebooks } from '@/core/db/notebook-schema';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';
-import { validateChartSpec } from './chart-spec-service';
-import { getModel } from './llm-service';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
+import { getModel } from '@/core/model/llm-service';
 
 const MAX_SOURCES = 8;               // cap sources (cost + prompt size)
 const PROMPT_ROWS_PER_SOURCE = 50;   // rows shown to the LLM per source

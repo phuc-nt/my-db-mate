@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pivotLongToWide } from './chart-data';
+import { pivotLongToWide } from '@/core/lib/chart-data';
 
 describe('pivotLongToWide', () => {
   it('pivots long (x, series, y) to wide rows', () => {

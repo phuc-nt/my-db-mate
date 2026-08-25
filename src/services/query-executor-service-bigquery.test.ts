@@ -410,7 +410,7 @@ describe('BigQuery daily byte-budget (Phase 2)', () => {
 
   it('utcDayBucket returns correct YYYY-MM-DD format in UTC', async () => {
     // Import utcDayBucket from the service
-    const { utcDayBucket } = await import('./bigquery-daily-budget-service');
+    const { utcDayBucket } = await import('@/core/cost/bigquery-daily-budget-service');
 
     // Test with a known date: 2026-07-16 10:30:00 UTC
     const date = new Date('2026-07-16T10:30:00Z');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAutoChart } from './chart-spec-service';
+import { shouldAutoChart } from '@/core/lib/chart-spec-service';
 
 const rows = (n: number, make: (i: number) => unknown[]) => Array.from({ length: n }, (_, i) => make(i));
 

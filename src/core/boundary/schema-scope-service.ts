@@ -15,7 +15,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { rm } from 'node:fs/promises';
 import { connections, schemaTables, accelerateSnapshots } from '@/core/db/schema';
-import { extractScopeRefs, type ScopeRef } from '@/lib/sql-scope-refs';
+import { extractScopeRefs, type ScopeRef } from '@/core/lib/sql-scope-refs';
 import { cachePaths } from '@/services/accelerator/snapshot-cache-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 

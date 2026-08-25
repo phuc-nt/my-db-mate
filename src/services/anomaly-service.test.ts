@@ -25,7 +25,7 @@ import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
 import { anomalyBaselines } from '@/core/db/anomaly-schema';
 import { detectAnomalies, type AnomalyReport } from './anomaly-service';
-import { MIN_MAD_OBS } from '../lib/robust-stats';
+import { MIN_MAD_OBS } from '@/core/lib/robust-stats';
 
 // ===== HELPERS =====
 

@@ -7,7 +7,7 @@
  * persisted "onboarding" flag — a flag would drift from reality the moment a
  * user rotates a key or deletes the demo, and would have to be reset by hand.
  */
-import { DEMO_CONNECTION_NAME } from './demo-constants';
+import { DEMO_CONNECTION_NAME } from '@/core/lib/demo-constants';
 
 export interface OnboardingStep {
   key: 'llm' | 'demo' | 'connect';

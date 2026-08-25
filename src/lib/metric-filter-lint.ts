@@ -30,7 +30,7 @@
  *  - **Column-presence, not predicate-equivalence:** `IN ('S','D')` vs `= 'S' OR = 'D'`
  *    on the same column = satisfied; a WRONG value on the right column (e.g. `= 'X'`)
  *    is NOT caught. v1 targets the dropped-filter failure, not value drift. */
-import { extractLineage } from './sql-lineage';
+import { extractLineage } from '@/core/lib/sql-lineage';
 
 export interface FilterGap {
   column: string;

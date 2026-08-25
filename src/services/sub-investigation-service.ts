@@ -14,7 +14,7 @@
  */
 import { generateText, streamText, Output, type UIMessageStreamWriter } from 'ai';
 import { z } from 'zod';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 import { streamAgentAnswer, getBigTables } from './agent-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 import {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeDuckDbValue } from './duckdb-value';
+import { normalizeDuckDbValue } from '@/core/lib/duckdb-value';
 
 describe('normalizeDuckDbValue', () => {
   it('converts bigint (BIGINT/HUGEINT) to number', () => {

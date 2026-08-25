@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { DashboardWidget, type WidgetData } from '../../../components/dashboard-widget';
 import { DashboardGenerateModal } from '../../../components/dashboard-generate-modal';
 import { FormModal } from '../../../components/form-modal';
-import { hasDateRangePlaceholders, isValidIsoDate } from '../../../lib/sql-param';
+import { hasDateRangePlaceholders, isValidIsoDate } from '@/core/lib/sql-param';
 
 interface DashDetail { id: string; name: string; shareSlug: string | null; widgets: (WidgetData & { sql?: string })[] }
 

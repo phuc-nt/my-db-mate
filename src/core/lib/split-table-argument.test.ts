@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitTableArgument } from './split-table-argument';
+import { splitTableArgument } from '@/core/lib/split-table-argument';
 
 /**
  * The model is told to copy table names out of the schema listing verbatim, and

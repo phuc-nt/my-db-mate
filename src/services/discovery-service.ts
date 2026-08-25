@@ -22,7 +22,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { knowledgeSuggestions } from '@/core/db/context-schema';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 
 const DEFAULT_MAX_TABLES = 40;
 

@@ -11,16 +11,16 @@
  */
 import { z } from 'zod';
 import { generateText, Output } from 'ai';
-import { getModel } from './llm-service';
-import { getLlmSettings } from './settings-service';
+import { getModel } from '@/core/model/llm-service';
+import { getLlmSettings } from '@/core/app-state/settings-service';
 import { getRelevantContext } from './context-service';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { getMetric } from './metric-service';
 import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard, getDashboard } from './dashboard-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { substituteDateRange, PROBE_RANGE, hasDateRangePlaceholders } from '../lib/sql-param';
-import { validateChartSpec } from './chart-spec-service';
+import { substituteDateRange, PROBE_RANGE, hasDateRangePlaceholders } from '@/core/lib/sql-param';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
 
 const MAX_WIDGETS = 8;
 const PROBE_ROW_LIMIT = 20;

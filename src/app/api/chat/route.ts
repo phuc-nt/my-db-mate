@@ -7,14 +7,14 @@ import {
   MAX_STEPS_INVESTIGATE_DEEP,
 } from '../../../services/agent-service';
 import { getConnection } from '@/core/connections/connection-service';
-import { addMessage, getDiscardTombstone, clearDiscardTombstone } from '../../../services/session-service';
+import { addMessage, getDiscardTombstone, clearDiscardTombstone } from '@/core/app-state/session-service';
 import {
   getSessionInvestigationTarget,
   buildFindingContext,
   INVESTIGATE_FINDING_MAX_SQL,
 } from '../../../services/finding-investigation-service';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
-import { LLM_NOT_CONFIGURED } from '../../../services/llm-service';
+import { LLM_NOT_CONFIGURED } from '@/core/model/llm-service';
 import {
   decomposeQuestion,
   splitBudget,

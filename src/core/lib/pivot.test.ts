@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pivot } from './pivot';
+import { pivot } from '@/core/lib/pivot';
 
 const cols = ['status', 'amount'];
 const rows: unknown[][] = [

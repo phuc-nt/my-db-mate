@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { toJsonSafe } from '../../../../../lib/json-safe';
+import { toJsonSafe } from '@/core/lib/json-safe';
 
 export const runtime = 'nodejs';
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rewriteWithWhereFilter } from './sql-where-filter-rewrite';
+import { rewriteWithWhereFilter } from '@/core/lib/sql-where-filter-rewrite';
 
 const ok = (r: { sql: string } | { error: string }): string => {
   if ('error' in r) throw new Error(`expected sql, got error: ${r.error}`);

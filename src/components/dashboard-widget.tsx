@@ -5,7 +5,7 @@ import { ResultTable } from './result-table';
 import { ResultChart } from './result-chart';
 import { ChartConfigPicker } from './chart-config-picker';
 import { WidgetEditModal } from './widget-edit-modal';
-import { validateChartSpec } from '../services/chart-spec-service';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
 
 export interface WidgetData {
   id: string;

@@ -1,7 +1,7 @@
 'use client';
 
-import type { ChartSpec } from '../../services/chart-spec-service';
-import { buildHeatmapMatrix, HEATMAP_AXIS_CAP } from '../../lib/chart-data';
+import type { ChartSpec } from '@/core/lib/chart-spec-service';
+import { buildHeatmapMatrix, HEATMAP_AXIS_CAP } from '@/core/lib/chart-data';
 import { formatMetricValue } from '../../lib/metric-math';
 
 /** onDatumClick carries the RAW x value so a consumer can build a SQL literal. */

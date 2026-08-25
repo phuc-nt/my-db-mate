@@ -21,9 +21,9 @@ import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { anomalyBaselines } from '@/core/db/anomaly-schema';
 import { getConnection } from '@/core/connections/connection-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { madOutlier, MIN_MAD_OBS } from '../lib/robust-stats';
-import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
-import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
+import { madOutlier, MIN_MAD_OBS } from '@/core/lib/robust-stats';
+import { qualifiedTableRef, quoteColumn } from '@/core/lib/table-ref';
+import { composeSchemaPrefix } from '@/core/lib/table-catalog-prefix';
 
 const OUTLIER_Z = 3;
 /** Bounded sample size for the in-app MAD outlier check — big enough to represent the

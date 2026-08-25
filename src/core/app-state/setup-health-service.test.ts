@@ -6,13 +6,13 @@
  * material to a surface anyone can curl.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isPlaceholderKey } from './llm-service';
+import { isPlaceholderKey } from '@/core/model/llm-service';
 
 /** Settings are consulted before env; an empty settings row is what forces the
  *  env-fallback path these cases are about. */
 vi.mock('./settings-service', () => ({ getLlmSettings: vi.fn(async () => null), readLlmSettings: vi.fn(async () => null) }));
 /** The real one loads a local model — irrelevant here and slow. */
-vi.mock('./embedding-service', () => ({ embed: vi.fn(async () => [0.1]) }));
+vi.mock('@/core/model/embedding-service', () => ({ embed: vi.fn(async () => [0.1]) }));
 
 /** The live probe spends a real completion; the cases below only care about how
  *  a provider's rejection wording is classified, so the call itself is faked. */
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 async function llmCheck() {
-  const { getSetupHealth } = await import('./setup-health-service');
+  const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
   const health = await getSetupHealth({ embeddingTimeoutMs: 1000 });
   return { health, llm: health.checks.llm };
 }
@@ -133,7 +133,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-realkey';
     generateTextMock.mockRejectedValueOnce(err);
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     const health = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     return health.checks.llmLive;
   }
@@ -164,7 +164,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = KEY;
     generateTextMock.mockRejectedValueOnce(new Error(`Incorrect API key provided: ${KEY}. Check your key.`));
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     const health = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     expect(health.checks.llmLive.status).toBe('auth_failed');
     expect(health.checks.llmLive.detail).toContain('***');
@@ -176,7 +176,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-realkey';
     generateTextMock.mockRejectedValueOnce(new Error('x'.repeat(5000)));
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     const health = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     expect(health.checks.llmLive.detail!.length).toBeLessThanOrEqual(300);
   });
@@ -191,7 +191,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-realkey';
     generateTextMock.mockResolvedValue({ text: 'ok' });
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     for (let i = 0; i < 5; i++) await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     expect(generateTextMock).toHaveBeenCalledTimes(1);
   });
@@ -202,7 +202,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-realkey';
     generateTextMock.mockRejectedValue(new Error('User not found.'));
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     const first = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     const second = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     expect(generateTextMock).toHaveBeenCalledTimes(1);
@@ -217,7 +217,7 @@ describe('live probe classification', () => {
     process.env.LLM_PROVIDER = 'openrouter';
     process.env.OPENROUTER_API_KEY = 'sk-or-v1-realkey';
     generateTextMock.mockResolvedValueOnce({ text: 'ok' });
-    const { getSetupHealth } = await import('./setup-health-service');
+    const { getSetupHealth } = await import('@/core/app-state/setup-health-service');
     const health = await getSetupHealth({ live: true, embeddingTimeoutMs: 1000 });
     expect(health.checks.llmLive.status).toBe('reachable');
   });

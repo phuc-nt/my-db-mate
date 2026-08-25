@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractScopeRefs } from './sql-scope-refs';
+import { extractScopeRefs } from '@/core/lib/sql-scope-refs';
 
 /** Compact form for assertions: `schema.table` (or bare when unqualified). */
 const keys = (sql: string, dialect = 'postgres') =>

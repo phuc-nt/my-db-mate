@@ -7,7 +7,7 @@
  * Ports/SSL/quirks reflect each provider's documented defaults as of 2026-07;
  * the compatibility matrix in docs/features.md carries verified/expected status.
  */
-import type { Engine, SslMode } from './connection-config';
+import type { Engine, SslMode } from '@/core/lib/connection-config';
 
 export interface ProviderPreset {
   id: string;

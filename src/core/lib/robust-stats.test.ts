@@ -13,7 +13,7 @@ import {
   forecastVsGoal,
   MIN_MAD_OBS,
   MIN_SEASON_BUCKET_OBS,
-} from './robust-stats';
+} from '@/core/lib/robust-stats';
 
 describe('robust-stats', () => {
   describe('median', () => {

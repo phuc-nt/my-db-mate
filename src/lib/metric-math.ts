@@ -1,6 +1,6 @@
 /** Pure metric math: series parsing, delta computation, grain guessing.
  *  No DB imports — keeps this unit-testable without DATABASE_URL. */
-import { seasonalNaiveForecast, forecastVsGoal } from './robust-stats';
+import { seasonalNaiveForecast, forecastVsGoal } from '@/core/lib/robust-stats';
 
 export interface MetricPoint {
   /** Time bucket label as returned by the query (ISO-ish string). */

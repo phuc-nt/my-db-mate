@@ -26,7 +26,7 @@ import { dashboardWidgets } from '@/core/db/dashboard-schema';
 import { notebooks } from '@/core/db/notebook-schema';
 import { reportSources, reportVersions } from '@/core/db/report-schema';
 import { scheduledQueries } from '@/core/db/ecosystem-schema';
-import { extractScopeRefs } from '@/lib/sql-scope-refs';
+import { extractScopeRefs } from '@/core/lib/sql-scope-refs';
 import { isRefInScope, isScopeActive, type SchemaScope } from '@/core/boundary/schema-scope-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 

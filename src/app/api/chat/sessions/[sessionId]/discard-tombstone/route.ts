@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { discardLatestTurn } from '../../../../../../services/session-service';
+import { discardLatestTurn } from '@/core/app-state/session-service';
 
 export const runtime = 'nodejs';
 

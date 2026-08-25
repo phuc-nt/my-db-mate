@@ -4,7 +4,7 @@
  * include:['src/**\/*.test.ts'] actually runs it (a .tsx file would be skipped).
  */
 import { describe, it, expect } from 'vitest';
-import { ChartSpecSchema, validateChartSpec, inferChartSpec } from './chart-spec-service';
+import { ChartSpecSchema, validateChartSpec, inferChartSpec } from '@/core/lib/chart-spec-service';
 
 describe('ChartSpec backward compatibility', () => {
   it('parses an old {type,x,y} spec unchanged', () => {

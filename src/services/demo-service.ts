@@ -20,7 +20,7 @@ import {
   upsertTableAnnotation,
 } from './context-service';
 
-import { DEMO_CONNECTION_NAME } from '../lib/demo-constants';
+import { DEMO_CONNECTION_NAME } from '@/core/lib/demo-constants';
 // Re-exported so the many server-side importers that predate the move keep
 // their import path. The constant itself lives in `lib/` because importing this
 // service from a client component pulls DuckDB's native bindings into the

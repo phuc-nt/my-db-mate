@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderDateContext } from './date-context';
+import { renderDateContext } from '@/core/lib/date-context';
 
 describe('renderDateContext', () => {
   it('mid-year, mid-quarter (2026-07-12 is a Sunday)', () => {

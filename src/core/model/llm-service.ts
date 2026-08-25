@@ -13,7 +13,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel } from 'ai';
-import { getLlmSettings, type LlmProviderId } from './settings-service';
+import { getLlmSettings, type LlmProviderId } from '@/core/app-state/settings-service';
 
 export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434/v1';
 

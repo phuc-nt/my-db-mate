@@ -5,7 +5,7 @@
  * cases must be unchanged.
  */
 import { describe, it, expect } from 'vitest';
-import { inferChartSpec, shouldAutoChart } from './chart-spec-service';
+import { inferChartSpec, shouldAutoChart } from '@/core/lib/chart-spec-service';
 
 describe('inferChartSpec — existing cases unchanged', () => {
   it('temporal + numeric → line', () => {

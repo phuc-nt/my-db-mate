@@ -12,7 +12,7 @@
 import { describe, expect, it, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { resolve } from 'node:path';
-import { expandVirtualViews } from './sql-view-expand';
+import { expandVirtualViews } from '@/core/lib/sql-view-expand';
 
 const db = new Database(resolve(process.cwd(), '.testdata/scope-governance.sqlite'), { readonly: true });
 afterAll(() => db.close());

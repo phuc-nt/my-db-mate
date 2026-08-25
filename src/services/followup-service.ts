@@ -10,7 +10,7 @@
 import { generateText } from 'ai';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { getRelevantContext, renderContextForPrompt } from './context-service';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 
 /** Propose up to 3 follow-up questions grounded in the schema + curated context.
  *  `resultColumns` are column NAMES only (no cell values). */

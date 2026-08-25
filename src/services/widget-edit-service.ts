@@ -11,14 +11,14 @@ import { generateText, Output } from 'ai';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { dashboardWidgets } from '@/core/db/dashboard-schema';
-import { getModel } from './llm-service';
-import { getLlmSettings } from './settings-service';
+import { getModel } from '@/core/model/llm-service';
+import { getLlmSettings } from '@/core/app-state/settings-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { normalizePlaceholderQuotes, probeWidget, type WidgetProbe } from './dashboard-generation-service';
 import { updateWidgetSql, type WidgetSqlUpdateResult } from './dashboard-service';
-import { validateChartSpec } from './chart-spec-service';
-import { hasDateRangePlaceholders } from '../lib/sql-param';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
+import { hasDateRangePlaceholders } from '@/core/lib/sql-param';
 
 const EditProposalSchema = z.object({
   sql: z.string(),

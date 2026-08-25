@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { deriveOnboardingSteps, onboardingComplete } from './onboarding-steps';
-import { DEMO_CONNECTION_NAME } from './demo-constants';
+import { DEMO_CONNECTION_NAME } from '@/core/lib/demo-constants';
 
 const stepFor = (steps: ReturnType<typeof deriveOnboardingSteps>, key: string) =>
   steps.find((s) => s.key === key)!;

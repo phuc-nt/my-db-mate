@@ -11,8 +11,8 @@ import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { getProvider } from '@/core/connections/connection-service';
 import { capRows } from '@/core/safety/safety-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { qualifiedTableRef, quoteColumn } from '@/lib/table-ref';
-import { composeSchemaPrefix } from '@/lib/table-catalog-prefix';
+import { qualifiedTableRef, quoteColumn } from '@/core/lib/table-ref';
+import { composeSchemaPrefix } from '@/core/lib/table-catalog-prefix';
 import { getScope, isScopeActive, isRefInScope } from '@/core/boundary/schema-scope-service';
 import type { ConnectionProvider, QueryResult } from '@/core/connections/providers/provider-interface';
 

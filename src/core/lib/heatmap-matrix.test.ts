@@ -4,7 +4,7 @@
  * which the red-team flagged as unfit for a time-axis heatmap.
  */
 import { describe, it, expect } from 'vitest';
-import { buildHeatmapMatrix, HEATMAP_AXIS_CAP } from './chart-data';
+import { buildHeatmapMatrix, HEATMAP_AXIS_CAP } from '@/core/lib/chart-data';
 
 // rows: [x=month, series=segment, y=revenue]
 const rows = [

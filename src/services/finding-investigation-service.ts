@@ -19,7 +19,7 @@ import { chatSessions, schemaTables, schemaColumns } from '@/core/db/schema';
 import { scheduledQueries } from '@/core/db/ecosystem-schema';
 import { monitorSnapshots } from '@/core/db/monitor-schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
-import { median, mad } from '../lib/robust-stats';
+import { median, mad } from '@/core/lib/robust-stats';
 import type { MonitorFinding, Snapshot } from '../lib/monitor-diff';
 
 /** Hard ceiling on run_sql calls for a finding investigation. A client-supplied

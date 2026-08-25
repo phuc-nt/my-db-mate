@@ -10,7 +10,7 @@
  * the agent reached through.
  */
 import { listViews } from '@/core/boundary/virtual-view-service';
-import { VERBATIM_NAME_NOTE } from '@/lib/table-catalog-prefix';
+import { VERBATIM_NAME_NOTE } from '@/core/lib/table-catalog-prefix';
 import type { SchemaScope } from '@/core/boundary/schema-scope-service';
 
 /**

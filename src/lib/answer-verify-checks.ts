@@ -9,7 +9,7 @@
  * runMetric populates). No smarter model has that accumulated observation — it's
  * a moat-side check, not an intelligence one.
  */
-import { toJsonSafe } from './json-safe';
+import { toJsonSafe } from '@/core/lib/json-safe';
 
 export type CheckStatus = 'pass' | 'warn' | 'skip';
 export interface VerifyCheck {

@@ -33,7 +33,7 @@ import {
   renderContextForPrompt,
   addVerifiedQuery,
 } from './context-service';
-import { embed } from './embedding-service';
+import { embed } from '@/core/model/embedding-service';
 
 // ===== HELPERS =====
 

@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { advisorPromptTableRef, advisorQualifiedName } from './datamart-advisor-service';
-import { extractScopeRefs } from '../lib/sql-scope-refs';
+import { extractScopeRefs } from '@/core/lib/sql-scope-refs';
 import { isRefInScope } from '@/core/boundary/schema-scope-service';
 
 describe('the table reference handed to the model', () => {

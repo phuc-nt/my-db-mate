@@ -12,7 +12,7 @@ import { schemaTables, schemaForeignKeys } from '@/core/db/schema';
 import { getProvider } from '@/core/connections/connection-service';
 import { analyzeQueries, parametrizeLiterals, parsePastedLog, fetchQueryLog } from './query-history-mining-service';
 import { normalizeSqlForDedup } from '@/core/safety/safety-service';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 
 const VERIFIED_CAP = 5;   // human must review each NL↔SQL pair — keep it small
 const RELATIONSHIP_CAP = 20;

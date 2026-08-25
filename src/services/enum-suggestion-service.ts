@@ -15,7 +15,7 @@ import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { knowledgeSuggestions, columnAnnotations } from '@/core/db/context-schema';
 import { profileColumn } from '@/core/schema/profiling-service';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 
 const DEFAULT_MAX_COLUMNS = 60;
 const MIN_ENUM_DISTINCT = 2;

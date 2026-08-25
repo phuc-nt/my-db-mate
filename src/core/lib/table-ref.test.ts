@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { qualifiedTableRef, quoteColumn } from './table-ref';
+import { qualifiedTableRef, quoteColumn } from '@/core/lib/table-ref';
 
 describe('qualifiedTableRef', () => {
   it('qualifies BigQuery with its dataset (dataset.table, backtick-quoted)', () => {

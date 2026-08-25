@@ -25,11 +25,11 @@ import { ensureIncrementalSnapshot } from '@/services/accelerator/incremental-sn
 import { getWatermarkConfig } from '@/services/accelerator/watermark-config-service';
 import { runAcceleratedQuery } from '@/services/accelerator/duckdb-executor-service';
 import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from '@/services/accelerator/bigquery-duckdb-extract-service';
-import { extractLineage } from '@/lib/sql-lineage';
+import { extractLineage } from '@/core/lib/sql-lineage';
 import { assertSqlInScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
 import { expandForConnection } from '@/core/boundary/virtual-view-service';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from '@/core/connections/providers/provider-interface';
-import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from '@/services/bigquery-daily-budget-service';
+import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from '@/core/cost/bigquery-daily-budget-service';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
@@ -169,7 +169,7 @@ export interface ExecuteResult {
    *  row-count/performance guess, and gates on its own confirm step. */
   costEstimate?: { estimatedBytes: number; estimatedCostUsd: number; reliable: boolean };
   /** AST-derived read lineage (tables/filters/grouping) — null when unparsable. */
-  lineage?: import('@/lib/sql-lineage').SqlLineage | null;
+  lineage?: import('@/core/lib/sql-lineage').SqlLineage | null;
 }
 
 export async function executeQuery(params: {

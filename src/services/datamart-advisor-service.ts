@@ -24,7 +24,7 @@ import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '@/c
 import { manualRelationships } from '@/core/db/context-schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
 import { getScope, isScopeActive, isRefInScope, assertSqlInScope } from '@/core/boundary/schema-scope-service';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 import { getProvider } from '@/core/connections/connection-service';
 import { validateSql } from '@/core/safety/safety-service';
 import { createView } from '@/core/boundary/virtual-view-service';

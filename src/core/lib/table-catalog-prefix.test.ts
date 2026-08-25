@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { composeSchemaPrefix } from './table-catalog-prefix';
-import { qualifiedTableRef } from './table-ref';
-import { extractScopeRefs } from './sql-scope-refs';
+import { composeSchemaPrefix } from '@/core/lib/table-catalog-prefix';
+import { qualifiedTableRef } from '@/core/lib/table-ref';
+import { extractScopeRefs } from '@/core/lib/sql-scope-refs';
 
 /**
  * The catalog (BigQuery: project) is attached to a table reference here, at

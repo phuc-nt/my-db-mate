@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractLineage } from './sql-lineage';
+import { extractLineage } from '@/core/lib/sql-lineage';
 
 describe('extractLineage', () => {
   it('simple select with where + group by', () => {

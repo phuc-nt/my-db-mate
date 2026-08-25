@@ -15,7 +15,7 @@
  *  the same neutralisation the AST path used — and the column is a guarded
  *  plain identifier, quoted per dialect. */
 import pkg from 'node-sql-parser';
-import { DIALECT_MAP, DIM_NAME } from './sql-dimension-rewrite';
+import { DIALECT_MAP, DIM_NAME } from '@/core/lib/sql-dimension-rewrite';
 
 const { Parser } = pkg;
 

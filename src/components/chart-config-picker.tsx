@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ChartSpec } from '../services/chart-spec-service';
+import type { ChartSpec } from '@/core/lib/chart-spec-service';
 
 const TYPES: { value: ChartSpec['type']; label: string; needsSeries?: boolean; needsY2?: boolean }[] = [
   { value: 'bar', label: 'Bar' },

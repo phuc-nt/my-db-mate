@@ -14,7 +14,7 @@
  *   shown; execution later goes through the standard /execute choke point anyway.
  */
 import { generateText } from 'ai';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { validateSql, normalizeSqlForDedup } from '@/core/safety/safety-service';

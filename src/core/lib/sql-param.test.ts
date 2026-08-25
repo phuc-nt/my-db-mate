@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultDateRange, hasDateRangePlaceholders, isValidIsoDate, substituteDateRange } from './sql-param';
+import { defaultDateRange, hasDateRangePlaceholders, isValidIsoDate, substituteDateRange } from '@/core/lib/sql-param';
 
 describe('hasDateRangePlaceholders', () => {
   it('detects {{from}}/{{to}} with flexible spacing and case', () => {

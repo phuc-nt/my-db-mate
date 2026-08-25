@@ -19,9 +19,9 @@ import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot,
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { runAgentAnswer } from './agent-service';
 import { generateText } from 'ai';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 import { listMetrics, runMetric, runMetricDrivers } from './metric-service';
-import { vetWebhookUrl } from '../lib/webhook-url-guard';
+import { vetWebhookUrl } from '@/core/lib/webhook-url-guard';
 import { computeInsights, computeForecast, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection, type TimeGrain } from '../lib/metric-math';
 
 const tasks = new Map<string, ScheduledTask>();

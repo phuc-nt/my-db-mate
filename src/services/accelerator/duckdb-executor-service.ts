@@ -7,7 +7,7 @@
  */
 import { DuckDBInstance } from '@duckdb/node-api';
 import type { QueryResult } from '@/core/connections/providers/provider-interface';
-import { normalizeDuckDbValue } from '../../lib/duckdb-value';
+import { normalizeDuckDbValue } from '@/core/lib/duckdb-value';
 
 /** Quote a possibly schema-qualified identifier for DuckDB DDL — each dotted
  *  part quoted separately so `schema.table` becomes `"schema"."table"`. */

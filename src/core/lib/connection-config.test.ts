@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseConnectionString } from './connection-config';
+import { parseConnectionString } from '@/core/lib/connection-config';
 
 describe('parseConnectionString sslmode mapping', () => {
   it.each([

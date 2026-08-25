@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getMessages } from '../../../../../services/session-service';
+import { getMessages } from '@/core/app-state/session-service';
 import { getSessionInvestigationTarget } from '../../../../../services/finding-investigation-service';
 import { dbRowsToUiMessages, type ChatMessageRow } from '../../../../../lib/chat-rehydration-helpers';
 

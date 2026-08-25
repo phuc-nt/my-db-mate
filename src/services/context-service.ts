@@ -14,7 +14,7 @@ import {
   verifiedQueries,
 } from '@/core/db/context-schema';
 import { metrics } from '@/core/db/metric-schema';
-import { embed } from './embedding-service';
+import { embed } from '@/core/model/embedding-service';
 
 // Cosine-distance floors (pgvector `<=>` ∈ [0,2]) — an item is only injected into the
 // prompt when it is genuinely close to the question. A wrongly-injected governed metric

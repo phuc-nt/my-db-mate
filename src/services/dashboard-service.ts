@@ -10,7 +10,7 @@
  * - getSharedDashboard returns ONLY cached results (never `sql`, never executes) so
  *   an anonymous viewer cannot trigger a query or read the SQL (H1/H2).
  */
-import { generateShareSlug } from '../lib/share';
+import { generateShareSlug } from '@/core/lib/share';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
@@ -18,11 +18,11 @@ import { connections } from '@/core/db/schema';
 import { getConnection } from '@/core/connections/connection-service';
 import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { validateSql } from '@/core/safety/safety-service';
-import { validateChartSpec } from './chart-spec-service';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
 import { assessRisk } from '@/core/safety/risk-scoring-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';
-import { PROBE_RANGE, defaultDateRange, hasDateRangePlaceholders, substituteDateRange, type DateRange } from '../lib/sql-param';
-import { rewriteWithWhereFilter } from '../lib/sql-where-filter-rewrite';
+import { PROBE_RANGE, defaultDateRange, hasDateRangePlaceholders, substituteDateRange, type DateRange } from '@/core/lib/sql-param';
+import { rewriteWithWhereFilter } from '@/core/lib/sql-where-filter-rewrite';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 const LAST_RESULT_ROW_CAP = 500;

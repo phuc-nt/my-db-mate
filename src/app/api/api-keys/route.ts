@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createApiKey, listApiKeys, revokeApiKey } from '../../../services/api-key-service';
+import { createApiKey, listApiKeys, revokeApiKey } from '@/core/app-state/api-key-service';
 
 export const runtime = 'nodejs';
 

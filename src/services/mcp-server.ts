@@ -12,14 +12,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { resolveApiKey } from './api-key-service';
+import { resolveApiKey } from '@/core/app-state/api-key-service';
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { getRelevantContext } from './context-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { listMetrics, getMetric, runMetric } from './metric-service';
-import { toJsonSafe } from '../lib/json-safe';
+import { toJsonSafe } from '@/core/lib/json-safe';
 
 /** A metric id is client-supplied; only run metrics that belong to THIS key's
  *  connection so a guessed id from another connection can't be executed. */

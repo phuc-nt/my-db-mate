@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteLatestAssistantMessage } from '../../../../../../services/session-service';
+import { deleteLatestAssistantMessage } from '@/core/app-state/session-service';
 
 export const runtime = 'nodejs';
 

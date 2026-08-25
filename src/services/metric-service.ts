@@ -6,8 +6,8 @@ import { db } from '@/core/db/client';
 import { metrics } from '@/core/db/metric-schema';
 import { executeQuery, touchesSensitiveColumns } from '@/core/execution/query-executor-service';
 import { getConnection } from '@/core/connections/connection-service';
-import { embed } from './embedding-service';
-import { rewriteWithDimension } from '../lib/sql-dimension-rewrite';
+import { embed } from '@/core/model/embedding-service';
+import { rewriteWithDimension } from '@/core/lib/sql-dimension-rewrite';
 
 /** Embedding text for a metric — name + description, so a chat question retrieves the
  *  governed definition by semantic similarity (mirrors glossary/verified-query embedding). */

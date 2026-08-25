@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toJsonSafe } from './json-safe';
+import { toJsonSafe } from '@/core/lib/json-safe';
 
 describe('toJsonSafe', () => {
   it('converts a bare BigInt to a string', () => {

@@ -9,7 +9,7 @@ import { db } from '@/core/db/client';
 import {
   tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries,
 } from '@/core/db/context-schema';
-import { embed } from './embedding-service';
+import { embed } from '@/core/model/embedding-service';
 
 interface ContextYaml {
   tableAnnotations: { tableName: string; description?: string; businessAlias?: string; isDeprecated?: boolean }[];

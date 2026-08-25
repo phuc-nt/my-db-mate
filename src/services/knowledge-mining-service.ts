@@ -9,11 +9,11 @@ import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '@/core/db/context-schema';
-import { getMessages } from './session-service';
+import { getMessages } from '@/core/app-state/session-service';
 import { chatSessions, queryRuns } from '@/core/db/schema';
 import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
 import { normalizeSqlForDedup } from '@/core/safety/safety-service';
-import { getModel } from './llm-service';
+import { getModel } from '@/core/model/llm-service';
 
 // Lenient: models return confidence as number OR enum, and alias/synonym fields
 // as string OR array. Normalize downstream rather than reject the whole batch.

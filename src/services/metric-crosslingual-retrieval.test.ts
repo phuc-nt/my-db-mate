@@ -13,7 +13,7 @@
  * discriminates against unrelated metrics.
  */
 import { describe, it, expect } from 'vitest';
-import { embed } from './embedding-service';
+import { embed } from '@/core/model/embedding-service';
 
 const FLOOR = 0.35; // mirrors METRIC_DISTANCE_FLOOR in context-service.ts
 

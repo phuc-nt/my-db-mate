@@ -28,8 +28,8 @@ vi.mock('./context-service', () => ({
   }),
 }));
 vi.mock('@/core/schema/schema-pruning-service', () => ({ getPrunedSchemaSummary: async () => 'sales(id, amt, region)' }));
-vi.mock('./settings-service', () => ({ getLlmSettings: async () => ({ provider: 'anthropic' }) }));
-vi.mock('./llm-service', () => ({ getModel: async () => ({}) }));
+vi.mock('@/core/app-state/settings-service', () => ({ getLlmSettings: async () => ({ provider: 'anthropic' }) }));
+vi.mock('@/core/model/llm-service', () => ({ getModel: async () => ({}) }));
 
 let connId: string;
 let metricId: string;

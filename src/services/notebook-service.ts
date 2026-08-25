@@ -18,9 +18,9 @@ import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
 import { extractRefreshPairs } from '../lib/notebook-refresh';
 import { notebooks } from '@/core/db/notebook-schema';
-import { getMessages } from './session-service';
+import { getMessages } from '@/core/app-state/session-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';
-import { generateShareSlug } from '../lib/share';
+import { generateShareSlug } from '@/core/lib/share';
 
 const MAX_TURNS = 30;
 const MAX_ROWS_PER_RESULT = 200;

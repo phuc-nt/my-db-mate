@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, bqBudgetLedger } from '@/core/db/schema';
-import { reserve, effectiveBudget, isLowTierActor, LOW_TIER_FRACTION } from './bigquery-daily-budget-service';
+import { reserve, effectiveBudget, isLowTierActor, LOW_TIER_FRACTION } from '@/core/cost/bigquery-daily-budget-service';
 
 describe('effectiveBudget (pure)', () => {
   const BUDGET = 1_000_000;

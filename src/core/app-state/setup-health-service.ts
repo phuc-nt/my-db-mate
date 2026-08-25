@@ -21,9 +21,9 @@ import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { db } from '@/core/db/client';
-import { readLlmSettings } from './settings-service';
-import { ENV_FALLBACK, isProvider, isPlaceholderKey, getModel } from './llm-service';
-import { embed } from './embedding-service';
+import { readLlmSettings } from '@/core/app-state/settings-service';
+import { ENV_FALLBACK, isProvider, isPlaceholderKey, getModel } from '@/core/model/llm-service';
+import { embed } from '@/core/model/embedding-service';
 
 export type CheckStatus =
   | 'ok'

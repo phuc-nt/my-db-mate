@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rewriteWithDimension } from './sql-dimension-rewrite';
+import { rewriteWithDimension } from '@/core/lib/sql-dimension-rewrite';
 
 const METRIC_SQL = "SELECT strftime('%Y-%m', order_date) AS month, SUM(total_amt) AS revenue FROM orders GROUP BY 1 ORDER BY 1";
 

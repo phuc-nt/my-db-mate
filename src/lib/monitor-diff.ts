@@ -1,6 +1,6 @@
 /** Pure snapshot-diff logic for the data-drift monitor — separated from the
  *  service so unit tests never pull in the db client (vitest has no DATABASE_URL). */
-import { madOutlier, MIN_MAD_OBS } from './robust-stats';
+import { madOutlier, MIN_MAD_OBS } from '@/core/lib/robust-stats';
 export interface MonitorThresholds {
   rowCountPct: number;   // alert when |Δ| exceeds this % AND the absolute floor
   rowCountAbsMin: number; // ignore diffs smaller than this many rows (small tables)

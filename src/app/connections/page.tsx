@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
-import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
+import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '@/core/lib/connection-config';
+import { PROVIDER_PRESETS, getPreset } from '@/core/lib/provider-presets';
 import { deriveOnboardingSteps } from '../../lib/onboarding-steps';
 import { OnboardingChecklistCard } from '../../components/onboarding-checklist-card';
 

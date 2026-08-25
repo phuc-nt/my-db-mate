@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '../../../../../../services/dashboard-service';
-import { isValidIsoDate } from '../../../../../../lib/sql-param';
+import { isValidIsoDate } from '@/core/lib/sql-param';
 
 const MAX_CROSS_FILTERS = 3;
 const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
