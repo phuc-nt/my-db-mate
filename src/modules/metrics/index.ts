@@ -10,6 +10,9 @@
  * Pure metric math lives in `@/core/lib/metric-math`, not here — four client
  * components import it, and a React component must not depend on a server
  * feature module to format a number.
+ *
+ * No type re-exports: every consumer above gets the shapes by inference from the
+ * functions, so exporting them by name would be a promise nothing is asking for.
  */
 export {
   createMetric,
@@ -20,6 +23,4 @@ export {
   runMetric,
   runMetricDrivers,
 } from './metric-service';
-export type { MetricInput, MetricRun } from './metric-service';
 export { missingGovernedFilters } from './metric-filter-lint';
-export type { FilterGap } from './metric-filter-lint';
