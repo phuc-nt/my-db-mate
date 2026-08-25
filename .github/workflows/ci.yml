@@ -62,6 +62,12 @@ jobs:
       - name: Apply DB migrations
         run: npm run db:migrate
 
+      # The scope/virtual-view suites read a real SQLite database. `.testdata/` is
+      # gitignored, so the fixture is rebuilt here rather than committed — the
+      # generator is deterministic, so CI reads the same bytes a developer does.
+      - name: Build the SQLite test fixture
+        run: npm run test:fixtures
+
       - name: Test (safety adversarial gate + DB-backed service tests)
         run: npm test
 

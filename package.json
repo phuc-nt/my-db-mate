@@ -10,6 +10,7 @@
     "db:migrate": "drizzle-kit migrate",
     "smoke:llm": "tsx scripts/smoke-test-llm-tool-calling.ts",
     "mcp": "tsx scripts/mcp-server-entry.ts",
+    "test:fixtures": "tsx scripts/seed-scope-governance-fixture.ts",
     "test": "vitest run",
     "lint": "eslint src"
   },
