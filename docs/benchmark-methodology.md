@@ -214,7 +214,43 @@ the predicted SQL, gold SQL, verdict, tokens, cost, and latency).
 
 ## Results
 
-_Populated from run artifacts; see the run id beside each number._
+Every figure below is produced by `npx tsx scripts/bench-compare.ts <runId>...`
+reading the named artifacts, not transcribed from console output. Runs marked
+`INVALID.md` or `PARTIAL.md` are excluded and named where relevant.
+
+### Run-to-run spread
+
+The same 20-question subset, same model, same context setting, run twice:
+
+| Run id | EX | correct |
+|---|---|---|
+| `2026-08-25T14-06-49-89b241__qwen-qwen3-7-max__context__20` | 30% | 6/20 |
+| `2026-08-25T14-16-40-9db7bb__qwen-qwen3-7-max__context__20` | 25% | 5/20 |
+
+**Spread: 5 points.** On 20 questions 5 points *is* one question — the smallest
+move the subset can express — so the headline gap overstates the instability.
+Comparing per question: **19 of 20 kept the same correct/incorrect outcome.**
+One flipped, and two others changed verdict while staying wrong
+(`wrong_rows` ↔ `step_cap`).
+
+The single flip is question 1514, *"What kind of currency did the customer pay
+at 16:25:00 in 2012/8/24?"*:
+
+```sql
+-- run A, correct
+SELECT c.Currency FROM transactions_1k t JOIN customers c ON t.CustomerID = c.CustomerID
+WHERE t.Date = '2012-08-24' AND t.Time = '16:25:00'
+
+-- run B, wrong_rows
+SELECT DISTINCT t.CustomerID, c.Currency FROM transactions_1k t JOIN ...
+```
+
+Both find the same row. B adds a column nobody asked for, and BIRD compares
+tuples positionally, so the extra column scores zero. The instability is in how
+the answer is *presented*, not in the reasoning — the same extra-column effect
+noted under "What is NOT controlled for".
+
+Read every number on a 20-question subset with a ±5-point resolution floor.
 
 ## Changelog
 
