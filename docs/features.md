@@ -133,6 +133,26 @@ Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the field
 
 Next.js 16 (App Router) · TypeScript · AI SDK v7 + OpenRouter (`qwen/qwen3.7-max`, configurable) · Drizzle ORM · Postgres 17 + pgvector (app DB) · transformers.js (embeddings) · `@modelcontextprotocol/sdk` · `better-sqlite3` / `pg` / `mysql2` / `@google-cloud/bigquery` · `node-sql-parser` · `node-cron` · `@xyflow/react` (ERD) · `react-markdown` (reports/notebooks).
 
+## Accuracy
+
+Measured on the [BIRD](https://bird-bench.github.io/) mini-dev set: **34%**
+execution accuracy on a 100-question stratified sample (`qwen/qwen3.7-max`,
+2026-08-25). That is below published leaderboard entries, for reasons listed in
+the methodology — the safety gates stay on during the benchmark, the prompts are
+the product's rather than tuned for the dataset, and the number is reported as
+measured.
+
+The result worth reading is the ablation: turning the retrievable context layer
+off costs **14 points** (qwen) and **18 points** (deepseek) on the same
+questions. The wins concentrate on conventions no schema can express — that
+`RVVT = '+'` means positive coagulation, or that `statusID = 2` means
+disqualified.
+
+Every figure is traceable to a run artifact. See
+[`benchmark-methodology.md`](./benchmark-methodology.md) for the dataset pin,
+the scoring rule, the failure taxonomy, the run-to-run noise floor, and what the
+benchmark does *not* control for.
+
 ## Safety model
 
 The real boundary is a **SELECT-only DB user** — grant your connection only `SELECT`. The application layers add defense in depth (read-only transaction re-applied per connection, AST + denylist validation, statement timeout, `multipleStatements: false`), but none of them replace a least-privilege grant. Point at a read replica where possible.
