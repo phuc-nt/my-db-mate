@@ -3,7 +3,7 @@
  * never cause a write to a source database (the service imports no execution API).
  */
 import { NextResponse } from 'next/server';
-import { getConnection } from '../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import {
   listTriggers, listFiresForConnection, createTrigger, updateTrigger, deleteTrigger, testFire,
 } from '../../../../../services/action-trigger-service';

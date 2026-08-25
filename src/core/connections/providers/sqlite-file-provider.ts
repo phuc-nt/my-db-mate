@@ -13,7 +13,7 @@ import type {
   WritePrivilegeProbe,
   ColumnInfo,
   ForeignKeyInfo,
-} from './provider-interface';
+} from '@/core/connections/providers/provider-interface';
 
 export interface SqliteConfig {
   path: string;

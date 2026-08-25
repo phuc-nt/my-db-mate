@@ -28,7 +28,7 @@ import { reportSources, reportVersions } from '@/core/db/report-schema';
 import { scheduledQueries } from '@/core/db/ecosystem-schema';
 import { extractScopeRefs } from '../lib/sql-scope-refs';
 import { isRefInScope, isScopeActive, type SchemaScope } from './schema-scope-service';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export type ImpactedKind = 'metric' | 'verified_query' | 'dashboard_widget' | 'schedule';
 

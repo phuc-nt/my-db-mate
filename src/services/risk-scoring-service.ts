@@ -5,7 +5,7 @@
  * a tier. Estimate-based, so it is intentionally NOT deterministic across stats
  * refreshes; tier boundaries use hysteresis margins to avoid oscillation (RT-F12).
  */
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 
 export type RiskTier = 'low' | 'medium' | 'high';
 

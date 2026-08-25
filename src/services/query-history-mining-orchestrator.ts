@@ -9,7 +9,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { knowledgeSuggestions, verifiedQueries } from '@/core/db/context-schema';
 import { schemaTables, schemaForeignKeys } from '@/core/db/schema';
-import { getProvider } from './connection-service';
+import { getProvider } from '@/core/connections/connection-service';
 import { analyzeQueries, parametrizeLiterals, parsePastedLog, fetchQueryLog } from './query-history-mining-service';
 import { normalizeSqlForDedup } from './safety/safety-service';
 import { getModel } from './llm-service';

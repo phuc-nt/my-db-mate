@@ -21,7 +21,7 @@ import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
 import { profileColumn } from './profiling-service';
-import { getConnection } from './connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 
 const DEFAULT_MAX_COLUMNS = Number(process.env.DATA_QUALITY_MAX_COLUMNS ?? 60);
 /** Tighter per-scan column cap on BigQuery: every profiled column costs real

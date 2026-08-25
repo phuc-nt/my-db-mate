@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { accelerateSnapshots } from '@/core/db/schema';
-import { getConnection } from '../../../../../../../services/connection-service';
-import { buildProvider, type ConnectionRow } from '../../../../../../../services/connection-providers/provider-factory';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { ensureSnapshot } from '../../../../../../../services/accelerator/snapshot-cache-service';
 import { ensureIncrementalSnapshot } from '../../../../../../../services/accelerator/incremental-snapshot-service';
 import { getWatermarkConfig } from '../../../../../../../services/accelerator/watermark-config-service';
-import { assertNotBigQuery, type Dialect } from '../../../../../../../services/connection-providers/provider-interface';
+import { assertNotBigQuery, type Dialect } from '@/core/connections/providers/provider-interface';
 import { assertSqlInScope } from '../../../../../../../services/schema-scope-service';
 
 export const runtime = 'nodejs';

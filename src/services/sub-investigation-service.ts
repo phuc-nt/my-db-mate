@@ -16,7 +16,7 @@ import { generateText, streamText, Output, type UIMessageStreamWriter } from 'ai
 import { z } from 'zod';
 import { getModel } from './llm-service';
 import { streamAgentAnswer, getBigTables } from './agent-service';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 import {
   SUBQ_PART_TYPE,
   type SubQuestion,

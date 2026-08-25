@@ -7,7 +7,7 @@
  */
 import type {
   ConnectionProvider, Dialect, IntrospectedSchema, QueryResult, WritePrivilegeProbe, ExplainEstimate, ColumnInfo, ForeignKeyInfo,
-} from './provider-interface';
+} from '@/core/connections/providers/provider-interface';
 
 export interface RemoteHttpConfig {
   accountId: string;

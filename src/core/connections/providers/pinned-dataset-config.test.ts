@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePinnedDatasets, withValidatedPinnedDatasets } from './pinned-dataset-config';
+import { normalizePinnedDatasets, withValidatedPinnedDatasets } from '@/core/connections/providers/pinned-dataset-config';
 
 /**
  * Pinned dataset names travel from a text box into a table reference the query

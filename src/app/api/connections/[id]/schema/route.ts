@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys } from '@/core/db/schema';
 import { manualRelationships } from '@/core/db/context-schema';
-import { getConnection } from '../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { getScope, isScopeActive, filterTablesToScope, isRefInScope } from '../../../../../services/schema-scope-service';
 
 export const runtime = 'nodejs';

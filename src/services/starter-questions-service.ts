@@ -15,7 +15,7 @@ import { db } from '@/core/db/client';
 import { verifiedQueries } from '@/core/db/context-schema';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
 import { getScope, filterTablesToScope, assertSqlInScope } from './schema-scope-service';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export async function getStarterQuestions(connectionId: string, max = 4): Promise<string[]> {
   const out: string[] = [];

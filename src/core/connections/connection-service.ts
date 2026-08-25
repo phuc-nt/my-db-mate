@@ -6,11 +6,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
 import { encryptSecret } from '@/core/crypto/credential-cipher';
-import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
-import { closeTunnel } from './connection-providers/ssh-tunnel-manager';
-import { sanitizeBigQueryConnError } from './connection-providers/bigquery-provider';
-import { withValidatedPinnedDatasets } from './connection-providers/pinned-dataset-config';
-import type { ConnectionProvider } from './connection-providers/provider-interface';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
+import { closeTunnel } from '@/core/connections/providers/ssh-tunnel-manager';
+import { sanitizeBigQueryConnError } from '@/core/connections/providers/bigquery-provider';
+import { withValidatedPinnedDatasets } from '@/core/connections/providers/pinned-dataset-config';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 
 export interface CreateConnectionInput {
   name: string;

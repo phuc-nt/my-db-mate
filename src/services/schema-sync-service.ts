@@ -5,7 +5,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '@/core/db/schema';
-import { getProvider } from './connection-service';
+import { getProvider } from '@/core/connections/connection-service';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { getScope, filterTablesToScope } from './schema-scope-service';
 import { composeSummary, describeViews } from './schema-summary-composition';

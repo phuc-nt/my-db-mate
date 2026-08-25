@@ -5,7 +5,7 @@
  * no code path here executes a CREATE/DROP.
  */
 import { NextResponse } from 'next/server';
-import { getConnection, getProvider } from '../../../../../../services/connection-service';
+import { getConnection, getProvider } from '@/core/connections/connection-service';
 import { collectWorkloadStats } from '../../../../../../services/workload-advisor/workload-stats-collector';
 import { adviseWorkload } from '../../../../../../services/workload-advisor/advisor-rules';
 

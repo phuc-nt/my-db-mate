@@ -19,7 +19,7 @@
  */
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
-import type { Dialect } from '../connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 import { FUNCTION_DENYLIST, PHRASE_DENYLIST } from './function-denylists';
 
 export type SafetyVerdict =

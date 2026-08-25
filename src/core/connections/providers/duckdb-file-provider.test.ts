@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DuckDbFileProvider } from './duckdb-file-provider';
+import { DuckDbFileProvider } from '@/core/connections/providers/duckdb-file-provider';
 
 const ROOT = resolve(process.cwd(), 'data-files-test');
 process.env.DUCKDB_DATA_DIR = ROOT;

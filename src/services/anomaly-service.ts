@@ -19,7 +19,7 @@ import { and, eq, desc, sql } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { anomalyBaselines } from '@/core/db/anomaly-schema';
-import { getConnection } from './connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { executeQuery } from './query-executor-service';
 import { madOutlier, MIN_MAD_OBS } from '../lib/robust-stats';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';

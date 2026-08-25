@@ -20,7 +20,7 @@ import { realpathSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { resolve, sep, basename, join, extname } from 'node:path';
 import type {
   ConnectionProvider, Dialect, IntrospectedSchema, QueryResult, WritePrivilegeProbe, ExplainEstimate,
-} from './provider-interface';
+} from '@/core/connections/providers/provider-interface';
 
 export type DuckDbSourceMode = 'duckdb' | 'parquet' | 'csv-dir';
 

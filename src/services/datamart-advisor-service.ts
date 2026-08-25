@@ -25,13 +25,13 @@ import { manualRelationships } from '@/core/db/context-schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
 import { getScope, isScopeActive, isRefInScope, assertSqlInScope } from './schema-scope-service';
 import { getModel } from './llm-service';
-import { getProvider } from './connection-service';
+import { getProvider } from '@/core/connections/connection-service';
 import { validateSql } from './safety/safety-service';
 import { createView } from './virtual-view-service';
 import { renderBigQueryDdl, renderDbtScaffold, safeIdentifier } from '../lib/dbt-scaffold-render';
 import { mineQueryRuns } from './query-runs-mining-reader';
 import type { JoinEdge } from './query-history-mining-service';
-import type { ConnectionProvider, Dialect } from './connection-providers/provider-interface';
+import type { ConnectionProvider, Dialect } from '@/core/connections/providers/provider-interface';
 
 /** How a join edge came to be believed. Carried into the proposal so the owner
  *  can tell a declared constraint from a guess made off a column name. */

@@ -12,7 +12,7 @@
  */
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
-import { assertNotBigQuery, type ConnectionProvider, type Dialect } from './connection-providers/provider-interface';
+import { assertNotBigQuery, type ConnectionProvider, type Dialect } from '@/core/connections/providers/provider-interface';
 import { PARSER_DIALECT, normalizeSqlForDedup } from './safety/safety-service';
 
 export interface JoinEdge {

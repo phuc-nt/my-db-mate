@@ -15,7 +15,7 @@ import { getModel } from './llm-service';
 import { getLlmSettings } from './settings-service';
 import { getRelevantContext } from './context-service';
 import { getPrunedSchemaSummary } from './schema-pruning-service';
-import { getConnection } from './connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { getMetric } from './metric-service';
 import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard, getDashboard } from './dashboard-service';
 import { executeQuery } from './query-executor-service';

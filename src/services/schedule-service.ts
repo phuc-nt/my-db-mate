@@ -12,7 +12,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
 import { dashboards } from '@/core/db/dashboard-schema';
-import { getConnection } from './connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { getDashboard, runWidget } from './dashboard-service';
 import { getReportLatest, generateReport, listReports } from './report-service';
 import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';

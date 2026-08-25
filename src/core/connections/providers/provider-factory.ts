@@ -1,11 +1,11 @@
 /** Build a ConnectionProvider from a stored connection row (kind + config + secret). */
-import type { ConnectionProvider } from './provider-interface';
-import { SqliteFileProvider } from './sqlite-file-provider';
-import { DuckDbFileProvider } from './duckdb-file-provider';
-import { TcpDriverProvider } from './tcp-driver-provider';
-import { MssqlDriverProvider } from './mssql-driver-provider';
-import { RemoteHttpProvider } from './remote-http-provider';
-import { BigQueryConnectionProvider } from './bigquery-provider';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
+import { SqliteFileProvider } from '@/core/connections/providers/sqlite-file-provider';
+import { DuckDbFileProvider } from '@/core/connections/providers/duckdb-file-provider';
+import { TcpDriverProvider } from '@/core/connections/providers/tcp-driver-provider';
+import { MssqlDriverProvider } from '@/core/connections/providers/mssql-driver-provider';
+import { RemoteHttpProvider } from '@/core/connections/providers/remote-http-provider';
+import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
 import { decryptSecret } from '@/core/crypto/credential-cipher';
 
 export interface ConnectionRow {

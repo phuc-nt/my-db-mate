@@ -22,7 +22,7 @@ import type {
   QueryResult,
   WritePrivilegeProbe,
   ColumnInfo,
-} from './provider-interface';
+} from '@/core/connections/providers/provider-interface';
 
 export interface BigQueryConfig {
   projectId: string;

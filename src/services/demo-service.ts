@@ -11,7 +11,7 @@ import path from 'node:path';
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
 import { eq } from 'drizzle-orm';
-import { createConnection } from './connection-service';
+import { createConnection } from '@/core/connections/connection-service';
 import { syncSchema } from './schema-sync-service';
 import {
   addGlossaryTerm,

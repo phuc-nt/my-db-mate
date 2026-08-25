@@ -8,10 +8,10 @@
  * The VALIDATED sql (verdict.sql) is what reaches explainQuery — the multi-statement
  * rejection in validateSql is load-bearing (red-team Sec-F3).
  */
-import { getConnection } from './connection-service';
-import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { validateSql } from './safety/safety-service';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export type ExplainResult =
   | { status: 'ok'; dialect: Dialect; estimatedRows: number | null; hasFullScan: boolean; tableCount: number; raw: string | null }

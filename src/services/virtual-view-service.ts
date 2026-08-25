@@ -15,12 +15,12 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { virtualViews } from '@/core/db/context-schema';
 import { schemaTables } from '@/core/db/schema';
-import { getConnection, getProvider } from './connection-service';
+import { getConnection, getProvider } from '@/core/connections/connection-service';
 import { validateSql } from './safety/safety-service';
 import { assertSqlInScope } from './schema-scope-service';
 import { directBaseTables, expandVirtualViews, mentionsIdentifier, type VirtualViewDef } from '../lib/sql-view-expand';
-import { BigQueryConnectionProvider } from './connection-providers/bigquery-provider';
-import type { Dialect } from './connection-providers/provider-interface';
+import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export interface ViewColumn { name: string; type: string }
 

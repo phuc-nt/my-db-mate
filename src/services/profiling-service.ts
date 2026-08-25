@@ -8,13 +8,13 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { columnProfiles } from '@/core/db/intelligence-schema';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
-import { getProvider } from './connection-service';
+import { getProvider } from '@/core/connections/connection-service';
 import { capRows } from './safety/safety-service';
 import { executeQuery } from './query-executor-service';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { getScope, isScopeActive, isRefInScope } from './schema-scope-service';
-import type { ConnectionProvider, QueryResult } from './connection-providers/provider-interface';
+import type { ConnectionProvider, QueryResult } from '@/core/connections/providers/provider-interface';
 
 const DISTINCT_CAP = 50;
 

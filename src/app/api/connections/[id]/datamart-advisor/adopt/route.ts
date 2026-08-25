@@ -11,7 +11,7 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getConnection } from '../../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { adoptAsVirtualViews, ValidatedProposalSchema } from '../../../../../../services/datamart-advisor-service';
 
 export const runtime = 'nodejs';

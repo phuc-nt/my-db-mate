@@ -17,7 +17,7 @@ import { runAgentAnswer } from './agent-service';
 import { executeQuery } from './query-executor-service';
 import { getSchemaSummary } from './schema-sync-service';
 import { getRelevantContext } from './context-service';
-import { getConnection } from './connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { listMetrics, getMetric, runMetric } from './metric-service';
 import { toJsonSafe } from '../lib/json-safe';
 

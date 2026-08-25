@@ -15,7 +15,7 @@
  * - Every query TEXT is parametrized in this collector before it leaves, so raw
  *   literals (a cross-role PII/secret leak surface) never reach the UI or an LLM.
  */
-import type { ConnectionProvider } from '../connection-providers/provider-interface';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 import { parametrizeLiterals } from '../query-history-mining-service';
 
 /** A heavy query from the workload, text already parametrized. */

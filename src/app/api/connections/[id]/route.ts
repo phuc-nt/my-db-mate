@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteConnection, getConnection, updateConnection } from '../../../../services/connection-service';
+import { deleteConnection, getConnection, updateConnection } from '@/core/connections/connection-service';
 
 export const runtime = 'nodejs';
 

@@ -17,7 +17,7 @@
  * evidence.
  */
 import pkg from 'node-sql-parser';
-import type { ConnectionProvider, Dialect } from '../connection-providers/provider-interface';
+import type { ConnectionProvider, Dialect } from '@/core/connections/providers/provider-interface';
 import { qualifiedTableRef, quoteColumn } from '../../lib/table-ref';
 import type { WorkloadStats, WorkloadHotspot, IndexStat } from './workload-stats-collector';
 

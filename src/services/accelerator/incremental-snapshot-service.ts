@@ -13,7 +13,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { DuckDBInstance, DOUBLE, VARCHAR } from '@duckdb/node-api';
-import type { ConnectionProvider } from '../connection-providers/provider-interface';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 import { stat } from 'node:fs/promises';
 import {
   cacheKeyFor,

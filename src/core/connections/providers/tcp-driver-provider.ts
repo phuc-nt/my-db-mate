@@ -7,7 +7,7 @@
  */
 import { Pool as PgPool } from 'pg';
 import mysql from 'mysql2/promise';
-import { ensureTunnel, type SshConfig } from './ssh-tunnel-manager';
+import { ensureTunnel, type SshConfig } from '@/core/connections/providers/ssh-tunnel-manager';
 import type {
   ConnectionProvider,
   Dialect,
@@ -16,7 +16,7 @@ import type {
   WritePrivilegeProbe,
   ColumnInfo,
   ForeignKeyInfo,
-} from './provider-interface';
+} from '@/core/connections/providers/provider-interface';
 
 export interface TcpConfig {
   host: string;

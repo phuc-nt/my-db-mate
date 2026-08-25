@@ -7,7 +7,7 @@ import { db } from '@/core/db/client';
 import { accelerateSnapshots, connections } from '@/core/db/schema';
 import { cacheKeyFor } from './snapshot-cache-service';
 import { ensureIncrementalSnapshot } from './incremental-snapshot-service';
-import type { ConnectionProvider, QueryResult } from '../connection-providers/provider-interface';
+import type { ConnectionProvider, QueryResult } from '@/core/connections/providers/provider-interface';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 

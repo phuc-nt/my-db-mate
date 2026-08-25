@@ -15,11 +15,11 @@
  */
 import { generateText } from 'ai';
 import { getModel } from './llm-service';
-import { getConnection } from './connection-service';
-import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { validateSql, normalizeSqlForDedup } from './safety/safety-service';
 import { assessRisk, type RiskAssessment } from './risk-scoring-service';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export interface AlternativeCandidate {
   sql: string;

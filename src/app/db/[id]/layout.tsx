@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getConnection } from '../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { WorkspaceRail } from '../../../components/workspace-rail';
 import { getScope, isScopeActive } from '../../../services/schema-scope-service';
 

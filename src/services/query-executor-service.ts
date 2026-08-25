@@ -14,9 +14,9 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { queryRuns, schemaTables } from '@/core/db/schema';
 import { columnAnnotations } from '@/core/db/context-schema';
-import { getConnection } from './connection-service';
-import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
-import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from './connection-providers/bigquery-provider';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
+import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from '@/core/connections/providers/bigquery-provider';
 import { validateSql } from './safety/safety-service';
 import { assessRisk } from './risk-scoring-service';
 import { shouldAccelerate, planAcceleration } from './accelerator/accelerator-service';
@@ -28,7 +28,7 @@ import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from './accelera
 import { extractLineage } from '../lib/sql-lineage';
 import { assertSqlInScope, type SchemaScope } from './schema-scope-service';
 import { expandForConnection } from './virtual-view-service';
-import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from './connection-providers/provider-interface';
+import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from '@/core/connections/providers/provider-interface';
 import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from './bigquery-daily-budget-service';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
@@ -49,7 +49,7 @@ const SKEW_THRESHOLD_FRACTION = 0.5;
  *  serve a live, unaccelerated result than to risk a wrong accelerated one. */
 async function tryAccelerate(
   connectionId: string,
-  provider: import('./connection-providers/provider-interface').ConnectionProvider,
+  provider: import('@/core/connections/providers/provider-interface').ConnectionProvider,
   finalSql: string,
   dialect: Dialect,
   ttlMs: number,

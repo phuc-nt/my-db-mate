@@ -17,7 +17,7 @@ import path from 'node:path';
 import { DuckDBInstance, BIGINT, DOUBLE, BOOLEAN, VARCHAR, type DuckDBType, type DuckDBValue } from '@duckdb/node-api';
 import { db } from '@/core/db/client';
 import { accelerateSnapshots } from '@/core/db/schema';
-import type { ConnectionProvider } from '../connection-providers/provider-interface';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 
 export const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 

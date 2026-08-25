@@ -17,8 +17,8 @@ import {
   sanitizeBigQueryConnError,
   EstimateFailedError,
   MaximumBytesBilledExceededError,
-} from './bigquery-provider';
-import { assessRisk } from '../risk-scoring-service';
+} from '@/core/connections/providers/bigquery-provider';
+import { assessRisk } from '@/services/risk-scoring-service';
 
 function makeProvider() {
   return new BigQueryConnectionProvider({

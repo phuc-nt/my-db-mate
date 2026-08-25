@@ -15,15 +15,15 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
 import { connections } from '@/core/db/schema';
-import { getConnection } from './connection-service';
-import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { validateSql } from './safety/safety-service';
 import { validateChartSpec } from './chart-spec-service';
 import { assessRisk } from './risk-scoring-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { PROBE_RANGE, defaultDateRange, hasDateRangePlaceholders, substituteDateRange, type DateRange } from '../lib/sql-param';
 import { rewriteWithWhereFilter } from '../lib/sql-where-filter-rewrite';
-import type { Dialect } from './connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 const LAST_RESULT_ROW_CAP = 500;
 

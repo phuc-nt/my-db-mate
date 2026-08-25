@@ -51,7 +51,7 @@ vi.mock('@google-cloud/bigquery', () => {
   return { BigQuery };
 });
 
-import { BigQueryConnectionProvider } from './bigquery-provider';
+import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
 
 function makeProvider(extraDatasets?: string[]) {
   return new BigQueryConnectionProvider({

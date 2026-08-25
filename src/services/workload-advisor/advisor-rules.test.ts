@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { adviseWorkload } from './advisor-rules';
 import { parseIndexColumns } from './workload-stats-collector';
 import type { WorkloadStats } from './workload-stats-collector';
-import type { ConnectionProvider } from '../connection-providers/provider-interface';
+import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
 
 function fakeProvider(dialect: 'postgres' | 'mysql', explainPlan?: string): ConnectionProvider {
   return {

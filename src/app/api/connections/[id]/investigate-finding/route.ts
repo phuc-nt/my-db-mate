@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { chatSessions } from '@/core/db/schema';
-import { getConnection } from '../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import {
   validateInvestigationTarget,
   getSessionInvestigationTarget,

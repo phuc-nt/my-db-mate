@@ -6,7 +6,7 @@ import {
   MAX_STEPS_INVESTIGATE,
   MAX_STEPS_INVESTIGATE_DEEP,
 } from '../../../services/agent-service';
-import { getConnection } from '../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { addMessage, getDiscardTombstone, clearDiscardTombstone } from '../../../services/session-service';
 import {
   getSessionInvestigationTarget,
@@ -22,7 +22,7 @@ import {
   synthesizeSections,
   hasSurvivors,
 } from '../../../services/sub-investigation-service';
-import type { Dialect } from '../../../services/connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
 import { SNAPSHOT_QUERY_CAP } from '../../../services/sub-investigation-service';
 

@@ -6,7 +6,7 @@
  *
  * Matching is case-insensitive on whole-word tokens.
  */
-import type { Dialect } from '../connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 /** Function names / keywords that must never appear in an allowed query. */
 export const FUNCTION_DENYLIST: Record<Dialect, string[]> = {

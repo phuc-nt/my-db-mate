@@ -6,7 +6,7 @@
  * side-effecting SELECT-legal functions. MUST_PASS measures the parser
  * false-positive rate on legitimate SELECTs.
  */
-import type { Dialect } from '../connection-providers/provider-interface';
+import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export type AdversarialCase = { sql: string; dialect: Dialect; expect: 'blocked' | 'ok'; label: string };
 

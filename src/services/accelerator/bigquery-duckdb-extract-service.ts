@@ -20,10 +20,10 @@
  * SELECT verbatim — the low-level `ensureSnapshot`/`extractToParquet` seam already
  * accepts arbitrary SQL; only the OLTP driver hardwired table semantics.
  */
-import { getConnection } from '../connection-service';
-import { buildProvider, type ConnectionRow } from '../connection-providers/provider-factory';
-import { BigQueryConnectionProvider } from '../connection-providers/bigquery-provider';
-import type { QueryResult } from '../connection-providers/provider-interface';
+import { getConnection } from '@/core/connections/connection-service';
+import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
+import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
+import type { QueryResult } from '@/core/connections/providers/provider-interface';
 import { ensureSnapshot, type SnapshotFetchRows } from './snapshot-cache-service';
 import { runAcceleratedQuery } from './duckdb-executor-service';
 

@@ -12,7 +12,7 @@
  * waiting a minute on a deliberate action is acceptable.
  */
 import { NextResponse } from 'next/server';
-import { getConnection } from '../../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import {
   collectAdvisorInputs,
   proposeDatamarts,
