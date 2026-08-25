@@ -73,8 +73,14 @@ export async function clearBenchContext(connectionId: string): Promise<number> {
 }
 
 /** How many bench terms a connection currently holds. The runner asserts this
- *  is zero under `--no-context` and non-zero otherwise, so the ablation is
- *  verified rather than assumed. */
+ *  is zero before every `--no-context` question, so the ablation is verified
+ *  rather than assumed.
+ *
+ *  The with-context branch is deliberately not asserted symmetrically. A silent
+ *  failure to load would make that run behave like the ablation and SHRINK the
+ *  measured delta, so it cannot inflate the result the benchmark is used to
+ *  claim; a stale term surviving into a `--no-context` run would inflate it,
+ *  which is why only that direction throws. */
 export async function countBenchContext(connectionId: string): Promise<number> {
   const rows = await db.select({ id: glossaryTerms.id })
     .from(glossaryTerms)

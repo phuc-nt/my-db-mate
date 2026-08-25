@@ -252,6 +252,106 @@ noted under "What is NOT controlled for".
 
 Read every number on a 20-question subset with a ±5-point resolution floor.
 
+### Headline numbers
+
+100 questions, stratified sample of BIRD mini-dev, seed `20260825`, run
+2026-08-25. Both models, both ablation settings:
+
+| Model | Context layer | EX | correct | median s/q | cost | Run id |
+|---|---|---|---|---|---|---|
+| `qwen/qwen3.7-max` | **on** | **34%** | 34/100 | 17.1 | $2.09 | `2026-08-25T14-31-09-7db119` |
+| `qwen/qwen3.7-max` | off | 20% | 20/100 | 18.2 | $2.67 | `2026-08-25T15-11-31-b21e44` |
+| `deepseek/deepseek-v4-pro` | **on** | **32%** | 32/100 | 39.4 | $1.02 | `2026-08-25T15-50-08-153f03` |
+| `deepseek/deepseek-v4-pro` | off | 14% | 14/100 | 38.2 | $1.18 | `2026-08-25T17-13-48-58b428` |
+
+Costs cover the questions that reached the model; 3–5 per run did not (see
+`unbilledQuestions` in each `summary.json`).
+
+**34% is not a good score.** Published BIRD leaderboard entries clear 60% and
+the top of the board is higher still. The reasons this harness scores lower are
+listed under "What is NOT controlled for" and are mostly deliberate: the gates
+stay on, prompts are the product's rather than BIRD-tuned, and the agent answers
+in prose from which SQL is extracted rather than emitting a bare query. It is
+reported as measured.
+
+### Failure taxonomy
+
+Where the other two thirds go, context layer on:
+
+| Verdict | qwen | deepseek |
+|---|---|---|
+| `correct` | 34 | 32 |
+| `wrong_rows` | 52 | 46 |
+| `step_cap` | 7 | 13 |
+| `no_sql` | 1 | 4 |
+| `agent_error` | 3 | 3 |
+| `timeout` | 2 | 1 |
+| `gate_blocked` | 1 | 1 |
+| `sql_error` | 0 | 0 |
+
+`sql_error` is zero in all four runs: the agent's SQL is syntactically valid and
+executes. It answers the wrong question, which is the harder problem. The
+`step_cap` count (7 and 13) is the next largest addressable bucket — those
+questions ran out of exploration steps rather than being answered wrong.
+
+### The ablation delta
+
+| Model | Context on | off | Delta |
+|---|---|---|---|
+| `qwen/qwen3.7-max` | 34% | 20% | **+14 pts** |
+| `deepseek/deepseek-v4-pro` | 32% | 14% | **+18 pts** |
+
+Two independent models, same direction, both far outside the ±5-point noise
+floor measured above. The headline delta alone would not establish that, so the
+runs were compared question by question:
+
+| | qwen | deepseek |
+|---|---|---|
+| Correct only with context | 17 | 19 |
+| Correct only without context | 3 | 1 |
+| Correct in both | 17 | 13 |
+
+**Nine questions were won by the context layer under *both* models
+independently** — `547, 862, 977, 1150, 1155, 1156, 1344, 1375, 1473` — while
+the reverse direction shares **zero**. Noise would be roughly symmetric; this is
+not. Every one of the nine turns on a convention that cannot be read off the
+schema:
+
+| Question | The knowledge the schema does not carry |
+|---|---|
+| 1156 | `RVVT = '+'` means a positive degree of coagulation |
+| 977 | `statusID = 2` means disqualified |
+| 1155 | LDH "beyond normal range" means `> 500` |
+| 547 | an "elder" user means `Age > 65` |
+| 1473 | average monthly consumption is `AVG(Consumption) / 12` |
+
+The four questions lost with context on (qwen 62, 383, 1331; deepseek 724) share
+no pattern — three different verdicts including `step_cap` and `gate_blocked` —
+and read as loop noise rather than context doing harm.
+
+All 100 questions in the subset carry non-empty BIRD evidence, so the ablation
+acts on the whole subset rather than a subset of it.
+
+**Against the moat thesis: supported, with a stated boundary.** The claim is
+that curated business context belongs in a retrievable layer. These runs show a
+large, reproducible, cross-model gain, and the mechanism is visible in the
+winning questions: opaque encodings (`RVVT = '+'`, `statusID = 2`) and
+organisation-specific thresholds (`Age > 65`, `LDH > 500`). The boundary is that
+BIRD evidence is *given* — the benchmark measures what retrievable context is
+worth once it exists, not whether a team will write it. It also does not measure
+the harder case where the layer must be curated, versioned, and kept true. An
+earlier internal A/B found no gain on merely-abbreviated column names, which
+current models infer unaided; nothing here contradicts that.
+
+### What this is not compared against
+
+No head-to-head against WrenAI, Vanna, or any other product was run. Their
+published BIRD numbers use different harnesses and mostly single-shot SQL
+generation, so quoting them beside 34% would compare a multi-step agent with
+gates on against a single generation call with evidence pasted into the prompt.
+A real comparison needs their docker setups, the same subset, and the same
+model, and is deferred rather than approximated.
+
 ## Changelog
 
 | Date | Change |
@@ -259,3 +359,4 @@ Read every number on a 20-question subset with a ±5-point resolution floor.
 | 2026-08-25 | Initial harness. Dataset pinned at `minidev-2025-07-22-v2`. |
 | 2026-08-25 | Bench connections scoped per run id; cleanup no longer deletes a concurrent run's connections. |
 | 2026-08-25 | Provider balance preflight; transient provider failures retried; `no_sql` answers keep their prose. |
+| 2026-08-25 | First recorded results: four 100-question runs, two models × context ablation. |
