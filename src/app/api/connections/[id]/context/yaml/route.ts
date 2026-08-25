@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { exportContextYaml, importContextYaml } from '../../../../../../services/context-yaml-io';
+import { exportContextYaml, importContextYaml } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 

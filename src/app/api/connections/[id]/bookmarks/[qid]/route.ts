@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteBookmark, listBookmarks } from '../../../../../../services/context-service';
+import { deleteBookmark, listBookmarks } from '@/modules/context-studio';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { toJsonSafe } from '@/core/lib/json-safe';
 

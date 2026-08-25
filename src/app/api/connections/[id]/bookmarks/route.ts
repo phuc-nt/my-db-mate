@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addBookmark, listBookmarks } from '../../../../../services/context-service';
+import { addBookmark, listBookmarks } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 

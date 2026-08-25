@@ -10,7 +10,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getConnection } from '@/core/connections/connection-service';
-import { exportProposal, ValidatedProposalSchema } from '../../../../../../services/datamart-advisor-service';
+import { exportProposal, ValidatedProposalSchema } from '@/modules/datamart';
 
 export const runtime = 'nodejs';
 

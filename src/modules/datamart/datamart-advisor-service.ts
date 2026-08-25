@@ -28,9 +28,9 @@ import { getModel } from '@/core/model/llm-service';
 import { getProvider } from '@/core/connections/connection-service';
 import { validateSql } from '@/core/safety/safety-service';
 import { createView } from '@/core/boundary/virtual-view-service';
-import { renderBigQueryDdl, renderDbtScaffold, safeIdentifier } from '../lib/dbt-scaffold-render';
-import { mineQueryRuns } from './query-runs-mining-reader';
-import type { JoinEdge } from './query-history-mining-service';
+import { renderBigQueryDdl, renderDbtScaffold, safeIdentifier } from '@/modules/datamart/dbt-scaffold-render';
+import { mineQueryRuns } from '@/modules/context-studio';
+import type { JoinEdge } from '@/modules/context-studio';
 import type { ConnectionProvider, Dialect } from '@/core/connections/providers/provider-interface';
 
 /** How a join edge came to be believed. Carried into the proposal so the owner

@@ -22,7 +22,7 @@ import { and } from 'drizzle-orm';
 import { capRows } from '@/core/safety/safety-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 import { getProvider } from '@/core/connections/connection-service';
-import { getRelevantContext, renderContextForPrompt, listGlossary } from './context-service';
+import { getRelevantContext, renderContextForPrompt, listGlossary } from '@/modules/context-studio';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { profileColumn } from '@/core/schema/profiling-service';
 import { detectAnomalies } from '@/modules/anomaly';

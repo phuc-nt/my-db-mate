@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runDiscovery } from '../../../../../services/discovery-service';
+import { runDiscovery } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;

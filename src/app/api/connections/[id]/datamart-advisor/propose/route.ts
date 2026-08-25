@@ -17,7 +17,7 @@ import {
   collectAdvisorInputs,
   proposeDatamarts,
   validateProposal,
-} from '../../../../../../services/datamart-advisor-service';
+} from '@/modules/datamart';
 
 export const runtime = 'nodejs';
 // One LLM call over a whole schema, then a dry run per proposed statement.

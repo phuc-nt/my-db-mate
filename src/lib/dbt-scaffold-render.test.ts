@@ -18,7 +18,7 @@ import {
   renderDbtScaffold,
   safeIdentifier,
   type RenderableProposal,
-} from './dbt-scaffold-render';
+} from '@/modules/datamart/dbt-scaffold-render';
 
 const stmt = (over: Partial<RenderableProposal['marts'][0]['summaryTables'][0]> = {}) => ({
   name: 'daily_revenue',

@@ -11,7 +11,7 @@
  * that line — it is the one that stops a future refactor from moving the join.
  */
 import { describe, expect, it } from 'vitest';
-import { advisorPromptTableRef, advisorQualifiedName } from './datamart-advisor-service';
+import { advisorPromptTableRef, advisorQualifiedName } from '@/modules/datamart/datamart-advisor-service';
 import { extractScopeRefs } from '@/core/lib/sql-scope-refs';
 import { isRefInScope } from '@/core/boundary/schema-scope-service';
 

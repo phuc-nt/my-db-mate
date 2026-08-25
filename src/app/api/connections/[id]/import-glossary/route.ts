@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { importGlossaryDocument } from '../../../../../services/document-import-service';
+import { importGlossaryDocument } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 

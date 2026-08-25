@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { generateText, Output } from 'ai';
 import { getModel } from '@/core/model/llm-service';
 import { getLlmSettings } from '@/core/app-state/settings-service';
-import { getRelevantContext } from '@/services/context-service';
+import { getRelevantContext } from '@/modules/context-studio';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { getMetric } from '@/modules/metrics';

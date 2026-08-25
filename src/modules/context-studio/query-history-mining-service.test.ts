@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeQueries, parametrizeLiterals, parsePastedLog } from './query-history-mining-service';
+import { analyzeQueries, parametrizeLiterals, parsePastedLog } from '@/modules/context-studio/query-history-mining-service';
 
 const rows = (...sqls: string[]) => sqls.map((sql) => ({ sql, count: 1 }));
 

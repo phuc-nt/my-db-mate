@@ -14,7 +14,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { queryRuns } from '@/core/db/schema';
-import { analyzeQueries, parametrizeLiterals, type MinedQuery } from './query-history-mining-service';
+import { analyzeQueries, parametrizeLiterals, type MinedQuery } from '@/modules/context-studio/query-history-mining-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 /** Runs read per connection. Enough to see real patterns, bounded so a busy

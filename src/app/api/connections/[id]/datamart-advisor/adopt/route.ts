@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getConnection } from '@/core/connections/connection-service';
-import { adoptAsVirtualViews, ValidatedProposalSchema } from '../../../../../../services/datamart-advisor-service';
+import { adoptAsVirtualViews, ValidatedProposalSchema } from '@/modules/datamart';
 
 export const runtime = 'nodejs';
 // Each adopted view is probed for its column list against the real database.

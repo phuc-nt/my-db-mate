@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mineQueryHistory } from '../../../../../services/query-history-mining-orchestrator';
+import { mineQueryHistory } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;

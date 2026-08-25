@@ -10,7 +10,7 @@ import { db } from '@/core/db/client';
 import { knowledgeSuggestions, verifiedQueries } from '@/core/db/context-schema';
 import { schemaTables, schemaForeignKeys } from '@/core/db/schema';
 import { getProvider } from '@/core/connections/connection-service';
-import { analyzeQueries, parametrizeLiterals, parsePastedLog, fetchQueryLog } from './query-history-mining-service';
+import { analyzeQueries, parametrizeLiterals, parsePastedLog, fetchQueryLog } from '@/modules/context-studio/query-history-mining-service';
 import { normalizeSqlForDedup } from '@/core/safety/safety-service';
 import { getModel } from '@/core/model/llm-service';
 

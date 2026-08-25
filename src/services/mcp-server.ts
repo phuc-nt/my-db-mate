@@ -16,7 +16,7 @@ import { resolveApiKey } from '@/core/app-state/api-key-service';
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
-import { getRelevantContext } from './context-service';
+import { getRelevantContext } from '@/modules/context-studio';
 import { getConnection } from '@/core/connections/connection-service';
 import { listMetrics, getMetric, runMetric } from '@/modules/metrics';
 import { toJsonSafe } from '@/core/lib/json-safe';

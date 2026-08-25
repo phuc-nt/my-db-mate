@@ -9,7 +9,7 @@
  */
 import { generateText } from 'ai';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
-import { getRelevantContext, renderContextForPrompt } from './context-service';
+import { getRelevantContext, renderContextForPrompt } from '@/modules/context-studio';
 import { getModel } from '@/core/model/llm-service';
 
 /** Propose up to 3 follow-up questions grounded in the schema + curated context.

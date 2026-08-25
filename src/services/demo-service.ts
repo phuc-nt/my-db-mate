@@ -18,7 +18,7 @@ import {
   addVerifiedQuery,
   upsertColumnAnnotation,
   upsertTableAnnotation,
-} from './context-service';
+} from '@/modules/context-studio';
 
 import { DEMO_CONNECTION_NAME } from '@/core/lib/demo-constants';
 // Re-exported so the many server-side importers that predate the move keep

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listSuggestions, acceptSuggestion, rejectSuggestion } from '../../../../../services/knowledge-mining-service';
+import { listSuggestions, acceptSuggestion, rejectSuggestion } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 

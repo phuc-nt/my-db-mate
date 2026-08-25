@@ -4,7 +4,7 @@ import { db } from '@/core/db/client';
 import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '@/core/db/context-schema';
 import {
   upsertTableAnnotation, upsertColumnAnnotation, addGlossaryTerm, addManualRelationship, addVerifiedQuery, setVerifiedQueryDisabled,
-} from '../../../../../services/context-service';
+} from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 

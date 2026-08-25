@@ -27,7 +27,7 @@ import { executeQuery } from '@/core/execution/query-executor-service';
 import { BigQueryConfirmationRequiredError } from '@/core/connections/providers/provider-interface';
 import { profileColumn } from '@/core/schema/profiling-service';
 import { detectAnomalies } from '@/modules/anomaly';
-import { fetchQueryLog } from './query-history-mining-service';
+import { fetchQueryLog } from '@/modules/context-studio/query-history-mining-service';
 import { runEval } from './eval-service';
 import { sampleRows } from '@/core/schema/schema-browser-service';
 import { rerunNotebook } from '@/modules/notebooks';

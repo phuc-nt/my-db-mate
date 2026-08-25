@@ -16,7 +16,7 @@
  *   literals (a cross-role PII/secret leak surface) never reach the UI or an LLM.
  */
 import type { ConnectionProvider } from '@/core/connections/providers/provider-interface';
-import { parametrizeLiterals } from '@/services/query-history-mining-service';
+import { parametrizeLiterals } from '@/modules/context-studio';
 
 /** A heavy query from the workload, text already parametrized. */
 export interface WorkloadHotspot {

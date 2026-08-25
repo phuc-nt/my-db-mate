@@ -32,7 +32,7 @@ import {
   getRelevantContext,
   renderContextForPrompt,
   addVerifiedQuery,
-} from '@/services/context-service';
+} from '@/modules/context-studio/context-service';
 import { embed } from '@/core/model/embedding-service';
 
 // ===== HELPERS =====

@@ -11,7 +11,7 @@ import { db } from '@/core/db/client';
 import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '@/core/db/context-schema';
 import { getMessages } from '@/core/app-state/session-service';
 import { chatSessions, queryRuns } from '@/core/db/schema';
-import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
+import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from '@/modules/context-studio/context-service';
 import { normalizeSqlForDedup } from '@/core/safety/safety-service';
 import { getModel } from '@/core/model/llm-service';
 

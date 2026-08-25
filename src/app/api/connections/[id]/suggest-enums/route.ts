@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { suggestEnumAnnotations } from '../../../../../services/enum-suggestion-service';
+import { suggestEnumAnnotations } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
