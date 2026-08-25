@@ -101,6 +101,18 @@ Turning on `no-circular` found two real cycles, both previously papered over wit
 - `schedule-service ↔ action-trigger-service`, over `vetWebhookUrl`. That function is an SSRF policy over `node:dns`/`node:net` with no scheduling concept in it, so it moved to `lib/webhook-url-guard` and both sides now import down instead of sideways.
 - `query-executor-service ↔ accelerator/bigquery-duckdb-extract-service`. Genuinely mutual: budget admission must stay a single choke point, so the extract's own BigQuery job has to re-enter the executor. Inverted rather than split — the executor passes a budgeted `fetchRows` in, so the extract service no longer imports the executor and admission still happens in exactly one place. Disabling `backgroundBudgeted` in that injected fetcher turns three cost-safety tests red, so the property is covered through the new seam, not just compiled.
 
+## Verifying a move did not break the kernel
+
+Unit tests mock at module boundaries, so they cannot see a `globalThis` cache or a
+side-effectful module init that only misbehaves once the whole chain is wired
+together — the failure mode a large file move actually produces. `scripts/verify-core-smoke.ts`
+(local, matching the existing `scripts/verify-*.ts` convention) drives one real
+SQLite file through connection → forked provider child → schema sync → safety →
+governed scope → executor → audit in a single process, and asserts an exact audit
+row count rather than a lower bound, so a return path that stops auditing shows up.
+It was mutation-checked in both directions: disabling the scope block and
+downgrading the safety block's status each turn it red.
+
 ## Migration status
 
 Phase 1 (this file + the CI check) enforces only the rules that hold before anything moves: no circular dependencies, and `services`/`lib` must not import from `src/app`. The per-module rules activate as phase 3 relocates each module, so the check is never advisory — it goes from "no rule" to "hard rule" with no baseline-exclusion stage in between.
