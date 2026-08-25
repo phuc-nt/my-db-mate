@@ -24,8 +24,8 @@ import { getConnection } from '@/core/connections/connection-service';
 import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { BigQueryConnectionProvider } from '@/core/connections/providers/bigquery-provider';
 import type { QueryResult } from '@/core/connections/providers/provider-interface';
-import { ensureSnapshot, type SnapshotFetchRows } from './snapshot-cache-service';
-import { runAcceleratedQuery } from './duckdb-executor-service';
+import { ensureSnapshot, type SnapshotFetchRows } from '@/core/execution/accelerator/snapshot-cache-service';
+import { runAcceleratedQuery } from '@/core/execution/accelerator/duckdb-executor-service';
 
 const DEFAULT_EXTRACT_TTL_MS = 6 * 60 * 60 * 1000; // 6h — offline data is explicitly cached, staleness surfaced via asOf.
 

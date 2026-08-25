@@ -12,7 +12,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { accelerateSnapshots, connections, queryRuns } from '@/core/db/schema';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { cacheKeyFor } from './accelerator/snapshot-cache-service';
+import { cacheKeyFor } from '@/core/execution/accelerator/snapshot-cache-service';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 const DB_PATH = path.join(process.cwd(), '.cache', 'query-executor-parity-test.sqlite');

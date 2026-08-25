@@ -26,7 +26,7 @@ import {
   upsertSnapshotStatus,
   type SnapshotMeta,
   type SnapshotResult,
-} from './snapshot-cache-service';
+} from '@/core/execution/accelerator/snapshot-cache-service';
 
 // Same identifier allowlist enforced at write time in watermark-config-service.ts.
 // Re-checked here because `watermarkCol` is spliced directly into a WHERE-clause

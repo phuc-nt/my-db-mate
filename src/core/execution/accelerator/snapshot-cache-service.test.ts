@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { db } from '@/core/db/client';
 import { accelerateSnapshots, connections } from '@/core/db/schema';
-import { cacheKeyFor, ensureSnapshot, parquetCopyOptions } from './snapshot-cache-service';
+import { cacheKeyFor, ensureSnapshot, parquetCopyOptions } from '@/core/execution/accelerator/snapshot-cache-service';
 import type { ConnectionProvider, QueryResult } from '@/core/connections/providers/provider-interface';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');

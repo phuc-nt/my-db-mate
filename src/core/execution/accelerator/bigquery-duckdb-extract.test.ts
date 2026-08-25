@@ -30,7 +30,7 @@ vi.mock('@google-cloud/bigquery', () => {
 
 // Import AFTER vi.mock so the mock is set up
 import { executeQuery, budgetedExtractFetch } from '@/core/execution/query-executor-service';
-import { extractBigQueryToDuckDB } from './bigquery-duckdb-extract-service';
+import { extractBigQueryToDuckDB } from '@/core/execution/accelerator/bigquery-duckdb-extract-service';
 
 async function createBigQueryConnection(offlineMode: boolean = false) {
   const [row] = await db

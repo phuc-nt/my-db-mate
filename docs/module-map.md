@@ -18,13 +18,30 @@ The boundary is not folders. Folders are how it is spelled; the check in CI is w
 
 ## Core (`src/core/`)
 
-Everything a feature legitimately needs, and nothing that belongs to one feature.
+Everything a feature legitimately needs, and nothing that belongs to one feature. Laid out by area:
+
+```
+src/core/
+  db/           app-DB schema + client (drizzle.config points here)
+  crypto/       credential cipher
+  connections/  connection-service + providers/ (incl. the forked .cjs children)
+  safety/       safety-service, denylists, risk scoring
+  execution/    query-executor-service, explain, accelerator/
+  boundary/     schema scope + virtual-view expansion
+  schema/       sync, pruning, summary composition, browse, profiling
+  model/        llm-service, embedding-service
+  app-state/    settings, session, api keys, setup health
+  cost/         BigQuery daily budget
+  lib/          pure helpers (sql rewriting, table refs, chart mapping, stats, …)
+```
+
+**No core barrel, deliberately.** A single `core/index.ts` re-exporting ~90 files would hide which area a symbol came from and give every feature one import line that means nothing. `@/core/<area>/<file>` is already a declared, greppable path, and direction is enforced by the cruiser rather than by what a barrel chooses to export. Barrels earn their keep at the *feature module* edge, where the point is to hide internals from peers — core has no peers to hide from.
 
 | Area | Files |
 |---|---|
 | Database | `db/client`, all `db/*-schema.ts`, `db/vector-type` |
 | Connections | `connection-service`, `connection-providers/*` (incl. providers, factory, interface, ssh-tunnel-manager, pinned-dataset-config), `connection-config`, `provider-presets` |
-| Execution + safety | `query-executor-service`, `safety/*`, `risk-scoring-service`, `explain-service` |
+| Execution + safety | `query-executor-service`, `accelerator/*`, `safety/*`, `risk-scoring-service`, `explain-service` |
 | Boundary enforcement | `schema-scope-service`, `sql-scope-refs`, `virtual-view-service`, `sql-view-expand`, `schema-scope-impact-service` |
 | Schema | `schema-sync-service`, `schema-pruning-service`, `schema-summary-composition`, `schema-browser-service`, `profiling-service` |
 | Model + embeddings | `llm-service`, `embedding-service` |
@@ -37,6 +54,8 @@ Two placements are judgment calls worth stating:
 **Governed scope and virtual views are core, not a module.** They live inside the execution choke point — `executeQuery` refuses an out-of-scope table, and view expansion happens before that refusal. A version of this product where the boundary is an optional add-on is a version where the safety story has a switch on it. The datamart *advisor* (which only proposes views) is a feature module; the enforcement is not.
 
 **`chart-spec-service` and `chart-data` are core**, despite reading like BI. Chat result blocks render charts too, so putting them in `modules/bi` would make chat depend on BI for its own result panel. They are render mappings over a result set — no BI concept in them.
+
+**The accelerator is core, not a feature module.** The first draft of this map listed it as one; turning the `core-imports-no-feature` rule on proved otherwise. `executeQuery` consults `shouldAccelerate` on every query and reads the snapshot path inline, so acceleration is a per-connection setting inside the execution path, not something a deployment can leave out. A "feature module" nothing can run without is not a module. Only three admin routes touch it directly; everything else reaches it through the executor.
 
 **`profiling-service` is core** because the agent's own `profile_column` tool calls it mid-loop; Data Health (a `db-client` feature) is a second consumer, not the owner.
 
@@ -51,7 +70,6 @@ Two placements are judgment calls worth stating:
 | `automations` | `schedule-service`, `monitor-service`, `monitor-diff`, `action-trigger-service` | `bi`, `metrics`, `anomaly` (what schedules refresh) |
 | `anomaly` | `anomaly-service`, `data-quality-service` | — |
 | `db-client` | `workload-advisor/*`, bookmark + browse UI services not owned by core | — |
-| `accelerator` | `accelerator/*` | — |
 | `notebooks` | `notebook-service`, `notebook-refresh` | — |
 | `datamart` | `datamart-advisor-service`, `dbt-scaffold-render` | — |
 | `mcp` | `mcp-server` | `context-studio`, `metrics` (the tools it exposes) |

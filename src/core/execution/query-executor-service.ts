@@ -19,12 +19,12 @@ import { buildProvider, type ConnectionRow } from '@/core/connections/providers/
 import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from '@/core/connections/providers/bigquery-provider';
 import { validateSql } from '@/core/safety/safety-service';
 import { assessRisk } from '@/core/safety/risk-scoring-service';
-import { shouldAccelerate, planAcceleration } from '@/services/accelerator/accelerator-service';
-import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from '@/services/accelerator/snapshot-cache-service';
-import { ensureIncrementalSnapshot } from '@/services/accelerator/incremental-snapshot-service';
-import { getWatermarkConfig } from '@/services/accelerator/watermark-config-service';
-import { runAcceleratedQuery } from '@/services/accelerator/duckdb-executor-service';
-import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from '@/services/accelerator/bigquery-duckdb-extract-service';
+import { shouldAccelerate, planAcceleration } from '@/core/execution/accelerator/accelerator-service';
+import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from '@/core/execution/accelerator/snapshot-cache-service';
+import { ensureIncrementalSnapshot } from '@/core/execution/accelerator/incremental-snapshot-service';
+import { getWatermarkConfig } from '@/core/execution/accelerator/watermark-config-service';
+import { runAcceleratedQuery } from '@/core/execution/accelerator/duckdb-executor-service';
+import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from '@/core/execution/accelerator/bigquery-duckdb-extract-service';
 import { extractLineage } from '@/core/lib/sql-lineage';
 import { assertSqlInScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
 import { expandForConnection } from '@/core/boundary/virtual-view-service';

@@ -16,7 +16,7 @@ import { db } from '@/core/db/client';
 import { rm } from 'node:fs/promises';
 import { connections, schemaTables, accelerateSnapshots } from '@/core/db/schema';
 import { extractScopeRefs, type ScopeRef } from '@/core/lib/sql-scope-refs';
-import { cachePaths } from '@/services/accelerator/snapshot-cache-service';
+import { cachePaths } from '@/core/execution/accelerator/snapshot-cache-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export interface SchemaScope {

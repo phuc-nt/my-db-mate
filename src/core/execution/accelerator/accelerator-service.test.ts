@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planAcceleration, shouldAccelerate } from './accelerator-service';
+import { planAcceleration, shouldAccelerate } from '@/core/execution/accelerator/accelerator-service';
 import type { RiskAssessment } from '@/core/safety/risk-scoring-service';
 
 function risk(overrides: Partial<RiskAssessment['estimate']>): RiskAssessment {

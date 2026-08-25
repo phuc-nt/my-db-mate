@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { runAcceleratedQuery } from './duckdb-executor-service';
+import { runAcceleratedQuery } from '@/core/execution/accelerator/duckdb-executor-service';
 
 async function writeParquet(rows: { sql: string }, columns: string, values: string): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'duckdb-executor-test-'));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectWatermarkColumn } from './watermark-detection-service';
+import { detectWatermarkColumn } from '@/core/execution/accelerator/watermark-detection-service';
 
 describe('detectWatermarkColumn', () => {
   it('picks a timestamp-named column with monotonically non-decreasing values', () => {
