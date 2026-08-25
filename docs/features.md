@@ -100,6 +100,10 @@ Everything My DB Mate does today, the stack it runs on, and the safety model. Fo
 - **Data Health** — a manual scan flags high-NULL, single-value, and id-like columns, with a partial-scan badge.
 - **Notebooks** — save a chat session as a read-only, shareable notebook (question → SQL → result → narrative); queries over columns marked sensitive are omitted from the share.
 
+### Install & first run
+- **Health endpoint / doctor** — `GET /api/health` reports app DB, migrations applied vs. shipped, LLM configuration, embeddings, and demo-dir writability; `?live=1` spends one tiny completion to prove the key really works, cached for a minute so an unauthenticated loop cannot run up a provider bill. `./setup.sh --check` prints the same verdict and exits non-zero when degraded. One service backs the endpoint, the script, and the in-app onboarding state, so the surfaces cannot drift. The payload carries statuses and provider/model names only — never key material — since the endpoint sits behind no auth layer.
+- **Onboarding checklist** — the Connections page shows a 3-step card (configure LLM → try the sample DB → connect your own) derived from live state rather than a stored flag, so it stays honest after a key rotation. It stops rendering once all three are done. A missing or placeholder key also raises a banner, and chat replies with guidance plus a Settings link instead of a raw provider 401.
+
 ## Provider compatibility
 
 PostgreSQL and MySQL are wire protocols, so any managed database that speaks them works through the same driver. The preset picker fills in the port / SSL / quirks; you can always edit every field or paste a connection string. **✓ = tested against a live instance · ○ = wire-compatible, expected to work (not yet tested).**

@@ -36,6 +36,17 @@ const g = globalThis as unknown as { __mdmLlmSettingsCache?: LlmSettings | null 
 /** Configured LLM settings, or null when unset (callers fall back to env). */
 export async function getLlmSettings(): Promise<LlmSettings | null> {
   if (g.__mdmLlmSettingsCache !== undefined) return g.__mdmLlmSettingsCache;
+  return readLlmSettings();
+}
+
+/**
+ * Read straight from the database, refreshing the cache. The health check uses
+ * this: the cache is only invalidated by saves made through THIS process, so a
+ * key rotated by a direct DB edit, a restore, or a second container leaves the
+ * cached answer stale — and a doctor endpoint that reports `configured` while
+ * every request 401s is worse than no doctor at all.
+ */
+export async function readLlmSettings(): Promise<LlmSettings | null> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, KEY));
   if (!row) { g.__mdmLlmSettingsCache = null; return null; }
   const stored = JSON.parse(row.value) as StoredLlm;

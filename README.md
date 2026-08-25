@@ -35,9 +35,18 @@ Vì đây là DB production, an toàn là điều kiện bắt buộc chứ khô
 Cài nhanh (cần Docker):
 
 ```bash
-./setup.sh                          # tạo .env, sinh khoá mã hoá, hỏi OpenRouter key
-docker compose --profile full up    # app + DB + tự migrate → http://localhost:3000
+./setup.sh                             # tạo .env, sinh khoá mã hoá, hỏi OpenRouter key
+docker compose --profile full pull     # tải image dựng sẵn (nhanh hơn build)
+docker compose --profile full up -d    # app + DB + tự migrate → http://localhost:3000
+./setup.sh --check                     # kiểm tra cài đặt có thật sự chạy được không
 ```
+
+`./setup.sh --check` hỏi thẳng app: DB app, migrations, LLM key (có gọi thử 1 lần
+để chắc key dùng được), embeddings, thư mục demo. Thiếu gì nó chỉ ra cái đó, và
+thoát khác 0 nếu chưa ổn — không phải đợi tới câu hỏi đầu tiên mới biết hỏng.
+
+Muốn build từ source thay vì tải image: bỏ bước `pull`, `docker compose --profile
+full up -d` sẽ tự build.
 
 Cài xong **thử được ngay, không cần database**: trang Connections có nút **"✨ Try with a sample database"** — 1 click tạo DB shop mẫu (5.000 đơn hàng, mã enum kiểu production thật) kèm sẵn glossary + verified queries, vào thẳng chat. Câu hỏi gợi ý cho từng chức năng: xem [mục "Thử ngay" trong hướng dẫn](docs/user-guide.md#thử-ngay--không-cần-database).
 

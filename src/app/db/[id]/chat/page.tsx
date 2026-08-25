@@ -139,7 +139,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // set from onFinish's authoritative isAbort flag — NOT from `status`, which is
   // 'ready' on both a natural finish and an abort.
   const [interruptedMsgId, setInterruptedMsgId] = useState<string | null>(null);
-  const { messages, sendMessage, addToolResult, status, setMessages, stop } = useChat({
+  const { messages, sendMessage, addToolResult, status, setMessages, stop, error } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
       // Lazily-resolved body: the returned object REPLACES the POST body, and the
@@ -162,6 +162,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const busy = status === 'submitted' || status === 'streaming';
+
+  // A missing LLM key is a setup problem, not a chat failure — it gets guidance
+  // and a link instead of a raw error string. Matched on the typed code the chat
+  // route emits, so no other failure can be swallowed into this message.
+  const llmNotConfigured = !!error && error.message.includes('llm_not_configured');
 
   // The workspace artifacts ARE the run_sql parts of the transcript — derived,
   // never duplicated into separate state.
@@ -766,6 +771,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           <div className="mt-3 flex items-center justify-between rounded border border-indigo-200 bg-indigo-50 p-2 text-xs dark:border-indigo-900 dark:bg-indigo-950" data-testid="readonly-banner">
             <span>🔎 Investigation session (read-only)</span>
             <button onClick={newChat} className="rounded bg-blue-600 px-2 py-1 text-white">Continue in new chat</button>
+          </div>
+        )}
+        {llmNotConfigured && (
+          <div data-testid="llm-not-configured" className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+            <p className="font-medium">No LLM configured</p>
+            <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+              Add a provider key before asking questions —{' '}
+              <Link href="/settings" className="text-blue-700 underline dark:text-blue-300">open Settings</Link>, or set one in your <code>.env</code>.
+            </p>
           </div>
         )}
         {!readOnlySession && (

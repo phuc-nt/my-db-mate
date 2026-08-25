@@ -10,21 +10,29 @@ Tài liệu này hướng dẫn: (1) cài đặt, (2) kết nối database, (3) 
 
 **Yêu cầu:** Docker (chỉ cần vậy nếu chạy theo hướng container).
 
-**Chạy nhanh (2 lệnh):**
+**Chạy nhanh:**
 
 ```bash
-./setup.sh                          # tạo .env, sinh khoá mã hoá, hỏi OpenRouter API key
-docker compose --profile full up    # app + Postgres/pgvector + tự migrate → http://localhost:3000
+./setup.sh                             # tạo .env, sinh khoá mã hoá, hỏi OpenRouter API key
+docker compose --profile full pull     # tải image dựng sẵn (ghcr.io/phuc-nt/my-db-mate:latest)
+docker compose --profile full up -d    # app + Postgres/pgvector + tự migrate → http://localhost:3000
+./setup.sh --check                     # xác nhận cài đặt chạy được thật
 ```
 
 Container tự chạy migration khi khởi động và nhúng sẵn model embedding (chạy offline), nên không cần cài thêm gì.
 
-> **Bỏ qua bước build (nhanh hơn nhiều):** kéo image dựng sẵn từ GitHub Container Registry thay vì build local:
->
-> ```bash
-> docker compose --profile full pull   # lấy ghcr.io/phuc-nt/my-db-mate:latest
-> docker compose --profile full up
-> ```
+**`./setup.sh --check` kiểm tra gì:** DB app, migrations đã chạy đủ chưa, LLM key
+(gọi thử 1 lần thật để chắc key dùng được), embeddings, thư mục demo ghi được
+không. Thiếu gì nó nói thẳng cái đó và thoát khác 0. Chạy lại bất cứ lúc nào —
+sau khi đổi key, sau khi nâng cấp. Riêng lần gọi thử LLM được nhớ trong 1 phút
+(để không ai gọi vòng lặp làm tốn tiền provider); nếu kết quả là đồ nhớ lại, nó
+ghi rõ `cached Ns ago` — vừa đổi key thì chờ hết phút rồi kiểm lại.
+
+Mở app xong, trang Connections có **thẻ "Getting started"** đánh dấu 3 bước còn
+lại (cấu hình LLM → thử DB mẫu → nối DB thật). Thẻ tự biến mất khi xong cả 3.
+
+> **Muốn build từ source:** bỏ bước `pull`, `docker compose --profile full up -d`
+> sẽ tự build từ `Dockerfile`.
 
 ### Cần chuẩn bị
 
@@ -211,6 +219,54 @@ Sản phẩm đang ở phạm vi **self-hosted, single-user (dogfood)**. Các m�
 - **Eval-regression guard trên production DB thật** — chưa có.
 - **BigQuery — dataset từ project khác**: BigQuery chỉ liệt kê dataset của project thuộc connection, nên dataset được grant từ nơi khác (public dataset, cross-project grant) không tự sync. Điền `project.dataset` vào ô **External datasets** trên form connection để ghim.
 - **BigQuery — background analytics giờ hỗ trợ.** Dashboards/metrics/reports/anomaly detection/data-drift monitor giờ chạy cho BigQuery trong ngân sách byte hàng ngày (+ offline mode cache tuỳ chọn). Các tính năng còn lại **cố ý bị chặn** cho đến khi có nhu cầu: data profiling, data-quality/health checks, accelerator (BigQuery có cơ chế cache riêng), mine query history, MCP tool execution, scheduled-query scheduler (cron), notebook re-run, chạy query từ schema browser, eval harness, và nút re-run trên bookmark. Mỗi tính năng trên báo lỗi rõ ràng ("chưa hỗ trợ BigQuery") thay vì chạy ngầm. Đây là quyết định phạm vi có chủ đích, không phải thiếu sót.
+
+---
+
+## 5. Gặp sự cố
+
+Trước hết chạy `./setup.sh --check` — phần lớn ca hỏng lộ ra ngay ở đó.
+
+| Triệu chứng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| Chat báo **"No LLM configured"** | Chưa có key, hoặc `.env` còn nguyên placeholder `sk-or-...` từ `.env.example` | Thêm key trong **Settings**, hoặc sửa `OPENROUTER_API_KEY` trong `.env` rồi khởi động lại container. `--check` phân biệt rõ "thiếu key" và "còn placeholder". |
+| `--check` báo **llmLive: auth_failed** | Key có dạng đúng nhưng provider từ chối (hết credit, key bị thu hồi) | Kiểm tra tài khoản OpenRouter, thay key mới. |
+| **Port 3000 / 5433 đã bị chiếm** | Tiến trình khác đang giữ cổng | Dừng tiến trình đó, hoặc đổi ánh xạ cổng trong `docker-compose.yml`. |
+| `--check` báo **migrations: pending** | Container app chạy bản cũ hơn số migration trong repo | `docker compose --profile full up -d` để khởi động lại (migration tự chạy lúc boot). |
+| `--check` báo **embeddings: loading** | Lần gọi đầu phải nạp model vào RAM, chậm hơn 10s trên container nguội | Không phải lỗi. Đợi một lát rồi chạy `--check` lại. |
+| Demo DB **query nào cũng lỗi** | File SQLite `.demo/` mất trong khi connection row vẫn còn | Tự lành: bấm lại **"Try with a sample database"**, app sinh lại file với đúng dữ liệu cũ (seed cố định). |
+| Không rõ hỏng ở đâu | — | Xem log: `docker compose logs app` (thêm `-f` để theo dõi trực tiếp). |
+
+---
+
+## 6. Nâng cấp & sao lưu
+
+**Nâng cấp** — migration tự chạy khi container khởi động:
+
+```bash
+docker compose --profile full pull     # lấy image mới nhất
+docker compose --profile full up -d    # khởi động lại; migration chạy lúc boot
+./setup.sh --check                     # xác nhận sau nâng cấp
+```
+
+**Dữ liệu nằm ở đâu** — hai Docker volume, `docker compose down` **không** xoá chúng:
+
+- `app-db-data` — Postgres của app: connections, context/glossary, sessions, metrics, dashboards.
+- `app-demo-data` — file SQLite của DB mẫu.
+
+**Sao lưu:**
+
+```bash
+docker exec mydbmate-app-db pg_dump -U mydbmate mydbmate > backup.sql
+```
+
+Lớp context (glossary, chú thích schema, verified queries) là thứ bạn bồi đắp lâu
+nhất — đây là thứ đáng sao lưu nhất. Ngoài `pg_dump`, Context Studio còn xuất
+được YAML để lưu kèm trong repo.
+
+**Cẩn thận với `CREDENTIAL_ENC_KEY`:** credential DB đích được mã hoá bằng khoá
+này. Mất khoá (tạo lại `.env` mới) thì bản sao lưu vẫn còn nhưng **không giải mã
+được credential** — phải nhập lại mật khẩu cho từng connection. Hãy lưu
+`CREDENTIAL_ENC_KEY` cùng chỗ với bản backup.
 
 ---
 
