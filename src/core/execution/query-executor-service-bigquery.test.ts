@@ -28,7 +28,7 @@ import { BigQueryConfirmationRequiredError } from '@/core/connections/providers/
 import { profileColumn } from '@/core/schema/profiling-service';
 import { detectAnomalies } from '@/modules/anomaly';
 import { fetchQueryLog } from '@/modules/context-studio/query-history-mining-service';
-import { runEval } from './eval-service';
+import { runEval } from '@/modules/eval/eval-service';
 import { sampleRows } from '@/core/schema/schema-browser-service';
 import { rerunNotebook } from '@/modules/notebooks';
 import { createSchedule, runSchedule } from '@/modules/automations/schedule-service';

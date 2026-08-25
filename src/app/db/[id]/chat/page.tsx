@@ -14,11 +14,11 @@ import { ChatWorkspacePanel, ChatSessionRail } from '../../../../components/chat
 import { FormModal } from '../../../../components/form-modal';
 import { ContextProvenanceBadge, type Provenance } from '../../../../components/context-provenance-badge';
 import { InboxPopover } from '../../../../components/inbox-popover';
-import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, lastSubqIndex, type UIMsg, type UIPart } from '../../../../lib/chat-interrupt-helpers';
+import { pruneDanglingToolCalls, userTurnBefore, extractUserText, summarizeToolParts, lastSubqIndex, type UIMsg, type UIPart } from '@/modules/chat-agent/client';
 import { CandidateVoteBlock } from '../../../../components/candidate-vote-block';
-import type { VoteResult } from '../../../../lib/candidate-vote-types';
+import type { VoteResult } from '@/modules/chat-agent/client';
 import { SubInvestigationCard } from '../../../../components/sub-investigation-card';
-import type { SubInvestigationSnapshot } from '../../../../lib/sub-investigation-types';
+import type { SubInvestigationSnapshot } from '@/modules/chat-agent/client';
 
 /** Shape of a streamed run_sql tool part (subset we read). */
 interface RunSqlPart {

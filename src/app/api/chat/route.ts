@@ -5,14 +5,14 @@ import {
   MAX_SQL_DEEP,
   MAX_STEPS_INVESTIGATE,
   MAX_STEPS_INVESTIGATE_DEEP,
-} from '../../../services/agent-service';
+} from '@/modules/chat-agent';
 import { getConnection } from '@/core/connections/connection-service';
 import { addMessage, getDiscardTombstone, clearDiscardTombstone } from '@/core/app-state/session-service';
 import {
   getSessionInvestigationTarget,
   buildFindingContext,
   INVESTIGATE_FINDING_MAX_SQL,
-} from '../../../services/finding-investigation-service';
+} from '@/modules/chat-agent';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { LLM_NOT_CONFIGURED } from '@/core/model/llm-service';
 import {
@@ -21,10 +21,10 @@ import {
   runSubInvestigations,
   synthesizeSections,
   hasSurvivors,
-} from '../../../services/sub-investigation-service';
+} from '@/modules/chat-agent';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
-import { SUBQ_PART_TYPE } from '../../../lib/sub-investigation-types';
-import { SNAPSHOT_QUERY_CAP } from '../../../services/sub-investigation-service';
+import { SUBQ_PART_TYPE } from '@/modules/chat-agent';
+import { SNAPSHOT_QUERY_CAP } from '@/modules/chat-agent';
 
 /** Parent investigate caps — imported from agent-service, which OWNS them. The
  *  budget split must divide the real cap: a local copy would silently drift if

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getStarterQuestions } from '../../../../../services/starter-questions-service';
+import { getStarterQuestions } from '@/modules/chat-agent';
 
 export const runtime = 'nodejs';
 

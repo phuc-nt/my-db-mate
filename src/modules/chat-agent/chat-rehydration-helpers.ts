@@ -18,7 +18,7 @@
  * subsequent send in the session. So the mapper prunes every tool part that
  * never reached a terminal state (same semantics as pruneDanglingToolCalls).
  */
-import type { UIMsg, UIPart } from './chat-interrupt-helpers';
+import type { UIMsg, UIPart } from '@/modules/chat-agent/chat-interrupt-helpers';
 
 /** The subset of a chat_messages row the mapper needs. */
 export interface ChatMessageRow {

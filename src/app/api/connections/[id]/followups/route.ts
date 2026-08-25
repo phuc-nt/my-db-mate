@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateFollowups } from '../../../../../services/followup-service';
+import { generateFollowups } from '@/modules/chat-agent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;

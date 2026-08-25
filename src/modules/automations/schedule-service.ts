@@ -17,7 +17,7 @@ import { getDashboard, runWidget } from '@/modules/bi';
 import { getReportLatest, generateReport, listReports } from '@/modules/bi';
 import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from '@/modules/automations/monitor-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { runAgentAnswer } from '@/services/agent-service';
+import { runAgentAnswer } from '@/modules/chat-agent';
 import { generateText } from 'ai';
 import { getModel } from '@/core/model/llm-service';
 import { listMetrics, runMetric, runMetricDrivers } from '@/modules/metrics';

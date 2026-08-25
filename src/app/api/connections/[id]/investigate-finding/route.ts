@@ -21,7 +21,7 @@ import {
   investigationTitle,
   kickoffMessage,
   META_TARGET_KEY,
-} from '../../../../../services/finding-investigation-service';
+} from '@/modules/chat-agent';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

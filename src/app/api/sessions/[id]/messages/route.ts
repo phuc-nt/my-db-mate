@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getMessages } from '@/core/app-state/session-service';
-import { getSessionInvestigationTarget } from '../../../../../services/finding-investigation-service';
-import { dbRowsToUiMessages, type ChatMessageRow } from '../../../../../lib/chat-rehydration-helpers';
+import { getSessionInvestigationTarget } from '@/modules/chat-agent';
+import { dbRowsToUiMessages, type ChatMessageRow } from '@/modules/chat-agent';
 
 export const runtime = 'nodejs';
 

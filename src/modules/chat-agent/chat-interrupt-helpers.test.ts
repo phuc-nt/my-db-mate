@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractUserText, userTurnBefore, pruneDanglingToolCalls, hasDanglingToolCall, summarizeToolParts, toolStepLabel, lastSubqIndex, type UIMsg } from './chat-interrupt-helpers';
+import { extractUserText, userTurnBefore, pruneDanglingToolCalls, hasDanglingToolCall, summarizeToolParts, toolStepLabel, lastSubqIndex, type UIMsg } from '@/modules/chat-agent/chat-interrupt-helpers';
 
 describe('extractUserText', () => {
   it('joins the text parts of a user turn', () => {

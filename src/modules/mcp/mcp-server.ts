@@ -13,7 +13,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { resolveApiKey } from '@/core/app-state/api-key-service';
-import { runAgentAnswer } from './agent-service';
+import { runAgentAnswer } from '@/modules/chat-agent';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { getRelevantContext } from '@/modules/context-studio';

@@ -4,7 +4,7 @@
  * card. These pin the derivation rules that the UI only draws.
  */
 import { describe, expect, it } from 'vitest';
-import { deriveOnboardingSteps, onboardingComplete } from './onboarding-steps';
+import { deriveOnboardingSteps, onboardingComplete } from '@/modules/onboarding/onboarding-steps';
 import { DEMO_CONNECTION_NAME } from '@/core/lib/demo-constants';
 
 const stepFor = (steps: ReturnType<typeof deriveOnboardingSteps>, key: string) =>

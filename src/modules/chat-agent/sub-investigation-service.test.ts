@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { splitBudget, hasSurvivors, looksLikeConclusion } from './sub-investigation-service';
-import type { SubInvestigationSnapshot } from '../lib/sub-investigation-types';
+import { splitBudget, hasSurvivors, looksLikeConclusion } from '@/modules/chat-agent/sub-investigation-service';
+import type { SubInvestigationSnapshot } from '@/modules/chat-agent/sub-investigation-types';
 
 describe('parent caps stay bound to their owner', () => {
   it('splits the SAME numbers agent-service enforces', async () => {
     // The route divides the parent budget; agent-service enforces it. If these
     // ever drift, the per-sub caps could sum past the real cap (review H1).
-    const agent = await import('./agent-service');
+    const agent = await import('@/modules/chat-agent/agent-service');
     expect(typeof agent.MAX_SQL_PER_INVESTIGATION).toBe('number');
     expect(typeof agent.MAX_SQL_DEEP).toBe('number');
     expect(typeof agent.MAX_STEPS_INVESTIGATE).toBe('number');

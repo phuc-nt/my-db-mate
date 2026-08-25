@@ -15,7 +15,7 @@
 import { generateText, streamText, Output, type UIMessageStreamWriter } from 'ai';
 import { z } from 'zod';
 import { getModel } from '@/core/model/llm-service';
-import { streamAgentAnswer, getBigTables } from './agent-service';
+import { streamAgentAnswer, getBigTables } from '@/modules/chat-agent/agent-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 import {
   SUBQ_PART_TYPE,
@@ -23,7 +23,7 @@ import {
   type DecomposeResult,
   type SubInvestigationSnapshot,
   type SubQuery,
-} from '../lib/sub-investigation-types';
+} from '@/modules/chat-agent/sub-investigation-types';
 
 const MAX_SUBS = 4;
 /** A sub-loop needs at least this many SQL calls to be worth spawning; if the

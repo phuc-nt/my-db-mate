@@ -4,7 +4,7 @@
  * connection, and the list tool must never leak the raw metric SQL.
  */
 import { describe, it, expect } from 'vitest';
-import { metricBelongsToConnection, toMcpMetricSummary } from './mcp-server';
+import { metricBelongsToConnection, toMcpMetricSummary } from '@/modules/mcp/mcp-server';
 
 describe('metricBelongsToConnection', () => {
   it('accepts a metric on the same connection', () => {

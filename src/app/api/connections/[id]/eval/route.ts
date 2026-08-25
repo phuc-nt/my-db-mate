@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addEvalQuery, listEvalQueries, listEvalRuns, runEval } from '../../../../../services/eval-service';
+import { addEvalQuery, listEvalQueries, listEvalRuns, runEval } from '@/modules/eval';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;

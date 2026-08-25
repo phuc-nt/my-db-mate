@@ -16,14 +16,14 @@ import { rm, mkdir } from 'node:fs/promises';
 import Database from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
 
-vi.mock('./candidate-sql-service', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('./candidate-sql-service')>();
+vi.mock('@/modules/chat-agent/candidate-sql-service', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/modules/chat-agent/candidate-sql-service')>();
   return { ...orig, generateCandidateSqls: vi.fn().mockResolvedValue([]) };
 });
 
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
-import { buildAgentTools, decideHighStakesMode } from './agent-service';
+import { buildAgentTools, decideHighStakesMode } from '@/modules/chat-agent/agent-service';
 
 describe('decideHighStakesMode — guard matrix (H1)', () => {
   const base = { manual: false, allowAuto: true, mode: 'chat' as const, hasFindingCap: false, metricDistances: [0.2], envOff: false };

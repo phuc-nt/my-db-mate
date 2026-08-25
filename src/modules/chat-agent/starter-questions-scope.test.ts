@@ -11,8 +11,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
 import { verifiedQueries } from '@/core/db/context-schema';
-import { getStarterQuestions } from './starter-questions-service';
-import { getBigTables } from './agent-service';
+import { getStarterQuestions } from '@/modules/chat-agent/starter-questions-service';
+import { getBigTables } from '@/modules/chat-agent/agent-service';
 import { setScope, type SchemaScope } from '@/core/boundary/schema-scope-service';
 
 const created: string[] = [];

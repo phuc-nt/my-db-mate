@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { convertToModelMessages } from 'ai';
-import { dbRowsToUiMessages, type ChatMessageRow } from './chat-rehydration-helpers';
+import { dbRowsToUiMessages, type ChatMessageRow } from '@/modules/chat-agent/chat-rehydration-helpers';
 
 const row = (over: Partial<ChatMessageRow>): ChatMessageRow => ({
   id: 'r1', role: 'assistant', content: '', parts: null, createdAt: '2026-08-01T00:00:00Z', ...over,

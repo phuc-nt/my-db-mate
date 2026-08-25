@@ -21,7 +21,7 @@ import {
   reserveInvestigationStep,
   releaseInvestigationStep,
   INVESTIGATE_FINDING_MAX_SQL,
-} from './finding-investigation-service';
+} from '@/modules/chat-agent/finding-investigation-service';
 
 let connectionId: string;
 let scheduleId: string;

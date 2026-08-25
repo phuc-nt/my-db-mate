@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { db } from '@/core/db/client';
 import { evalQueries, evalRuns, evalResults } from '@/core/db/intelligence-schema';
 import { getConnection, getProvider } from '@/core/connections/connection-service';
-import { runAgentAnswer } from './agent-service';
+import { runAgentAnswer } from '@/modules/chat-agent';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { assertNotBigQuery, type Dialect } from '@/core/connections/providers/provider-interface';
 import { assertSqlInScope } from '@/core/boundary/schema-scope-service';

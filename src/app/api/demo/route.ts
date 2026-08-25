@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ensureDemoConnection } from '../../../services/demo-service';
+import { ensureDemoConnection } from '@/modules/demo';
 
 export const runtime = 'nodejs';
 

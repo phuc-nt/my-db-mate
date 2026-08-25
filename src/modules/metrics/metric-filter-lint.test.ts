@@ -32,7 +32,7 @@ import {
   sqlFiltersColumn,
   missingGovernedFilters,
 } from '@/modules/metrics/metric-filter-lint';
-import { buildAgentTools, type MatchedMetric } from '@/services/agent-service';
+import { buildAgentTools, type MatchedMetric } from '@/modules/chat-agent/agent-service';
 
 // ===== PART A: COMPARATOR UNIT TESTS =====
 

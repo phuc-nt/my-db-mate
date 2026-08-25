@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeResultForVote, tallyVote, hasTotalOrderBy, VOTE_LIMIT } from './candidate-sql-service';
-import type { CandidateRun } from '../lib/candidate-vote-types';
+import { normalizeResultForVote, tallyVote, hasTotalOrderBy, VOTE_LIMIT } from '@/modules/chat-agent/candidate-sql-service';
+import type { CandidateRun } from '@/modules/chat-agent/candidate-vote-types';
 
 const sig = (cols: string[], rows: unknown[][]) => normalizeResultForVote(cols, rows);
 

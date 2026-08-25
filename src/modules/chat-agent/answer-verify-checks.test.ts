@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runAnswerChecks, type AnswerCheckInput } from './answer-verify-checks';
+import { runAnswerChecks, type AnswerCheckInput } from '@/modules/chat-agent/answer-verify-checks';
 
 const base: Omit<AnswerCheckInput, 'sql' | 'columns' | 'rows'> = {
   metric: null, enforcedLimit: 500, limitInjected: false,

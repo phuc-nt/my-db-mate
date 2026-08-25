@@ -29,11 +29,11 @@ import { detectAnomalies } from '@/modules/anomaly';
 import { getModel } from '@/core/model/llm-service';
 import { renderDateContext } from '@/core/lib/date-context';
 import { missingGovernedFilters } from '@/modules/metrics';
-import { runAnswerChecks } from '../lib/answer-verify-checks';
+import { runAnswerChecks } from '@/modules/chat-agent/answer-verify-checks';
 import { DEFAULT_LIMIT } from '@/core/safety/safety-service';
-import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from './finding-investigation-service';
-import { generateCandidateSqls, normalizeResultForVote, tallyVote, hasTotalOrderBy, VOTE_LIMIT } from './candidate-sql-service';
-import type { CandidateRun, VoteResult, BqCostCandidate } from '../lib/candidate-vote-types';
+import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from '@/modules/chat-agent/finding-investigation-service';
+import { generateCandidateSqls, normalizeResultForVote, tallyVote, hasTotalOrderBy, VOTE_LIMIT } from '@/modules/chat-agent/candidate-sql-service';
+import type { CandidateRun, VoteResult, BqCostCandidate } from '@/modules/chat-agent/candidate-vote-types';
 
 export type AgentMode = 'chat' | 'investigate' | 'investigate-deep';
 /** Both investigate tiers share tools/addendum; only budgets differ. Using a

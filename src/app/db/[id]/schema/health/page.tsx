@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { startInvestigation } from '../../../../../lib/start-investigation-client';
+import { startInvestigation } from '@/modules/chat-agent/client';
 
 interface Flag { tableName: string; columnName: string; issue: string; detail: string }
 interface Health { flags: Flag[]; profiledColumns: number; totalColumns: number }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateAlternativeSql } from '../../../../../services/alternative-sql-service';
+import { generateAlternativeSql } from '@/modules/chat-agent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;

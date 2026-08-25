@@ -11,7 +11,7 @@ import Database from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
-import { buildAgentTools } from './agent-service';
+import { buildAgentTools } from '@/modules/chat-agent/agent-service';
 
 const DB_PATH = path.join(process.cwd(), '.cache', 'sub-cap-wiring.sqlite');
 let connId: string;
