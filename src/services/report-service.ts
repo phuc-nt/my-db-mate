@@ -25,7 +25,7 @@ import { dashboardWidgets } from '@/core/db/dashboard-schema';
 import { connections } from '@/core/db/schema';
 import { verifiedQueries } from '@/core/db/context-schema';
 import { notebooks } from '@/core/db/notebook-schema';
-import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
+import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';
 import { validateChartSpec } from './chart-spec-service';
 import { getModel } from './llm-service';
 

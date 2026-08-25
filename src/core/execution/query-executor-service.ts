@@ -17,19 +17,19 @@ import { columnAnnotations } from '@/core/db/context-schema';
 import { getConnection } from '@/core/connections/connection-service';
 import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
 import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from '@/core/connections/providers/bigquery-provider';
-import { validateSql } from './safety/safety-service';
-import { assessRisk } from './risk-scoring-service';
-import { shouldAccelerate, planAcceleration } from './accelerator/accelerator-service';
-import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from './accelerator/snapshot-cache-service';
-import { ensureIncrementalSnapshot } from './accelerator/incremental-snapshot-service';
-import { getWatermarkConfig } from './accelerator/watermark-config-service';
-import { runAcceleratedQuery } from './accelerator/duckdb-executor-service';
-import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from './accelerator/bigquery-duckdb-extract-service';
-import { extractLineage } from '../lib/sql-lineage';
-import { assertSqlInScope, type SchemaScope } from './schema-scope-service';
-import { expandForConnection } from './virtual-view-service';
+import { validateSql } from '@/core/safety/safety-service';
+import { assessRisk } from '@/core/safety/risk-scoring-service';
+import { shouldAccelerate, planAcceleration } from '@/services/accelerator/accelerator-service';
+import { ensureSnapshot, cacheKeyFor, upsertSnapshotStatus } from '@/services/accelerator/snapshot-cache-service';
+import { ensureIncrementalSnapshot } from '@/services/accelerator/incremental-snapshot-service';
+import { getWatermarkConfig } from '@/services/accelerator/watermark-config-service';
+import { runAcceleratedQuery } from '@/services/accelerator/duckdb-executor-service';
+import { extractBigQueryToDuckDB, BigQueryExtractBlockedError } from '@/services/accelerator/bigquery-duckdb-extract-service';
+import { extractLineage } from '@/lib/sql-lineage';
+import { assertSqlInScope, type SchemaScope } from '@/services/schema-scope-service';
+import { expandForConnection } from '@/services/virtual-view-service';
 import { BigQueryConfirmationRequiredError, type QueryResult, type Dialect } from '@/core/connections/providers/provider-interface';
-import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from './bigquery-daily-budget-service';
+import { reserve as reserveBudget, reconcile as reconcileBudget, refund as refundBudget, effectiveBudget, isLowTierActor } from '@/services/bigquery-daily-budget-service';
 
 // Fallback snapshot TTL when a connection has the accelerator enabled but no
 // explicit `accelerateTtlMs` set — 1 hour balances staleness against re-extract
@@ -169,7 +169,7 @@ export interface ExecuteResult {
    *  row-count/performance guess, and gates on its own confirm step. */
   costEstimate?: { estimatedBytes: number; estimatedCostUsd: number; reliable: boolean };
   /** AST-derived read lineage (tables/filters/grouping) — null when unparsable. */
-  lineage?: import('../lib/sql-lineage').SqlLineage | null;
+  lineage?: import('@/lib/sql-lineage').SqlLineage | null;
 }
 
 export async function executeQuery(params: {

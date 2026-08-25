@@ -12,7 +12,7 @@ import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '@/core/db/
 import { getMessages } from './session-service';
 import { chatSessions, queryRuns } from '@/core/db/schema';
 import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
-import { normalizeSqlForDedup } from './safety/safety-service';
+import { normalizeSqlForDedup } from '@/core/safety/safety-service';
 import { getModel } from './llm-service';
 
 // Lenient: models return confidence as number OR enum, and alias/synonym fields

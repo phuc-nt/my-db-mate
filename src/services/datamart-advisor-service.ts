@@ -26,7 +26,7 @@ import { columnProfiles } from '@/core/db/intelligence-schema';
 import { getScope, isScopeActive, isRefInScope, assertSqlInScope } from './schema-scope-service';
 import { getModel } from './llm-service';
 import { getProvider } from '@/core/connections/connection-service';
-import { validateSql } from './safety/safety-service';
+import { validateSql } from '@/core/safety/safety-service';
 import { createView } from './virtual-view-service';
 import { renderBigQueryDdl, renderDbtScaffold, safeIdentifier } from '../lib/dbt-scaffold-render';
 import { mineQueryRuns } from './query-runs-mining-reader';

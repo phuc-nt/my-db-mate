@@ -15,8 +15,8 @@
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
 import type { Dialect } from '@/core/connections/providers/provider-interface';
-import type { RiskAssessment } from '../risk-scoring-service';
-import { PARSER_DIALECT } from '../safety/safety-service';
+import type { RiskAssessment } from '@/core/safety/risk-scoring-service';
+import { PARSER_DIALECT } from '@/core/safety/safety-service';
 
 const MEDIUM_ROWS = 100_000;
 

@@ -20,7 +20,7 @@ import { db } from '@/core/db/client';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { anomalyBaselines } from '@/core/db/anomaly-schema';
 import { getConnection } from '@/core/connections/connection-service';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { madOutlier, MIN_MAD_OBS } from '../lib/robust-stats';
 import { qualifiedTableRef, quoteColumn } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';

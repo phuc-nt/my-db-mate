@@ -19,7 +19,7 @@ import { connections } from '@/core/db/schema';
 import { extractRefreshPairs } from '../lib/notebook-refresh';
 import { notebooks } from '@/core/db/notebook-schema';
 import { getMessages } from './session-service';
-import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
+import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from '@/core/execution/query-executor-service';
 import { generateShareSlug } from '../lib/share';
 
 const MAX_TURNS = 30;

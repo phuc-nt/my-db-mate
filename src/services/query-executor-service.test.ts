@@ -11,7 +11,7 @@ import Database from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { accelerateSnapshots, connections, queryRuns } from '@/core/db/schema';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { cacheKeyFor } from './accelerator/snapshot-cache-service';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');

@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 const execMock = vi.fn();
-vi.mock('./query-executor-service', () => ({ executeQuery: (...a: unknown[]) => execMock(...a) }));
+vi.mock('@/core/execution/query-executor-service', () => ({ executeQuery: (...a: unknown[]) => execMock(...a) }));
 vi.mock('./dashboard-service', () => ({ checkWidgetSql: async () => ({ ok: true, sqlForChecks: 'SELECT 1', isParametrized: false }) }));
 
 describe('probeWidget BigQuery dry-run', () => {

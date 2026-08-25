@@ -13,7 +13,7 @@ import { eq } from 'drizzle-orm';
 import { resolve } from 'node:path';
 import { db } from '@/core/db/client';
 import { connections, schemaTables } from '@/core/db/schema';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { setScope } from './schema-scope-service';
 import { createView, invalidateViewCache, updateView, VirtualViewError } from './virtual-view-service';
 

@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Parser } from 'node-sql-parser';
 import { directBaseTables, expandVirtualViews, mentionsIdentifier, type VirtualViewDef } from './sql-view-expand';
-import { PARSER_DIALECT } from '../services/safety/safety-service';
+import { PARSER_DIALECT } from '@/core/safety/safety-service';
 
 const REVENUE = {
   name: 'monthly_revenue',

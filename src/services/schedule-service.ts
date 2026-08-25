@@ -16,7 +16,7 @@ import { getConnection } from '@/core/connections/connection-service';
 import { getDashboard, runWidget } from './dashboard-service';
 import { getReportLatest, generateReport, listReports } from './report-service';
 import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { runAgentAnswer } from './agent-service';
 import { generateText } from 'ai';
 import { getModel } from './llm-service';

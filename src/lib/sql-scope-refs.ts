@@ -17,7 +17,7 @@
  */
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
-import { PARSER_DIALECT } from '../services/safety/safety-service';
+import { PARSER_DIALECT } from '@/core/safety/safety-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 /** One table reference. `schemaName` is the dataset (BigQuery) or schema

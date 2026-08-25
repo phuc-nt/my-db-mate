@@ -10,7 +10,7 @@
  */
 import { getConnection } from '@/core/connections/connection-service';
 import { buildProvider, type ConnectionRow } from '@/core/connections/providers/provider-factory';
-import { validateSql } from './safety/safety-service';
+import { validateSql } from '@/core/safety/safety-service';
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 
 export type ExplainResult =

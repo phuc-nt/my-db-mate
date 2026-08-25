@@ -18,7 +18,7 @@ import { getPrunedSchemaSummary } from './schema-pruning-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { getMetric } from './metric-service';
 import { checkWidgetSql, pinWidget, createDashboard, deleteDashboard, getDashboard } from './dashboard-service';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { substituteDateRange, PROBE_RANGE, hasDateRangePlaceholders } from '../lib/sql-param';
 import { validateChartSpec } from './chart-spec-service';
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { capRows, validateSql } from './safety-service';
+import { capRows, validateSql } from '@/core/safety/safety-service';
 
 describe('capRows dialect-aware row cap', () => {
   it('uses LIMIT for postgres/mysql/sqlite', () => {

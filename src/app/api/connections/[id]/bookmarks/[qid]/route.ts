@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { deleteBookmark, listBookmarks } from '../../../../../../services/context-service';
-import { executeQuery } from '../../../../../../services/query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { toJsonSafe } from '../../../../../../lib/json-safe';
 
 export const runtime = 'nodejs';

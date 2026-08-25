@@ -14,7 +14,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { resolveApiKey } from './api-key-service';
 import { runAgentAnswer } from './agent-service';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 import { getSchemaSummary } from './schema-sync-service';
 import { getRelevantContext } from './context-service';
 import { getConnection } from '@/core/connections/connection-service';

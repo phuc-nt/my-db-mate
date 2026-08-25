@@ -14,7 +14,7 @@ import { monitorSnapshots } from '@/core/db/monitor-schema';
 import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { qualifiedTableRef } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
-import { executeQuery } from './query-executor-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
 export { diffSnapshots, diffAgainstBaseline, DEFAULT_THRESHOLDS } from '../lib/monitor-diff';
 export type { MonitorThresholds, MonitorFinding, Snapshot } from '../lib/monitor-diff';
 import type { Snapshot } from '../lib/monitor-diff';

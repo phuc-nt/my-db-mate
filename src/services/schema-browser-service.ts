@@ -10,8 +10,8 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { schemaTables } from '@/core/db/schema';
 import { getProvider } from '@/core/connections/connection-service';
-import { executeQuery } from './query-executor-service';
-import { capRows } from './safety/safety-service';
+import { executeQuery } from '@/core/execution/query-executor-service';
+import { capRows } from '@/core/safety/safety-service';
 
 const SAMPLE_LIMIT = 50;
 
