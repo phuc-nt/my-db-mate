@@ -26,7 +26,7 @@ export interface ModelPrice {
  *  converted from per-token to per-million-token. */
 export const MODEL_PRICES: Record<string, ModelPrice> = {
   'qwen/qwen3.7-max': { inputPerMTok: 1.475, outputPerMTok: 4.425 },
-  'deepseek/deepseek-v4-pro': { inputPerMTok: 0.579072, outputPerMTok: 1.158144 },
+  'deepseek/deepseek-v4-pro': { inputPerMTok: 0.572808, outputPerMTok: 1.145616 },
 };
 
 export interface TokenUsage {
