@@ -28,7 +28,7 @@ import { profileColumn } from '@/core/schema/profiling-service';
 import { detectAnomalies } from '@/modules/anomaly';
 import { getModel } from '@/core/model/llm-service';
 import { renderDateContext } from '@/core/lib/date-context';
-import { missingGovernedFilters } from '../lib/metric-filter-lint';
+import { missingGovernedFilters } from '@/modules/metrics';
 import { runAnswerChecks } from '../lib/answer-verify-checks';
 import { DEFAULT_LIMIT } from '@/core/safety/safety-service';
 import { reserveInvestigationStep, releaseInvestigationStep, INVESTIGATE_FINDING_MAX_SQL } from './finding-investigation-service';

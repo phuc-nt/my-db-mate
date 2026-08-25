@@ -31,8 +31,8 @@ import {
   extractGovernedFilterColumns,
   sqlFiltersColumn,
   missingGovernedFilters,
-} from './metric-filter-lint';
-import { buildAgentTools, type MatchedMetric } from '../services/agent-service';
+} from '@/modules/metrics/metric-filter-lint';
+import { buildAgentTools, type MatchedMetric } from '@/services/agent-service';
 
 // ===== PART A: COMPARATOR UNIT TESTS =====
 

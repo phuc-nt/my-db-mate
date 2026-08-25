@@ -6,7 +6,7 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { loadSchedules } = await import('./services/schedule-service');
+    const { loadSchedules } = await import('@/modules/automations');
     await loadSchedules().catch((e) => console.error('[boot] loadSchedules failed:', e));
   }
 }

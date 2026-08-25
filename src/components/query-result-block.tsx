@@ -5,7 +5,7 @@ import { CopyButton } from './copy-button';
 import { FormModal, type FormModalField } from './form-modal';
 import { ResultTable } from './result-table';
 import { shouldAutoChart } from '@/core/lib/chart-spec-service';
-import { guessGrain } from '../lib/metric-math';
+import { guessGrain } from '@/core/lib/metric-math';
 import type { ExportDialect } from '@/core/lib/export-formats';
 
 interface RunResult {

@@ -27,12 +27,12 @@ import {
   updateMetric,
   backfillMetricEmbeddings,
   type MetricInput,
-} from './metric-service';
+} from '@/modules/metrics/metric-service';
 import {
   getRelevantContext,
   renderContextForPrompt,
   addVerifiedQuery,
-} from './context-service';
+} from '@/services/context-service';
 import { embed } from '@/core/model/embedding-service';
 
 // ===== HELPERS =====

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSharedDashboard } from '../../../../../services/dashboard-service';
+import { getSharedDashboard } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

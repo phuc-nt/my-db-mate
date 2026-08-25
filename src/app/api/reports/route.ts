@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listReports, createReport } from '../../../services/report-service';
+import { listReports, createReport } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

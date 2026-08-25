@@ -18,7 +18,7 @@ import { executeQuery } from '@/core/execution/query-executor-service';
 import { getSchemaSummary } from '@/core/schema/schema-sync-service';
 import { getRelevantContext } from './context-service';
 import { getConnection } from '@/core/connections/connection-service';
-import { listMetrics, getMetric, runMetric } from './metric-service';
+import { listMetrics, getMetric, runMetric } from '@/modules/metrics';
 import { toJsonSafe } from '@/core/lib/json-safe';
 
 /** A metric id is client-supplied; only run metrics that belong to THIS key's

@@ -11,7 +11,7 @@ import { encryptSecret } from '@/core/crypto/credential-cipher';
 import {
   validateCondition, matchesCondition, renderPayload, DEFAULT_TEMPLATE,
   createTrigger, evaluateTriggers, testFire, listFires, listFiresForConnection, type TriggerFinding,
-} from './action-trigger-service';
+} from '@/modules/automations/action-trigger-service';
 
 describe('validateCondition', () => {
   it('accepts the three kinds and rejects malformed input', () => {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getReportLatest, deleteReport, setReportShare } from '../../../../services/report-service';
+import { getReportLatest, deleteReport, setReportShare } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

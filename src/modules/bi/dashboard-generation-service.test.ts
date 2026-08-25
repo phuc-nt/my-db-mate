@@ -21,7 +21,7 @@ vi.mock('ai', async (orig) => {
   const actual = await orig<typeof import('ai')>();
   return { ...actual, generateText: async () => ({ output: mockOutput() }), Output: actual.Output };
 });
-vi.mock('./context-service', () => ({
+vi.mock('@/services/context-service', () => ({
   getRelevantContext: async () => ({
     tableAnnotations: [], columnAnnotations: [], glossaryHits: [], manualRelationships: [],
     verifiedExamples: [], metrics: [{ id: 'metric-x', name: 'Total sales', description: null, sql: 'SELECT SUM(amt) AS v FROM sales', dimensions: null, distance: 0.1 }],

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { proposeWidgetEdit, applyWidgetEdit } from '../../../../../../../services/widget-edit-service';
+import { proposeWidgetEdit, applyWidgetEdit } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

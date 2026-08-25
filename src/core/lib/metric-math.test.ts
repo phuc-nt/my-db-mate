@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDelta, computeDrivers, computeForecast, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from './metric-math';
+import { computeDelta, computeDrivers, computeForecast, computeInsights, formatMetricValue, guessGrain, parseSeries, renderDigestFallback, validateMetricShape } from '@/core/lib/metric-math';
 
 describe('parseSeries', () => {
   it('sorts non-chronological input and drops invalid rows', () => {

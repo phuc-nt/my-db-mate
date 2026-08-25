@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { getConnection } from '@/core/connections/connection-service';
 import {
   listTriggers, listFiresForConnection, createTrigger, updateTrigger, deleteTrigger, testFire,
-} from '../../../../../services/action-trigger-service';
+} from '@/modules/automations';
 
 export const runtime = 'nodejs';
 

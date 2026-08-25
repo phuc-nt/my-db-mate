@@ -15,9 +15,9 @@ import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { qualifiedTableRef } from '@/core/lib/table-ref';
 import { composeSchemaPrefix } from '@/core/lib/table-catalog-prefix';
 import { executeQuery } from '@/core/execution/query-executor-service';
-export { diffSnapshots, diffAgainstBaseline, DEFAULT_THRESHOLDS } from '../lib/monitor-diff';
-export type { MonitorThresholds, MonitorFinding, Snapshot } from '../lib/monitor-diff';
-import type { Snapshot } from '../lib/monitor-diff';
+export { diffSnapshots, diffAgainstBaseline, DEFAULT_THRESHOLDS } from '@/core/lib/monitor-diff';
+export type { MonitorThresholds, MonitorFinding, Snapshot } from '@/core/lib/monitor-diff';
+import type { Snapshot } from '@/core/lib/monitor-diff';
 
 const NUMERIC_RE = /int|numeric|real|float|double|decimal|money/i;
 const MAX_COLS = 10;

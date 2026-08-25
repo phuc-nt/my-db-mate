@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { acceptDashboardProposal } from '../../../../services/dashboard-generation-service';
+import { acceptDashboardProposal } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { pinWidget } from '../../../../../services/dashboard-service';
+import { pinWidget } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '../../../../../../services/dashboard-service';
+import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '@/modules/bi';
 import { isValidIsoDate } from '@/core/lib/sql-param';
 
 const MAX_CROSS_FILTERS = 3;

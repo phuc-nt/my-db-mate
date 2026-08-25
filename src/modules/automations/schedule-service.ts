@@ -13,16 +13,16 @@ import { db } from '@/core/db/client';
 import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
 import { dashboards } from '@/core/db/dashboard-schema';
 import { getConnection } from '@/core/connections/connection-service';
-import { getDashboard, runWidget } from './dashboard-service';
-import { getReportLatest, generateReport, listReports } from './report-service';
-import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from './monitor-service';
+import { getDashboard, runWidget } from '@/modules/bi';
+import { getReportLatest, generateReport, listReports } from '@/modules/bi';
+import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from '@/modules/automations/monitor-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
-import { runAgentAnswer } from './agent-service';
+import { runAgentAnswer } from '@/services/agent-service';
 import { generateText } from 'ai';
 import { getModel } from '@/core/model/llm-service';
-import { listMetrics, runMetric, runMetricDrivers } from './metric-service';
+import { listMetrics, runMetric, runMetricDrivers } from '@/modules/metrics';
 import { vetWebhookUrl } from '@/core/lib/webhook-url-guard';
-import { computeInsights, computeForecast, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection, type TimeGrain } from '../lib/metric-math';
+import { computeInsights, computeForecast, formatMetricValue, renderDigestFallback, type DigestMetricLine, type DriverBreakdown, type MetricDirection, type TimeGrain } from '@/core/lib/metric-math';
 
 const tasks = new Map<string, ScheduledTask>();
 const running = new Set<string>(); // concurrency lock per schedule id
@@ -187,7 +187,7 @@ async function runMonitorSchedule(s: ScheduleRow): Promise<void> {
   // try/catch — a trigger problem must never turn a healthy monitor run into a failure.
   if (findings.length > 0) {
     try {
-      const { evaluateTriggers } = await import('./action-trigger-service');
+      const { evaluateTriggers } = await import('@/modules/automations/action-trigger-service');
       await evaluateTriggers(s.connectionId, 'monitor',
         findings.map((f) => ({ name: f.table, detail: f.metric, before: f.before, after: f.after, deltaPct: f.deltaPct })),
         conn.name);
@@ -297,7 +297,7 @@ async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
   const changedLines = lines.filter((l) => l.insight.changeFlags.length > 0);
   if (changedLines.length > 0) {
     try {
-      const { evaluateTriggers } = await import('./action-trigger-service');
+      const { evaluateTriggers } = await import('@/modules/automations/action-trigger-service');
       const conn = await getConnection(s.connectionId);
       await evaluateTriggers(s.connectionId, 'digest',
         changedLines.map((l) => ({ name: l.name, detail: l.insight.changeFlags.join(', '), before: null, after: l.latest, deltaPct: l.insight.deltaPct })),

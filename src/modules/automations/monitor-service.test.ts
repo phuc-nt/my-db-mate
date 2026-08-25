@@ -13,7 +13,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '@/core/db/client';
 import { connections } from '@/core/db/schema';
 import { monitorSnapshots } from '@/core/db/monitor-schema';
-import { historySnapshots, storeSnapshot, type Snapshot } from './monitor-service';
+import { historySnapshots, storeSnapshot, type Snapshot } from '@/modules/automations/monitor-service';
 import { encryptSecret } from '@/core/crypto/credential-cipher';
 
 describe('monitor-service — Phase 2 enhancements', () => {

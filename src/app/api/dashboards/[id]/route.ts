@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDashboard, renameDashboard, deleteDashboard, setShare } from '../../../../services/dashboard-service';
+import { getDashboard, renameDashboard, deleteDashboard, setShare } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 

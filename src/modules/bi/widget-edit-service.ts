@@ -15,8 +15,8 @@ import { getModel } from '@/core/model/llm-service';
 import { getLlmSettings } from '@/core/app-state/settings-service';
 import { getConnection } from '@/core/connections/connection-service';
 import { getPrunedSchemaSummary } from '@/core/schema/schema-pruning-service';
-import { normalizePlaceholderQuotes, probeWidget, type WidgetProbe } from './dashboard-generation-service';
-import { updateWidgetSql, type WidgetSqlUpdateResult } from './dashboard-service';
+import { normalizePlaceholderQuotes, probeWidget, type WidgetProbe } from '@/modules/bi/dashboard-generation-service';
+import { updateWidgetSql, type WidgetSqlUpdateResult } from '@/modules/bi/dashboard-service';
 import { validateChartSpec } from '@/core/lib/chart-spec-service';
 import { hasDateRangePlaceholders } from '@/core/lib/sql-param';
 

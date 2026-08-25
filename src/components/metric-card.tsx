@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Line, LineChart, ResponsiveContainer } from 'recharts';
-import { computeForecast, formatMetricValue, type MetricPoint, type MetricDirection, type TimeGrain } from '../lib/metric-math';
+import { computeForecast, formatMetricValue, type MetricPoint, type MetricDirection, type TimeGrain } from '@/core/lib/metric-math';
 
 export interface MetricRowUI {
   id: string;

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createMetric, listMetrics } from '../../../../../services/metric-service';
+import { createMetric, listMetrics } from '@/modules/metrics';
 
 export const runtime = 'nodejs';
 

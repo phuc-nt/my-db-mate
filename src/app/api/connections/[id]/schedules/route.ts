@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSchedule, deleteSchedule, listSchedules, runSchedule, setScheduleEnabled } from '../../../../../services/schedule-service';
+import { createSchedule, deleteSchedule, listSchedules, runSchedule, setScheduleEnabled } from '@/modules/automations';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;

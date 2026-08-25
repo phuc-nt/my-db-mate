@@ -22,7 +22,7 @@ function stripEmbedding<T extends { embedding?: unknown }>(row: T): Omit<T, 'emb
   const { embedding: _embedding, ...rest } = row;
   return rest;
 }
-import { computeDelta, computeDrivers, parseSeries, validateMetricShape, type DriverBreakdown, type MetricPoint, type MetricDirection, type TimeGrain } from '../lib/metric-math';
+import { computeDelta, computeDrivers, parseSeries, validateMetricShape, type DriverBreakdown, type MetricPoint, type MetricDirection, type TimeGrain } from '@/core/lib/metric-math';
 
 export interface MetricInput {
   name: string;

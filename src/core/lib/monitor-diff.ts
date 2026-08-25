@@ -1,5 +1,11 @@
 /** Pure snapshot-diff logic for the data-drift monitor — separated from the
- *  service so unit tests never pull in the db client (vitest has no DATABASE_URL). */
+ *  service so unit tests never pull in the db client (vitest has no DATABASE_URL).
+ *
+ *  Lives in core despite the "monitor" name: `automations` produces findings and
+ *  `chat-agent` investigates them, so both need these types. Having either own it
+ *  made chat-agent import the automations barrel, which dragged in schedule-service
+ *  -> agent-service and closed a cycle. The diff itself has no scheduling concept
+ *  in it, so it belongs under both rather than beside one. */
 import { madOutlier, MIN_MAD_OBS } from '@/core/lib/robust-stats';
 export interface MonitorThresholds {
   rowCountPct: number;   // alert when |Δ| exceeds this % AND the absolute floor

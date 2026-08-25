@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateReport } from '../../../../../services/report-service';
+import { generateReport } from '@/modules/bi';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // one LLM compose call + source runs

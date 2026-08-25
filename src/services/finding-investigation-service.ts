@@ -20,7 +20,7 @@ import { scheduledQueries } from '@/core/db/ecosystem-schema';
 import { monitorSnapshots } from '@/core/db/monitor-schema';
 import { columnProfiles } from '@/core/db/intelligence-schema';
 import { median, mad } from '@/core/lib/robust-stats';
-import type { MonitorFinding, Snapshot } from '../lib/monitor-diff';
+import type { MonitorFinding, Snapshot } from '@/core/lib/monitor-diff';
 
 /** Hard ceiling on run_sql calls for a finding investigation. A client-supplied
  *  value can only lower it, never raise it. */
