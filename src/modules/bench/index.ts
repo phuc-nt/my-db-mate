@@ -31,3 +31,5 @@ export type { ResolvedModel } from './bench-model';
 
 export { runQuestion, QUESTION_TIMEOUT_MS } from './bench-runner';
 export type { BenchRecord } from './bench-runner';
+export { configKey, spreadsByConfig, DISQUALIFYING_MARKERS } from './bench-comparison';
+export type { ComparableSummary, Spread } from './bench-comparison';
