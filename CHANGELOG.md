@@ -4,7 +4,7 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
-## [Unreleased]
+## [0.14.0] — 2026-08-25
 
 ### Setup that fails early instead of on the first question
 
