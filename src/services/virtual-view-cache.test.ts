@@ -11,8 +11,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { resolve } from 'node:path';
-import { db } from '../db/client';
-import { connections, schemaColumns, schemaTables } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections, schemaColumns, schemaTables } from '@/core/db/schema';
 import { createView, deleteView, expandForConnection, previewDefinition, updateView } from './virtual-view-service';
 import { setScope } from './schema-scope-service';
 

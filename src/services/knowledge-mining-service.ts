@@ -7,10 +7,10 @@
 import { generateText } from 'ai';
 import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { knowledgeSuggestions, glossaryTerms, verifiedQueries } from '@/core/db/context-schema';
 import { getMessages } from './session-service';
-import { chatSessions, queryRuns } from '../db/schema';
+import { chatSessions, queryRuns } from '@/core/db/schema';
 import { addGlossaryTerm, addVerifiedQuery, upsertTableAnnotation, upsertColumnAnnotation, addManualRelationship } from './context-service';
 import { normalizeSqlForDedup } from './safety/safety-service';
 import { getModel } from './llm-service';

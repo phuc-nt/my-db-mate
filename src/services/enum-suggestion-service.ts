@@ -11,9 +11,9 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { generateText } from 'ai';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns } from '../db/schema';
-import { knowledgeSuggestions, columnAnnotations } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
+import { knowledgeSuggestions, columnAnnotations } from '@/core/db/context-schema';
 import { profileColumn } from './profiling-service';
 import { getModel } from './llm-service';
 

@@ -12,9 +12,9 @@
  * a prompt costs one row read instead of a round trip to the warehouse.
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { virtualViews } from '../db/context-schema';
-import { schemaTables } from '../db/schema';
+import { db } from '@/core/db/client';
+import { virtualViews } from '@/core/db/context-schema';
+import { schemaTables } from '@/core/db/schema';
 import { getConnection, getProvider } from './connection-service';
 import { validateSql } from './safety/safety-service';
 import { assertSqlInScope } from './schema-scope-service';

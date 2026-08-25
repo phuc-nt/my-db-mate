@@ -11,9 +11,9 @@
  * (260715-2034-bigquery-connector-cost-safety/phase-06).
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { queryRuns, schemaTables } from '../db/schema';
-import { columnAnnotations } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { queryRuns, schemaTables } from '@/core/db/schema';
+import { columnAnnotations } from '@/core/db/context-schema';
 import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { BigQueryConnectionProvider, EstimateFailedError, MaximumBytesBilledExceededError } from './connection-providers/bigquery-provider';

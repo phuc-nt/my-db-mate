@@ -10,11 +10,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq, and } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { monitorSnapshots } from '../db/monitor-schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { monitorSnapshots } from '@/core/db/monitor-schema';
 import { historySnapshots, storeSnapshot, type Snapshot } from './monitor-service';
-import { encryptSecret } from './crypto/credential-cipher';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 
 describe('monitor-service — Phase 2 enhancements', () => {
   let connectionId: string;

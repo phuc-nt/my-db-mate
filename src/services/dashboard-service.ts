@@ -12,9 +12,9 @@
  */
 import { generateShareSlug } from '../lib/share';
 import { and, asc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
-import { connections } from '../db/schema';
+import { db } from '@/core/db/client';
+import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
+import { connections } from '@/core/db/schema';
 import { getConnection } from './connection-service';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { validateSql } from './safety/safety-service';

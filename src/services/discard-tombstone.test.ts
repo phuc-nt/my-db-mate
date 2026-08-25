@@ -8,8 +8,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, chatSessions } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections, chatSessions } from '@/core/db/schema';
 import { createSession, setDiscardTombstone, wasTurnDiscarded, clearDiscardTombstone, getDiscardTombstone, discardLatestTurn, addMessage, getMessages } from './session-service';
 
 let connId: string;

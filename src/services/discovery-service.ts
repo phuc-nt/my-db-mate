@@ -19,9 +19,9 @@
 import { generateText } from 'ai';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns } from '../db/schema';
-import { knowledgeSuggestions } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
+import { knowledgeSuggestions } from '@/core/db/context-schema';
 import { getModel } from './llm-service';
 
 const DEFAULT_MAX_TABLES = 40;

@@ -10,9 +10,9 @@
  * on save.
  */
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { appSettings } from '../db/app-settings-schema';
-import { encryptSecret, decryptSecret } from './crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { appSettings } from '@/core/db/app-settings-schema';
+import { encryptSecret, decryptSecret } from '@/core/crypto/credential-cipher';
 
 export type LlmProviderId = 'openrouter' | 'openai' | 'anthropic' | 'google' | 'ollama';
 

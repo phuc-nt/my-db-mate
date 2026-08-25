@@ -12,8 +12,8 @@
  *   widget/verified-query set null so deleting a widget doesn't break the report.
  */
 import { pgTable, uuid, text, timestamp, jsonb, integer, unique } from 'drizzle-orm/pg-core';
-import { dashboardWidgets } from './dashboard-schema';
-import { verifiedQueries } from './context-schema';
+import { dashboardWidgets } from '@/core/db/dashboard-schema';
+import { verifiedQueries } from '@/core/db/context-schema';
 
 export const reports = pgTable('reports', {
   id: uuid('id').primaryKey().defaultRandom(),

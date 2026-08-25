@@ -9,9 +9,9 @@
  * no unattended needs_confirmation stall).
  */
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { monitorSnapshots } from '../db/monitor-schema';
-import { schemaTables, schemaColumns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { monitorSnapshots } from '@/core/db/monitor-schema';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { qualifiedTableRef } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { executeQuery } from './query-executor-service';

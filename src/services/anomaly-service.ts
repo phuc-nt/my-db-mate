@@ -16,9 +16,9 @@
  *   so untrusted DB text can't act as an instruction in the agent's context.
  */
 import { and, eq, desc, sql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns } from '../db/schema';
-import { anomalyBaselines } from '../db/anomaly-schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
+import { anomalyBaselines } from '@/core/db/anomaly-schema';
 import { getConnection } from './connection-service';
 import { executeQuery } from './query-executor-service';
 import { madOutlier, MIN_MAD_OBS } from '../lib/robust-stats';

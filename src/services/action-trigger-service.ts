@@ -18,8 +18,8 @@
  * - Delivery failures never fail the schedule run that produced the finding.
  */
 import { and, desc, eq, gte, lt, sql as dsql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { actionTriggers, actionTriggerFires, type TriggerCondition } from '../db/action-trigger-schema';
+import { db } from '@/core/db/client';
+import { actionTriggers, actionTriggerFires, type TriggerCondition } from '@/core/db/action-trigger-schema';
 import { vetWebhookUrl } from '../lib/webhook-url-guard';
 
 /** Normalized finding shape shared by both surfaces: monitor rows carry

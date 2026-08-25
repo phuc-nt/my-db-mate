@@ -4,10 +4,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { actionTriggers, actionTriggerFires } from '../db/action-trigger-schema';
-import { encryptSecret } from './crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { actionTriggers, actionTriggerFires } from '@/core/db/action-trigger-schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 import {
   validateCondition, matchesCondition, renderPayload, DEFAULT_TEMPLATE,
   createTrigger, evaluateTriggers, testFire, listFires, listFiresForConnection, type TriggerFinding,

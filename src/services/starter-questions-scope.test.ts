@@ -8,9 +8,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, schemaTables, schemaColumns } from '../db/schema';
-import { verifiedQueries } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
+import { verifiedQueries } from '@/core/db/context-schema';
 import { getStarterQuestions } from './starter-questions-service';
 import { getBigTables } from './agent-service';
 import { setScope, type SchemaScope } from './schema-scope-service';

@@ -12,8 +12,8 @@
  * would institutionalize the mistake.
  */
 import { and, desc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { queryRuns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { queryRuns } from '@/core/db/schema';
 import { analyzeQueries, parametrizeLiterals, type MinedQuery } from './query-history-mining-service';
 import type { Dialect } from './connection-providers/provider-interface';
 

@@ -5,7 +5,7 @@
  * as a point-in-time snapshot. Sensitive-column results are omitted (red-team H3).
  */
 import { pgTable, uuid, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 export const notebooks = pgTable('notebooks', {
   id: uuid('id').primaryKey().defaultRandom(),

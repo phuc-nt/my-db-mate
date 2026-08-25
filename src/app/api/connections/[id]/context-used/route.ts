@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { and, eq, sql as dsql } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { glossaryTerms, verifiedQueries, columnAnnotations, tableAnnotations } from '../../../../../db/context-schema';
-import { metrics } from '../../../../../db/metric-schema';
+import { db } from '@/core/db/client';
+import { glossaryTerms, verifiedQueries, columnAnnotations, tableAnnotations } from '@/core/db/context-schema';
+import { metrics } from '@/core/db/metric-schema';
 import { embed } from '../../../../../services/embedding-service';
 
 export const runtime = 'nodejs';

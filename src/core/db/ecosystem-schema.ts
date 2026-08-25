@@ -5,7 +5,7 @@
  * connection (RT-F4).
  */
 import { pgTable, uuid, text, timestamp, jsonb, integer, boolean } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** An API key for the MCP server. `keyHash` = sha256 of the token; the raw token
  *  is shown once at creation and never stored. Scoped to one connection + a max

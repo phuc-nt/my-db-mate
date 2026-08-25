@@ -9,8 +9,8 @@ import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { accelerateSnapshots, connections, queryRuns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { accelerateSnapshots, connections, queryRuns } from '@/core/db/schema';
 import { executeQuery } from './query-executor-service';
 import { cacheKeyFor } from './accelerator/snapshot-cache-service';
 

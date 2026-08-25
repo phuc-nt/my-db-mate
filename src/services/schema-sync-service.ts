@@ -3,8 +3,8 @@
  * (tables, columns, foreign keys) into the app DB. Re-sync replaces the snapshot.
  */
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '@/core/db/schema';
 import { getProvider } from './connection-service';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { getScope, filterTablesToScope } from './schema-scope-service';

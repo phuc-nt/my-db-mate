@@ -18,14 +18,14 @@
  * triggers fire on findings and issue no SQL of their own, so they hold nothing.
  */
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { metrics } from '../db/metric-schema';
-import { verifiedQueries } from '../db/context-schema';
-import { dashboardWidgets } from '../db/dashboard-schema';
-import { notebooks } from '../db/notebook-schema';
-import { reportSources, reportVersions } from '../db/report-schema';
-import { scheduledQueries } from '../db/ecosystem-schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { metrics } from '@/core/db/metric-schema';
+import { verifiedQueries } from '@/core/db/context-schema';
+import { dashboardWidgets } from '@/core/db/dashboard-schema';
+import { notebooks } from '@/core/db/notebook-schema';
+import { reportSources, reportVersions } from '@/core/db/report-schema';
+import { scheduledQueries } from '@/core/db/ecosystem-schema';
 import { extractScopeRefs } from '../lib/sql-scope-refs';
 import { isRefInScope, isScopeActive, type SchemaScope } from './schema-scope-service';
 import type { Dialect } from './connection-providers/provider-interface';

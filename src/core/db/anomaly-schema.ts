@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, doublePrecision, index } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** Per-column distribution SUMMARY captured on each anomaly probe, so a later probe can
  *  detect DRIFT of the column's distribution over time (mean/nullRate trending) — distinct

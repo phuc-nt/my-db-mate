@@ -14,11 +14,11 @@
  *   reset or race past it.
  */
 import { and, eq, lte, sql as dsql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { chatSessions, schemaTables, schemaColumns } from '../db/schema';
-import { scheduledQueries } from '../db/ecosystem-schema';
-import { monitorSnapshots } from '../db/monitor-schema';
-import { columnProfiles } from '../db/intelligence-schema';
+import { db } from '@/core/db/client';
+import { chatSessions, schemaTables, schemaColumns } from '@/core/db/schema';
+import { scheduledQueries } from '@/core/db/ecosystem-schema';
+import { monitorSnapshots } from '@/core/db/monitor-schema';
+import { columnProfiles } from '@/core/db/intelligence-schema';
 import { median, mad } from '../lib/robust-stats';
 import type { MonitorFinding, Snapshot } from '../lib/monitor-diff';
 

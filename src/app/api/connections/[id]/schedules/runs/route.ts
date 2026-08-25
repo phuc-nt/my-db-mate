@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { desc, eq, inArray } from 'drizzle-orm';
-import { db } from '../../../../../../db/client';
-import { scheduledQueries, scheduledRuns } from '../../../../../../db/ecosystem-schema';
+import { db } from '@/core/db/client';
+import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
 
 export const runtime = 'nodejs';
 

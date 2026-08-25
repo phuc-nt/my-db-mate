@@ -19,10 +19,10 @@
 import { z } from 'zod';
 import { generateText, Output } from 'ai';
 import { asc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '../db/schema';
-import { manualRelationships } from '../db/context-schema';
-import { columnProfiles } from '../db/intelligence-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '@/core/db/schema';
+import { manualRelationships } from '@/core/db/context-schema';
+import { columnProfiles } from '@/core/db/intelligence-schema';
 import { getScope, isScopeActive, isRefInScope, assertSqlInScope } from './schema-scope-service';
 import { getModel } from './llm-service';
 import { getProvider } from './connection-service';

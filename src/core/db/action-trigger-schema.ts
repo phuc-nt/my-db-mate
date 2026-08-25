@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, jsonb, integer, boolean } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** Condition a finding must match for a trigger to fire. Deterministic enum +
  *  threshold only — deliberately NOT a user-supplied expression language. */

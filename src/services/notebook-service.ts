@@ -14,10 +14,10 @@
  *   react-markdown (no rehype-raw) — DB values never string-concat into markdown.
  */
 import { and, desc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
 import { extractRefreshPairs } from '../lib/notebook-refresh';
-import { notebooks } from '../db/notebook-schema';
+import { notebooks } from '@/core/db/notebook-schema';
 import { getMessages } from './session-service';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { generateShareSlug } from '../lib/share';

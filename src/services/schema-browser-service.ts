@@ -7,8 +7,8 @@
  * so a raw SELECT * would hit the risk gate and return needs_confirmation, not rows).
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables } from '../db/schema';
+import { db } from '@/core/db/client';
+import { schemaTables } from '@/core/db/schema';
 import { getProvider } from './connection-service';
 import { executeQuery } from './query-executor-service';
 import { capRows } from './safety/safety-service';

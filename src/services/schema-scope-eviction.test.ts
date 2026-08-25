@@ -13,11 +13,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { resolve } from 'node:path';
-import { db } from '../db/client';
-import { connections, schemaTables } from '../db/schema';
-import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
-import { notebooks } from '../db/notebook-schema';
-import { reports, reportSources, reportVersions } from '../db/report-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables } from '@/core/db/schema';
+import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
+import { notebooks } from '@/core/db/notebook-schema';
+import { reports, reportSources, reportVersions } from '@/core/db/report-schema';
 import { evictImpactedSnapshots, findImpactedArtifacts } from './schema-scope-impact-service';
 
 const DB_PATH = resolve(process.cwd(), '.testdata/scope-governance.sqlite');

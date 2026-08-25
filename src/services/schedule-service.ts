@@ -9,9 +9,9 @@
  */
 import cron, { type ScheduledTask } from 'node-cron';
 import { desc, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { scheduledQueries, scheduledRuns } from '../db/ecosystem-schema';
-import { dashboards } from '../db/dashboard-schema';
+import { db } from '@/core/db/client';
+import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
+import { dashboards } from '@/core/db/dashboard-schema';
 import { getConnection } from './connection-service';
 import { getDashboard, runWidget } from './dashboard-service';
 import { getReportLatest, generateReport, listReports } from './report-service';

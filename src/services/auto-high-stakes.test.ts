@@ -21,8 +21,8 @@ vi.mock('./candidate-sql-service', async (importOriginal) => {
   return { ...orig, generateCandidateSqls: vi.fn().mockResolvedValue([]) };
 });
 
-import { db } from '../db/client';
-import { connections } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
 import { buildAgentTools, decideHighStakesMode } from './agent-service';
 
 describe('decideHighStakesMode — guard matrix (H1)', () => {

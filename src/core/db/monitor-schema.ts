@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** Point-in-time table metrics captured by a monitor schedule. Diffed against the
  *  previous capture to detect data drift (row-count collapse, null spikes, avg

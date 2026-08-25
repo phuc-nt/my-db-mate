@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { db } from '../../../../../../db/client';
-import { accelerateSnapshots } from '../../../../../../db/schema';
+import { db } from '@/core/db/client';
+import { accelerateSnapshots } from '@/core/db/schema';
 
 export const runtime = 'nodejs';
 

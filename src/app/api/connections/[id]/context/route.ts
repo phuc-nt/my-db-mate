@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '../../../../../db/context-schema';
+import { db } from '@/core/db/client';
+import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '@/core/db/context-schema';
 import {
   upsertTableAnnotation, upsertColumnAnnotation, addGlossaryTerm, addManualRelationship, addVerifiedQuery, setVerifiedQueryDisabled,
 } from '../../../../../services/context-service';

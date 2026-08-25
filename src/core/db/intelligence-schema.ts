@@ -4,7 +4,7 @@
  * enrich the agent's understanding of real values (enum codes, null rates).
  */
 import { pgTable, uuid, text, integer, boolean, timestamp, jsonb, doublePrecision, bigint } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** A gold NL→SQL pair for regression eval. */
 export const evalQueries = pgTable('eval_queries', {

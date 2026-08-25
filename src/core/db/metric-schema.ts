@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, timestamp, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
-import { vector384 } from './vector-type';
+import { connections } from '@/core/db/schema';
+import { vector384 } from '@/core/db/vector-type';
 
 /** A tracked metric: owner-defined SQL returning exactly (time_bucket, numeric value).
  *  Shape is validated by a trial run at create/update time; after that runMetric may

@@ -9,11 +9,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, chatSessions, schemaTables, schemaColumns } from '../db/schema';
-import { scheduledQueries } from '../db/ecosystem-schema';
-import { monitorSnapshots } from '../db/monitor-schema';
-import { encryptSecret } from './crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { connections, chatSessions, schemaTables, schemaColumns } from '@/core/db/schema';
+import { scheduledQueries } from '@/core/db/ecosystem-schema';
+import { monitorSnapshots } from '@/core/db/monitor-schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 import {
   escapeForDataWrap,
   validateInvestigationTarget,

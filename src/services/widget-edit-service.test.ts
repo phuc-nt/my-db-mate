@@ -9,10 +9,10 @@ import path from 'node:path';
 import { rm, mkdir } from 'node:fs/promises';
 import Database from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { columnAnnotations } from '../db/context-schema';
-import { dashboards, dashboardWidgets } from '../db/dashboard-schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { columnAnnotations } from '@/core/db/context-schema';
+import { dashboards, dashboardWidgets } from '@/core/db/dashboard-schema';
 
 const DB_PATH = path.join(process.cwd(), '.cache', 'widget-edit-test.sqlite');
 

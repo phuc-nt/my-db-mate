@@ -9,8 +9,8 @@
 import { z } from 'zod';
 import { generateText, Output } from 'ai';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { dashboardWidgets } from '../db/dashboard-schema';
+import { db } from '@/core/db/client';
+import { dashboardWidgets } from '@/core/db/dashboard-schema';
 import { getModel } from './llm-service';
 import { getLlmSettings } from './settings-service';
 import { getConnection } from './connection-service';

@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { generateText } from 'ai';
-import { db } from '../db/client';
+import { db } from '@/core/db/client';
 import { readLlmSettings } from './settings-service';
 import { ENV_FALLBACK, isProvider, isPlaceholderKey, getModel } from './llm-service';
 import { embed } from './embedding-service';

@@ -8,9 +8,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, bqBudgetLedger } from '../db/schema';
-import { encryptSecret } from './crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { connections, bqBudgetLedger } from '@/core/db/schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 
 const createQueryJobMock = vi.fn();
 const getDatasetsMock = vi.fn(async () => [[]]);
@@ -33,10 +33,10 @@ import { sampleRows } from './schema-browser-service';
 import { rerunNotebook } from './notebook-service';
 import { createSchedule, runSchedule } from './schedule-service';
 import { captureSnapshot } from './monitor-service';
-import { notebooks } from '../db/notebook-schema';
-import { scheduledQueries, scheduledRuns } from '../db/ecosystem-schema';
-import { schemaTables, schemaColumns, queryRuns } from '../db/schema';
-import { evalQueries } from '../db/intelligence-schema';
+import { notebooks } from '@/core/db/notebook-schema';
+import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
+import { schemaTables, schemaColumns, queryRuns } from '@/core/db/schema';
+import { evalQueries } from '@/core/db/intelligence-schema';
 import { desc } from 'drizzle-orm';
 
 /** Build a BQ job mock whose real-run metadata carries the given query statistics. */

@@ -17,9 +17,9 @@
  *   the scan is complete.
  */
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns } from '../db/schema';
-import { columnProfiles } from '../db/intelligence-schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
+import { columnProfiles } from '@/core/db/intelligence-schema';
 import { profileColumn } from './profiling-service';
 import { getConnection } from './connection-service';
 

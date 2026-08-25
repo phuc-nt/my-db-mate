@@ -3,9 +3,9 @@
  * ConnectionProvider on demand, and runs the write-privilege probe (RT-F2).
  */
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { encryptSecret } from './crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 import { buildProvider, type ConnectionRow } from './connection-providers/provider-factory';
 import { closeTunnel } from './connection-providers/ssh-tunnel-manager';
 import { sanitizeBigQueryConnError } from './connection-providers/bigquery-provider';

@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 /** Thumbs-down teach-flow log: what was asked, which SQL was wrong and why.
  *  Write-mostly — the actionable artifact is the corrected verified query

@@ -3,8 +3,8 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { db } from '../../db/client';
-import { accelerateSnapshots, connections } from '../../db/schema';
+import { db } from '@/core/db/client';
+import { accelerateSnapshots, connections } from '@/core/db/schema';
 import { cacheKeyFor, ensureSnapshot, parquetCopyOptions } from './snapshot-cache-service';
 import type { ConnectionProvider, QueryResult } from '../connection-providers/provider-interface';
 

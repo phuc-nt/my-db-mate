@@ -5,9 +5,9 @@
  * For small schemas the full summary is returned unchanged.
  */
 import { eq, inArray } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '../db/schema';
-import { manualRelationships, tableAnnotations } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { schemaTables, schemaColumns, schemaForeignKeys, connections } from '@/core/db/schema';
+import { manualRelationships, tableAnnotations } from '@/core/db/context-schema';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';
 import { getScope, filterTablesToScope, type SchemaScope } from './schema-scope-service';
 import { composeSummary, describeViews } from './schema-summary-composition';

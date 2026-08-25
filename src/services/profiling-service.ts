@@ -5,9 +5,9 @@
  * has low cardinality, plus null rate and min/max.
  */
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { columnProfiles } from '../db/intelligence-schema';
-import { schemaTables, schemaColumns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { columnProfiles } from '@/core/db/intelligence-schema';
+import { schemaTables, schemaColumns } from '@/core/db/schema';
 import { getProvider } from './connection-service';
 import { capRows } from './safety/safety-service';
 import { executeQuery } from './query-executor-service';

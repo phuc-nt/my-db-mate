@@ -10,8 +10,8 @@
 import { streamText, tool, stepCountIs, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { schemaTables } from '../db/schema';
+import { db } from '@/core/db/client';
+import { schemaTables } from '@/core/db/schema';
 import { getSchemaSummary } from './schema-sync-service';
 import { qualifiedTableRef } from '../lib/table-ref';
 import { composeSchemaPrefix } from '../lib/table-catalog-prefix';

@@ -12,8 +12,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, queryRuns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections, queryRuns } from '@/core/db/schema';
 import { mineQueryRuns } from './query-runs-mining-reader';
 
 let connId: string;

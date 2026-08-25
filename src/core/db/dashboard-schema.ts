@@ -9,7 +9,7 @@
  * - FK onDelete is explicit (H5): both FKs cascade, matching the app convention.
  */
 import { pgTable, uuid, text, timestamp, jsonb, integer } from 'drizzle-orm/pg-core';
-import { connections } from './schema';
+import { connections } from '@/core/db/schema';
 
 export const dashboards = pgTable('dashboards', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -8,8 +8,8 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
 import { eq } from 'drizzle-orm';
 import { createConnection } from './connection-service';
 import { syncSchema } from './schema-sync-service';

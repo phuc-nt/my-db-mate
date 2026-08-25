@@ -5,15 +5,15 @@
  * never rely on vectors alone); verified queries use vector top-K.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client';
+import { db } from '@/core/db/client';
 import {
   tableAnnotations,
   columnAnnotations,
   glossaryTerms,
   manualRelationships,
   verifiedQueries,
-} from '../db/context-schema';
-import { metrics } from '../db/metric-schema';
+} from '@/core/db/context-schema';
+import { metrics } from '@/core/db/metric-schema';
 import { embed } from './embedding-service';
 
 // Cosine-distance floors (pgvector `<=>` ∈ [0,2]) — an item is only injected into the

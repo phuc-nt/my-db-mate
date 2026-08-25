@@ -21,9 +21,9 @@ import { eq, and } from 'drizzle-orm';
 import path from 'node:path';
 import { rm, mkdir } from 'node:fs/promises';
 import Database from 'better-sqlite3';
-import { db } from '../db/client';
-import { connections, schemaTables, schemaColumns } from '../db/schema';
-import { anomalyBaselines } from '../db/anomaly-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables, schemaColumns } from '@/core/db/schema';
+import { anomalyBaselines } from '@/core/db/anomaly-schema';
 import { detectAnomalies, type AnomalyReport } from './anomaly-service';
 import { MIN_MAD_OBS } from '../lib/robust-stats';
 

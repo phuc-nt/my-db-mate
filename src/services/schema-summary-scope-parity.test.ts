@@ -11,9 +11,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '../db/schema';
-import { virtualViews } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables, schemaColumns, schemaForeignKeys } from '@/core/db/schema';
+import { virtualViews } from '@/core/db/context-schema';
 import { getSchemaSummary } from './schema-sync-service';
 import { getPrunedSchemaSummary } from './schema-pruning-service';
 import { setScope, type SchemaScope } from './schema-scope-service';

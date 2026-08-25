@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../../../../../../db/client';
-import { accelerateSnapshots } from '../../../../../../../db/schema';
+import { db } from '@/core/db/client';
+import { accelerateSnapshots } from '@/core/db/schema';
 import { getConnection } from '../../../../../../../services/connection-service';
 import { buildProvider, type ConnectionRow } from '../../../../../../../services/connection-providers/provider-factory';
 import { ensureSnapshot } from '../../../../../../../services/accelerator/snapshot-cache-service';

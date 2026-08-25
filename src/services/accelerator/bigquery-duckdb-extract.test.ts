@@ -11,9 +11,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
-import { db } from '../../db/client';
-import { connections, queryRuns, accelerateSnapshots } from '../../db/schema';
-import { encryptSecret } from '../crypto/credential-cipher';
+import { db } from '@/core/db/client';
+import { connections, queryRuns, accelerateSnapshots } from '@/core/db/schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
 
 const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');
 

@@ -5,10 +5,10 @@
  */
 import { stringify, parse } from 'yaml';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
+import { db } from '@/core/db/client';
 import {
   tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries,
-} from '../db/context-schema';
+} from '@/core/db/context-schema';
 import { embed } from './embedding-service';
 
 interface ContextYaml {

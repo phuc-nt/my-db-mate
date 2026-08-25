@@ -9,9 +9,9 @@ import path from 'node:path';
 import { rm, mkdir } from 'node:fs/promises';
 import Database from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { connections } from '../db/schema';
-import { metrics } from '../db/metric-schema';
+import { db } from '@/core/db/client';
+import { connections } from '@/core/db/schema';
+import { metrics } from '@/core/db/metric-schema';
 
 const DB_PATH = path.join(process.cwd(), '.cache', 'gen-dashboard-test.sqlite');
 

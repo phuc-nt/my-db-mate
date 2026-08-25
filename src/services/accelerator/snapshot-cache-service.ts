@@ -15,8 +15,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DuckDBInstance, BIGINT, DOUBLE, BOOLEAN, VARCHAR, type DuckDBType, type DuckDBValue } from '@duckdb/node-api';
-import { db } from '../../db/client';
-import { accelerateSnapshots } from '../../db/schema';
+import { db } from '@/core/db/client';
+import { accelerateSnapshots } from '@/core/db/schema';
 import type { ConnectionProvider } from '../connection-providers/provider-interface';
 
 export const CACHE_ROOT = path.join(process.cwd(), '.cache', 'snapshots');

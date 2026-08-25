@@ -20,9 +20,9 @@ import { eq } from 'drizzle-orm';
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Database from 'better-sqlite3';
-import { db } from '../db/client';
-import { connections, schemaTables, schemaColumns, schemaForeignKeys, queryRuns } from '../db/schema';
-import { manualRelationships } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { connections, schemaTables, schemaColumns, schemaForeignKeys, queryRuns } from '@/core/db/schema';
+import { manualRelationships } from '@/core/db/context-schema';
 import { collectAdvisorInputs, adoptAsVirtualViews, type ValidatedProposal } from './datamart-advisor-service';
 import { listViews, deleteView } from './virtual-view-service';
 

@@ -5,8 +5,8 @@
  * back semantic retrieval; the extension is already enabled by the P1 migration.
  */
 import { pgTable, uuid, text, boolean, timestamp, jsonb, doublePrecision, unique } from 'drizzle-orm/pg-core';
-import { connections, chatSessions } from './schema';
-import { vector384 } from './vector-type';
+import { connections, chatSessions } from '@/core/db/schema';
+import { vector384 } from '@/core/db/vector-type';
 
 /** Human/AI annotation on a table: description + business alias + deprecated flag. */
 export const tableAnnotations = pgTable('table_annotations', {

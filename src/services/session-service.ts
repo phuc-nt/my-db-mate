@@ -1,7 +1,7 @@
 /** Chat session persistence: sessions, messages, and the query-run audit view. */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { chatSessions, chatMessages, queryRuns } from '../db/schema';
+import { db } from '@/core/db/client';
+import { chatSessions, chatMessages, queryRuns } from '@/core/db/schema';
 
 export async function createSession(connectionId: string, title?: string) {
   const [row] = await db

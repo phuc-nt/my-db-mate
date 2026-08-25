@@ -10,8 +10,8 @@
  * Free-form prose docs are out of scope (unproven extraction value); if that need
  * appears, a mining pass can be added later. Inbox-gated like everything else.
  */
-import { db } from '../db/client';
-import { knowledgeSuggestions } from '../db/context-schema';
+import { db } from '@/core/db/client';
+import { knowledgeSuggestions } from '@/core/db/context-schema';
 
 export interface ImportResult { parsed: number; created: number; format: string }
 

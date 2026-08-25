@@ -2,8 +2,8 @@
  *  point (risk gate included) and validate the (time, value) shape; only after
  *  that does runMetric earn skipRiskGate (app-validated stored SQL). */
 import { eq, isNull } from 'drizzle-orm';
-import { db } from '../db/client';
-import { metrics } from '../db/metric-schema';
+import { db } from '@/core/db/client';
+import { metrics } from '@/core/db/metric-schema';
 import { executeQuery, touchesSensitiveColumns } from './query-executor-service';
 import { getConnection } from './connection-service';
 import { embed } from './embedding-service';

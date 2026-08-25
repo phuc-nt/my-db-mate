@@ -21,8 +21,8 @@
  * (`sql-param.ts` defaultDateRange uses UTC `toISOString().slice(0,10)`).
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { bqBudgetLedger } from '../db/schema';
+import { db } from '@/core/db/client';
+import { bqBudgetLedger } from '@/core/db/schema';
 
 /** UTC day bucket 'YYYY-MM-DD' — the tally/reset boundary. Consistent with
  *  defaultDateRange so the budget day aligns with digest/report day boundaries. */

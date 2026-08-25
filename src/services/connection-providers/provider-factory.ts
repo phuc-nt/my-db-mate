@@ -6,7 +6,7 @@ import { TcpDriverProvider } from './tcp-driver-provider';
 import { MssqlDriverProvider } from './mssql-driver-provider';
 import { RemoteHttpProvider } from './remote-http-provider';
 import { BigQueryConnectionProvider } from './bigquery-provider';
-import { decryptSecret } from '../crypto/credential-cipher';
+import { decryptSecret } from '@/core/crypto/credential-cipher';
 
 export interface ConnectionRow {
   id?: string;

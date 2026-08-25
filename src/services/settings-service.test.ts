@@ -5,8 +5,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
-import { appSettings } from '../db/app-settings-schema';
+import { db } from '@/core/db/client';
+import { appSettings } from '@/core/db/app-settings-schema';
 import { saveLlmSettings, getLlmSettings, clearLlmSettings } from './settings-service';
 
 beforeEach(async () => { await clearLlmSettings(); });

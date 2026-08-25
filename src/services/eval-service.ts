@@ -8,8 +8,8 @@
  */
 import { eq } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
-import { db } from '../db/client';
-import { evalQueries, evalRuns, evalResults } from '../db/intelligence-schema';
+import { db } from '@/core/db/client';
+import { evalQueries, evalRuns, evalResults } from '@/core/db/intelligence-schema';
 import { getConnection, getProvider } from './connection-service';
 import { runAgentAnswer } from './agent-service';
 import { executeQuery } from './query-executor-service';

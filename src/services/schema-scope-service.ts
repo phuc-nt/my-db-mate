@@ -12,9 +12,9 @@
  * provably reads no base table (`SELECT 1`) passes without a matching entry.
  */
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client';
+import { db } from '@/core/db/client';
 import { rm } from 'node:fs/promises';
-import { connections, schemaTables, accelerateSnapshots } from '../db/schema';
+import { connections, schemaTables, accelerateSnapshots } from '@/core/db/schema';
 import { extractScopeRefs, type ScopeRef } from '../lib/sql-scope-refs';
 import { cachePaths } from './accelerator/snapshot-cache-service';
 import type { Dialect } from './connection-providers/provider-interface';

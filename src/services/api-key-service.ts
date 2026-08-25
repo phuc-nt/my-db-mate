@@ -5,8 +5,8 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
-import { db } from '../db/client';
-import { apiKeys } from '../db/ecosystem-schema';
+import { db } from '@/core/db/client';
+import { apiKeys } from '@/core/db/ecosystem-schema';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');

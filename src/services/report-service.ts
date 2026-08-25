@@ -19,12 +19,12 @@
 import { generateShareSlug } from '../lib/share';
 import { generateText } from 'ai';
 import { and, asc, desc, eq, sql as dsql } from 'drizzle-orm';
-import { db } from '../db/client';
-import { reports, reportSources, reportVersions } from '../db/report-schema';
-import { dashboardWidgets } from '../db/dashboard-schema';
-import { connections } from '../db/schema';
-import { verifiedQueries } from '../db/context-schema';
-import { notebooks } from '../db/notebook-schema';
+import { db } from '@/core/db/client';
+import { reports, reportSources, reportVersions } from '@/core/db/report-schema';
+import { dashboardWidgets } from '@/core/db/dashboard-schema';
+import { connections } from '@/core/db/schema';
+import { verifiedQueries } from '@/core/db/context-schema';
+import { notebooks } from '@/core/db/notebook-schema';
 import { executeQuery, touchesSensitiveColumns, connectionHasSensitiveColumns } from './query-executor-service';
 import { validateChartSpec } from './chart-spec-service';
 import { getModel } from './llm-service';
