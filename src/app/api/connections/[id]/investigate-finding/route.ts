@@ -22,8 +22,11 @@ import {
   kickoffMessage,
   META_TARGET_KEY,
 } from '@/modules/chat-agent';
+import { requireModule } from '@/core/require-module';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });
@@ -43,6 +46,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   const sessionId = new URL(req.url).searchParams.get('sessionId');
   if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });

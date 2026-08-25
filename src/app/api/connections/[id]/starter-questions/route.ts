@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getStarterQuestions } from '@/modules/chat-agent';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** GET → 3-4 starter questions for an empty chat (verified-first, no LLM). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   try {
     const questions = await getStarterQuestions(id);

@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
 import { listSuggestions, acceptSuggestion, rejectSuggestion } from '@/modules/context-studio';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** GET → pending Knowledge Inbox suggestions. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   return NextResponse.json(await listSuggestions(id));
 }
 
 /** POST → { action:'accept'|'reject', suggestionId, payload? }. */
 export async function POST(req: Request) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const body = await req.json();
   try {
     if (body.action === 'accept') await acceptSuggestion(body.suggestionId, body.payload);

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { generateDashboardProposal } from '@/modules/bi';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** POST { prompt, existingWidgets? } → a dashboard proposal (widgets probed, not
  *  yet created). The preview UI accepts a subset via /api/dashboards/generate-accept. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const prompt = typeof body.prompt === 'string' ? body.prompt.slice(0, 2000) : '';

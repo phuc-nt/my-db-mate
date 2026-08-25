@@ -4,6 +4,7 @@ import { db } from '@/core/db/client';
 import { glossaryTerms, verifiedQueries, columnAnnotations, tableAnnotations } from '@/core/db/context-schema';
 import { metrics } from '@/core/db/metric-schema';
 import { embed } from '@/core/model/embedding-service';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,8 @@ const METRIC_INJECT_SIM = 0.65;
  *  "Plausibly": recomputed against current context state, not a transcript of
  *  what the agent saw (deterministic for unchanged context). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const question = typeof body.question === 'string' ? body.question.slice(0, 2000) : '';

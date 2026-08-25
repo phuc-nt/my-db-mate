@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 import { deleteBookmark, listBookmarks } from '@/modules/context-studio';
 import { executeQuery } from '@/core/execution/query-executor-service';
 import { toJsonSafe } from '@/core/lib/json-safe';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** Run a bookmark through the choke point (safety + audit). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string; qid: string }> }) {
+  const disabled = requireModule('db-client');
+  if (disabled) return disabled;
   const { id, qid } = await params;
   const { confirmed } = await req.json().catch(() => ({}));
   const bm = (await listBookmarks(id)).find((b) => b.id === qid);
@@ -19,6 +22,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; qid: string }> }) {
+  const disabled = requireModule('db-client');
+  if (disabled) return disabled;
   const { id, qid } = await params;
   await deleteBookmark(id, qid);
   return NextResponse.json({ ok: true });

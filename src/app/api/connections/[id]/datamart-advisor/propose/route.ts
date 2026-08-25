@@ -18,12 +18,15 @@ import {
   proposeDatamarts,
   validateProposal,
 } from '@/modules/datamart';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 // One LLM call over a whole schema, then a dry run per proposed statement.
 export const maxDuration = 300;
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('datamart');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });

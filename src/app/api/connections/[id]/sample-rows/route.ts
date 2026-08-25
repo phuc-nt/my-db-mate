@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { sampleRows } from '@/core/schema/schema-browser-service';
 import { toJsonSafe } from '@/core/lib/json-safe';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** Sample rows for a table. Takes {table} (NOT {sql}) — the table is allow-listed
  *  and quoted server-side, then run bounded through the choke point (red-team H1). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('db-client');
+  if (disabled) return disabled;
   const { id } = await params;
   const { table } = await req.json();
   if (typeof table !== 'string' || !table.trim()) {

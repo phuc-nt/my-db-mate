@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { deleteLatestAssistantMessage } from '@/core/app-state/session-service';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -7,6 +8,8 @@ export const runtime = 'nodejs';
  *  interrupt's Discard action calls this when the server already persisted a
  *  completed turn the user threw away (investigate mode). */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { sessionId } = await params;
   const deletedId = await deleteLatestAssistantMessage(sessionId);
   return NextResponse.json({ ok: true, deletedId });

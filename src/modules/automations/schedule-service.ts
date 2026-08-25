@@ -17,6 +17,7 @@ import { getDashboard, runWidget } from '@/modules/bi';
 import { getReportLatest, generateReport, listReports } from '@/modules/bi';
 import { captureSnapshot, historySnapshots, diffAgainstBaseline, latestSnapshot, diffSnapshots, storeSnapshot, DEFAULT_THRESHOLDS, type MonitorFinding, type MonitorThresholds } from '@/modules/automations/monitor-service';
 import { executeQuery } from '@/core/execution/query-executor-service';
+import { isModuleEnabled } from '@/core/module-registry';
 import { runAgentAnswer } from '@/modules/chat-agent';
 import { generateText } from 'ai';
 import { getModel } from '@/core/model/llm-service';
@@ -216,6 +217,13 @@ const DIGEST_METRIC_CAP = 20; // one LLM call regardless — cap the prompt, log
  *  deterministically, one LLM call to narrate (numbers stay authoritative),
  *  merge the latest monitor findings, deliver as markdown. */
 async function runMetricsDigestSchedule(s: ScheduleRow): Promise<void> {
+  // Skipped with a reason rather than run-and-fail. Without this the digest
+  // records "no metrics to digest — create metrics in the Metrics tab first",
+  // which points at a tab this deployment does not have.
+  if (!isModuleEnabled('metrics')) {
+    await record(s.id, 'skipped', 'metrics module is not enabled in this deployment');
+    return;
+  }
   const cfg = (s.config ?? {}) as { metricIds?: string[]; quiet?: boolean };
   let all = await listMetrics(s.connectionId);
   if (Array.isArray(cfg.metricIds) && cfg.metricIds.length > 0) {

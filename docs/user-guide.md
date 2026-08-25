@@ -205,6 +205,25 @@ claude mcp add my-db-mate -- npx tsx scripts/mcp-server-entry.ts
 
 Claude sẽ có `ask_database` / `run_sql` / `get_schema_context` / `search_verified_queries` — tất cả đi qua cùng lớp an toàn, glossary, và audit log.
 
+### Tắt bớt module không dùng
+
+Nếu bạn không cần một tính năng nào đó, tắt hẳn bằng biến môi trường
+`MODULES_DISABLED` (danh sách ngăn cách bằng dấu phẩy), rồi khởi động lại:
+
+```bash
+MODULES_DISABLED=notebooks,eval
+```
+
+Module bị tắt sẽ biến mất ở đúng 4 chỗ: tab trong workspace không hiện, API route
+trả 404, lịch cron không đăng ký, và tool MCP không xuất hiện. Phần còn lại vẫn
+chạy bình thường — tắt `metrics` thì chat vẫn trả lời (chỉ là không chèn governed
+metric), còn schedule digest ghi nhận `skipped` kèm lý do thay vì báo lỗi.
+
+Tên module hợp lệ: `chat-agent`, `context-studio`, `metrics`, `bi`, `automations`,
+`anomaly`, `db-client`, `notebooks`, `datamart`, `mcp`, `demo`, `eval`,
+`onboarding`. Gõ sai tên thì app chỉ cảnh báo trong log rồi bỏ qua, không chết.
+Phần lõi (kết nối, lớp an toàn, executor, schema) không tắt được.
+
 ---
 
 ## 4. Giới hạn hiện tại (chưa làm)

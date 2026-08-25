@@ -20,6 +20,7 @@ import { getRelevantContext } from '@/modules/context-studio';
 import { getConnection } from '@/core/connections/connection-service';
 import { listMetrics, getMetric, runMetric } from '@/modules/metrics';
 import { toJsonSafe } from '@/core/lib/json-safe';
+import { disabledMcpTools } from '@/core/module-registry';
 
 /** A metric id is client-supplied; only run metrics that belong to THIS key's
  *  connection so a guessed id from another connection can't be executed. */
@@ -46,14 +47,26 @@ export async function startMcpServer() {
 
   const server = new McpServer({ name: 'my-db-mate', version: '0.1.0' });
 
-  server.tool('ask_database', 'Answer a natural-language question about the connected database using its curated glossary and verified queries.',
+  // Single filter point rather than a guard on each of the six registrations:
+  // a tool whose module is off is never registered, so it cannot be listed OR
+  // called. Filtering only the list would leave a callable tool that simply
+  // does not advertise itself, which is worse than either honest option.
+  const hidden = disabledMcpTools();
+  const registered: string[] = [];
+  const tool: typeof server.tool = ((name: string, ...rest: unknown[]) => {
+    if (hidden.has(name)) return undefined;
+    registered.push(name);
+    return (server.tool as unknown as (...a: unknown[]) => unknown)(name, ...rest);
+  }) as unknown as typeof server.tool;
+
+  tool('ask_database', 'Answer a natural-language question about the connected database using its curated glossary and verified queries.',
     { question: z.string() },
     async ({ question }) => {
       const answer = await runAgentAnswer({ connectionId, dialect: conn.dialect, question, actor });
       return { content: [{ type: 'text', text: answer.text }] };
     });
 
-  server.tool('run_sql', 'Run one read-only SELECT (goes through the full safety layer: validation, risk tier, audit).',
+  tool('run_sql', 'Run one read-only SELECT (goes through the full safety layer: validation, risk tier, audit).',
     { sql: z.string() },
     async ({ sql }) => {
       // BigQuery: explicit cost-safety block on the raw-SQL exec path. A raw MCP
@@ -74,7 +87,7 @@ export async function startMcpServer() {
       return sqlResult(res);
     });
 
-  server.tool('get_schema_context', 'Get the schema summary plus curated annotations and glossary relevant to a topic.',
+  tool('get_schema_context', 'Get the schema summary plus curated annotations and glossary relevant to a topic.',
     { topic: z.string().optional() },
     async ({ topic }) => {
       const schema = await getSchemaSummary(connectionId);
@@ -83,14 +96,14 @@ export async function startMcpServer() {
       return { content: [{ type: 'text', text: `Schema:\n${schema}${glossary ? `\n\nGlossary:\n${glossary}` : ''}` }] };
     });
 
-  server.tool('search_verified_queries', 'Find verified example NL→SQL pairs similar to a question.',
+  tool('search_verified_queries', 'Find verified example NL→SQL pairs similar to a question.',
     { question: z.string() },
     async ({ question }) => {
       const ctx = await getRelevantContext(question, connectionId);
       return { content: [{ type: 'text', text: JSON.stringify(ctx.verifiedExamples, null, 2) }] };
     });
 
-  server.tool('list_governed_metrics', 'List this connection\'s governed metrics (the authoritative, pre-validated definitions). Returns id/name/description/time grain/dimensions — reuse these instead of writing your own aggregation. Run one with run_governed_metric.',
+  tool('list_governed_metrics', 'List this connection\'s governed metrics (the authoritative, pre-validated definitions). Returns id/name/description/time grain/dimensions — reuse these instead of writing your own aggregation. Run one with run_governed_metric.',
     {},
     async () => {
       const ms = await listMetrics(connectionId);
@@ -98,7 +111,7 @@ export async function startMcpServer() {
       return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     });
 
-  server.tool('run_governed_metric', 'Run a governed metric by id and return its time series + latest/previous/delta. The metric SQL was validated (and sensitive-column-checked) when it was created and runs read-only through the safety layer; BigQuery goes through the daily byte budget.',
+  tool('run_governed_metric', 'Run a governed metric by id and return its time series + latest/previous/delta. The metric SQL was validated (and sensitive-column-checked) when it was created and runs read-only through the safety layer; BigQuery goes through the daily byte budget.',
     { metric_id: z.string() },
     async ({ metric_id }) => {
       const metric = await getMetric(metric_id);
@@ -109,6 +122,10 @@ export async function startMcpServer() {
       if (r.error || !r.run) return { content: [{ type: 'text', text: `ERROR: ${r.error ?? 'metric run failed'}` }], isError: true };
       return { content: [{ type: 'text', text: JSON.stringify(toJsonSafe(r.run), null, 2) }] };
     });
+
+  // stderr: stdout is the protocol channel. Which tools a deployment actually
+  // exposes is the first thing to check when a client says a tool is missing.
+  console.error(`[mcp] tools: ${registered.join(', ')}`);
 
   await server.connect(new StdioServerTransport());
 }

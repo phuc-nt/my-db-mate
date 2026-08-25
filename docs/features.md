@@ -141,6 +141,31 @@ The real boundary is a **SELECT-only DB user** — grant your connection only `S
 
 **Share links** (dashboards/reports) use an unguessable 128-bit link as a capability — anyone with the link can view the cached result, so treat share links like passwords. Intended for localhost/LAN or trusted sharing; put an auth proxy in front before exposing the app to the internet.
 
+## Turning modules off
+
+`MODULES_DISABLED` is a comma-separated list of feature modules this deployment
+does not want:
+
+```bash
+MODULES_DISABLED=notebooks,eval
+```
+
+A disabled module disappears at four points, and nowhere else: its workspace tab
+is not rendered, its API routes answer 404, its cron schedules never register,
+and its MCP tools are neither listed nor callable. Everything else keeps working
+— a cross-module consumer treats a disabled dependency as absent rather than
+broken, so chat still answers with `metrics` off (it just gets no governed-metric
+injection) and a metrics-digest schedule records `skipped` with a reason instead
+of failing.
+
+Env rather than a settings toggle, deliberately: module availability is
+deployment config, and a switch in the settings UI is a switch an agent can be
+talked into flipping. Core (connections, safety, executor, schema) has no switch
+— there is no working build of this product without it. Disabling `chat-agent`
+is allowed and logs a warning, since the result is a plain DB client, which is a
+real way to run this. An unknown name in the list warns and is ignored rather
+than failing the boot: a typo in a deploy variable should not take the app down.
+
 ## Deferred
 
 Multi-user RBAC / approval queue, cross-database chat (one session spanning multiple connections), and an eval-regression guard on live production DBs are intentionally out of scope for the current single-user, self-hosted target.

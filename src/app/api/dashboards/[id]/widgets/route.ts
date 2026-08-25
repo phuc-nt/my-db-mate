@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { pinWidget } from '@/modules/bi';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** Pin a chat result as a widget. Safety-validates + risk-tiers + blocks sensitive (C4). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { id } = await params;
   const { connectionId, title, sql, chartSpec } = await req.json();
   if (typeof connectionId !== 'string' || typeof sql !== 'string' || !sql.trim()) {

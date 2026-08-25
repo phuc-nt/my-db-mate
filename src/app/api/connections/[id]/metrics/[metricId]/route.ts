@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { deleteMetric, getMetric, updateMetric } from '@/modules/metrics';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,8 @@ async function owned(connectionId: string, metricId: string) {
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; metricId: string }> }) {
+  const disabled = requireModule('metrics');
+  if (disabled) return disabled;
   const { id, metricId } = await params;
   if (!(await owned(id, metricId))) return NextResponse.json({ error: 'not found' }, { status: 404 });
   const body = await req.json().catch(() => ({}));
@@ -21,6 +24,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; metricId: string }> }) {
+  const disabled = requireModule('metrics');
+  if (disabled) return disabled;
   const { id, metricId } = await params;
   if (!(await owned(id, metricId))) return NextResponse.json({ error: 'not found' }, { status: 404 });
   await deleteMetric(metricId);

@@ -25,6 +25,7 @@ import {
 import type { Dialect } from '@/core/connections/providers/provider-interface';
 import { SUBQ_PART_TYPE } from '@/modules/chat-agent';
 import { SNAPSHOT_QUERY_CAP } from '@/modules/chat-agent';
+import { requireModule } from '@/core/require-module';
 
 /** Parent investigate caps — imported from agent-service, which OWNS them. The
  *  budget split must divide the real cap: a local copy would silently drift if
@@ -78,6 +79,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { messages, connectionId, sessionId, mode, highStakes } = (await req.json()) as {
     messages: UIMessage[];
     connectionId: string;

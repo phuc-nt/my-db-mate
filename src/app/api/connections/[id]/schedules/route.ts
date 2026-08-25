@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
 import { createSchedule, deleteSchedule, listSchedules, runSchedule, setScheduleEnabled } from '@/modules/automations';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const { id } = await params;
   return NextResponse.json(await listSchedules(id));
 }
 
 /** POST { action:'create', ... } or { action:'run', scheduleId }. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json();
   try {
@@ -29,6 +34,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
 /** PATCH { scheduleId, isEnabled } → toggle a schedule. */
 export async function PATCH(req: Request) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const body = await req.json();
   if (typeof body.scheduleId !== 'string' || typeof body.isEnabled !== 'boolean') {
     return NextResponse.json({ error: 'scheduleId + isEnabled required' }, { status: 400 });
@@ -39,6 +46,8 @@ export async function PATCH(req: Request) {
 
 /** DELETE { scheduleId } → remove a schedule (and its cron task). */
 export async function DELETE(req: Request) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const body = await req.json();
   if (typeof body.scheduleId !== 'string') {
     return NextResponse.json({ error: 'scheduleId required' }, { status: 400 });

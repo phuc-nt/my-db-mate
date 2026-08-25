@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { exportContextYaml, importContextYaml } from '@/modules/context-studio';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** GET → YAML export of the connection's context. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const yaml = await exportContextYaml(id);
   return new NextResponse(yaml, { headers: { 'content-type': 'text/yaml' } });
@@ -12,6 +15,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** POST → import (replace) context from a YAML body. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   try {
     await importContextYaml(id, await req.text());
