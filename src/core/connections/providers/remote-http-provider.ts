@@ -8,6 +8,10 @@
 import type {
   ConnectionProvider, Dialect, IntrospectedSchema, QueryResult, WritePrivilegeProbe, ExplainEstimate, ColumnInfo, ForeignKeyInfo,
 } from '@/core/connections/providers/provider-interface';
+import {
+  resolveForeignKeyTarget,
+  type PragmaForeignKeyRow,
+} from '@/core/connections/providers/sqlite-foreign-key-target';
 
 export interface RemoteHttpConfig {
   accountId: string;
@@ -51,14 +55,36 @@ export class RemoteHttpProvider implements ConnectionProvider {
     const tableRows = await this.d1(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`);
     const columns: ColumnInfo[] = [];
     const foreignKeys: ForeignKeyInfo[] = [];
+    const pendingForeignKeys: { fromTable: string; rows: PragmaForeignKeyRow[] }[] = [];
+    const primaryKeysOf = (table: string): string[] =>
+      columns.filter((c) => c.tableName === table && c.isPrimaryKey).map((c) => c.columnName);
     for (const t of tableRows) {
       const tableName = String(t.name);
       const cols = await this.d1(`PRAGMA table_info("${tableName.replace(/"/g, '')}")`);
       for (const c of cols) {
         columns.push({ tableName, schemaName: null, columnName: String(c.name), dataType: String(c.type || 'unknown'), isNullable: Number(c.notnull) === 0, isPrimaryKey: Number(c.pk) > 0, ordinalPosition: Number(c.cid) });
       }
+      // Deferred: an implicit `REFERENCES <table>` target resolves to that
+      // table's primary key, which may not be introspected yet.
       const fks = await this.d1(`PRAGMA foreign_key_list("${tableName.replace(/"/g, '')}")`);
-      for (const fk of fks) foreignKeys.push({ fromTable: tableName, fromColumn: String(fk.from), toTable: String(fk.table), toColumn: String(fk.to) });
+      pendingForeignKeys.push({
+        fromTable: tableName,
+        rows: fks.map((fk) => ({
+          table: String(fk.table),
+          from: String(fk.from),
+          // NULL over the HTTP wire must stay null, not become the string
+          // "null", or the resolver would treat it as an explicit column name.
+          to: fk.to == null ? null : String(fk.to),
+        })),
+      });
+    }
+
+    for (const { fromTable, rows } of pendingForeignKeys) {
+      for (const fk of rows) {
+        const toColumn = resolveForeignKeyTarget(fk, primaryKeysOf);
+        if (!toColumn) continue;
+        foreignKeys.push({ fromTable, fromColumn: fk.from, toTable: fk.table, toColumn });
+      }
     }
     // rowCount omitted for D1 remote — a COUNT(*) per table would be an extra
     // remote round-trip; the big-table guard simply has no estimate here (null).

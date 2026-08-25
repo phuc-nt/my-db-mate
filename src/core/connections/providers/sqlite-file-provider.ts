@@ -14,6 +14,10 @@ import type {
   ColumnInfo,
   ForeignKeyInfo,
 } from '@/core/connections/providers/provider-interface';
+import {
+  resolveForeignKeyTarget,
+  type PragmaForeignKeyRow,
+} from '@/core/connections/providers/sqlite-foreign-key-target';
 
 export interface SqliteConfig {
   path: string;
@@ -70,6 +74,9 @@ export class SqliteFileProvider implements ConnectionProvider {
 
     const columns: ColumnInfo[] = [];
     const foreignKeys: ForeignKeyInfo[] = [];
+    const pendingForeignKeys: { fromTable: string; rows: PragmaForeignKeyRow[] }[] = [];
+    const primaryKeysOf = (table: string): string[] =>
+      columns.filter((c) => c.tableName === table && c.isPrimaryKey).map((c) => c.columnName);
 
     for (const { name: tableName } of tableRows) {
       const cols = db.prepare(`PRAGMA table_info("${tableName}")`).all() as {
@@ -90,18 +97,19 @@ export class SqliteFileProvider implements ConnectionProvider {
           ordinalPosition: c.cid,
         });
       }
-      const fks = db.prepare(`PRAGMA foreign_key_list("${tableName}")`).all() as {
-        table: string;
-        from: string;
-        to: string;
-      }[];
-      for (const fk of fks) {
-        foreignKeys.push({
-          fromTable: tableName,
-          fromColumn: fk.from,
-          toTable: fk.table,
-          toColumn: fk.to,
-        });
+      // Deferred: a foreign key can reference a table introspected later in this
+      // loop, and resolving an implicit target needs that table's primary key.
+      const fks = db.prepare(`PRAGMA foreign_key_list("${tableName}")`).all() as PragmaForeignKeyRow[];
+      pendingForeignKeys.push({ fromTable: tableName, rows: fks });
+    }
+
+    for (const { fromTable, rows } of pendingForeignKeys) {
+      for (const fk of rows) {
+        const toColumn = resolveForeignKeyTarget(fk, primaryKeysOf);
+        // `REFERENCES <table>` whose parent has no single-column primary key
+        // names no resolvable column; see sqlite-foreign-key-target.ts.
+        if (!toColumn) continue;
+        foreignKeys.push({ fromTable, fromColumn: fk.from, toTable: fk.table, toColumn });
       }
     }
 
