@@ -113,6 +113,24 @@ row count rather than a lower bound, so a return path that stops auditing shows 
 It was mutation-checked in both directions: disabling the scope block and
 downgrading the safety block's status each turn it red.
 
+## Wiring paths checked against real data
+
+The smoke covers the kernel; it does not cover whether the *routes* still reach
+the right modules after imports were shuffled. Four paths were driven end to end
+against the demo SQLite database, chosen because each crosses a different set of
+module edges:
+
+| Path | Edges it crosses | Result |
+|---|---|---|
+| `POST /api/chat` | `chat-agent` → `context-studio`, executor | Resolved the opaque `ord_sts_cd = 'D'` to "delivered" from the curated glossary — the context layer is wired, not just present |
+| Dashboard widget refresh | `bi` → executor, risk scoring | Real rows; medium-risk tier applied |
+| `metrics_digest` schedule tick | `automations` → `metrics` → executor → model | Metric evaluated, flags raised, narrative written |
+| MCP `ask_database` over stdio | `mcp` → `chat-agent`, `context-studio`, `metrics` | All six tools registered; answered from real rows |
+
+The three answer paths independently returned the same figures (2,845 delivered
+orders, $2,166,612.60), which is the part worth checking: agreement across paths
+that share a kernel but not a route.
+
 ## Migration status
 
 Phase 1 (this file + the CI check) enforces only the rules that hold before anything moves: no circular dependencies, and `services`/`lib` must not import from `src/app`. The per-module rules activate as phase 3 relocates each module, so the check is never advisory — it goes from "no rule" to "hard rule" with no baseline-exclusion stage in between.
