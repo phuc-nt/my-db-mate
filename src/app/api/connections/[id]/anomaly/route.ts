@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { detectAnomalies } from '../../../../../services/anomaly-service';
+import { detectAnomalies } from '@/modules/anomaly';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -7,6 +8,8 @@ export const runtime = 'nodejs';
  *  Pure SQL (no LLM); identifiers are validated against the synced schema inside
  *  detectAnomalies (assertKnownColumn). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('anomaly');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   if (typeof body.table !== 'string' || typeof body.column !== 'string') {

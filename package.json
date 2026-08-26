@@ -10,9 +10,12 @@
     "db:migrate": "drizzle-kit migrate",
     "smoke:llm": "tsx scripts/smoke-test-llm-tool-calling.ts",
     "mcp": "tsx scripts/mcp-server-entry.ts",
+    "lint:boundaries": "depcruise --config .dependency-cruiser.cjs src",
     "test:fixtures": "tsx scripts/seed-scope-governance-fixture.ts",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "bench": "tsx scripts/bench-run.ts",
+    "bench:download": "tsx scripts/bench-download.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.12",
@@ -55,6 +58,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "dependency-cruiser": "^17.4.3",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.10",

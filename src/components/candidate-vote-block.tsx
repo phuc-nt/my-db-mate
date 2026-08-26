@@ -6,7 +6,7 @@
  * correct SQLs can legitimately differ); inconclusive is a common, non-alarming
  * outcome; bq-cost compares dry-run estimates (BigQuery never execute-votes).
  */
-import type { VoteResult, VoteGroup, BqCostCandidate } from '../lib/candidate-vote-types';
+import type { VoteResult, VoteGroup, BqCostCandidate } from '@/modules/chat-agent/client';
 
 export function CandidateVoteBlock({ vote, onPick }: { vote: VoteResult; onPick?: (sql: string) => void }) {
   // Why the check ran without the toggle: the question matched a governed metric.

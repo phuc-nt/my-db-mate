@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '../../../../../db/context-schema';
+import { db } from '@/core/db/client';
+import { tableAnnotations, columnAnnotations, glossaryTerms, manualRelationships, verifiedQueries } from '@/core/db/context-schema';
 import {
   upsertTableAnnotation, upsertColumnAnnotation, addGlossaryTerm, addManualRelationship, addVerifiedQuery, setVerifiedQueryDisabled,
-} from '../../../../../services/context-service';
+} from '@/modules/context-studio';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** GET → all context for a connection (for Context Studio). Strips embeddings. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const [tables, columns, glossary, relationships, verified] = await Promise.all([
     db.select().from(tableAnnotations).where(eq(tableAnnotations.connectionId, id)),
@@ -23,6 +26,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** POST → create/update a context item. Body: { type, ...fields }. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json();
   try {

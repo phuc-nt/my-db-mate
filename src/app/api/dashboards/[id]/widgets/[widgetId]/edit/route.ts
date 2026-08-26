@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { proposeWidgetEdit, applyWidgetEdit } from '../../../../../../../services/widget-edit-service';
+import { proposeWidgetEdit, applyWidgetEdit } from '@/modules/bi';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** POST { instruction } → AI edit proposal (probed, NOT applied). */
 export async function POST(req: Request, { params }: { params: Promise<{ widgetId: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { widgetId } = await params;
   const body = await req.json().catch(() => ({}));
   const instruction = typeof body.instruction === 'string' ? body.instruction.slice(0, 1000) : '';
@@ -16,6 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ widgetI
  *  server re-gates — the proposal from the client is untrusted). The widget's
  *  connection comes from its row, never the body. */
 export async function PUT(req: Request, { params }: { params: Promise<{ widgetId: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { widgetId } = await params;
   const body = await req.json().catch(() => ({}));
   if (typeof body.sql !== 'string' || !body.sql.trim()) {

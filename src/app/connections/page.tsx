@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '../../lib/connection-config';
-import { PROVIDER_PRESETS, getPreset } from '../../lib/provider-presets';
-import { deriveOnboardingSteps } from '../../lib/onboarding-steps';
+import { DEFAULT_PORT, kindForEngine, parseConnectionString, type Engine, type SslMode } from '@/core/lib/connection-config';
+import { PROVIDER_PRESETS, getPreset } from '@/core/lib/provider-presets';
+import { deriveOnboardingSteps } from '@/modules/onboarding';
 import { OnboardingChecklistCard } from '../../components/onboarding-checklist-card';
 
 interface Conn { id: string; name: string; kind: string; dialect: string; isReadOnlyVerified: boolean; config: Record<string, unknown>; bigqueryMaxBytesPerQuery?: number; bigqueryDailyBytesBudget?: number; bigqueryOfflineMode?: boolean }

@@ -3,14 +3,17 @@
  * never cause a write to a source database (the service imports no execution API).
  */
 import { NextResponse } from 'next/server';
-import { getConnection } from '../../../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import {
   listTriggers, listFiresForConnection, createTrigger, updateTrigger, deleteTrigger, testFire,
-} from '../../../../../services/action-trigger-service';
+} from '@/modules/automations';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const { id } = await params;
   const triggerId = new URL(req.url).searchParams.get('fires');
   // Scope fire history to this connection so a guessed trigger id can't read
@@ -20,6 +23,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });
@@ -39,6 +44,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const body = await req.json().catch(() => ({}));
   if (typeof body.triggerId !== 'string') return NextResponse.json({ error: 'triggerId required' }, { status: 400 });
   try {
@@ -50,6 +57,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const body = await req.json().catch(() => ({}));
   if (typeof body.triggerId !== 'string') return NextResponse.json({ error: 'triggerId required' }, { status: 400 });
   await deleteTrigger(body.triggerId);

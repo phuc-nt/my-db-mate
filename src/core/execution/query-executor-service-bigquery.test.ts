@@ -1,0 +1,671 @@
+/**
+ * Phase 6 (cost-gate caller coverage) regression tests: verifies BigQuery
+ * connections can never reach `provider.executeReadOnly()` inside
+ * `executeQuery()` without an explicit, dedicated confirmation — decoupled
+ * from the OLTP `skipRiskGate`/`confirmed` flags — and that Group A services
+ * (profiling, anomaly detection, accelerator snapshots, query-history mining,
+ * eval harness) refuse BigQuery connections outright via `assertNotBigQuery`.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { db } from '@/core/db/client';
+import { connections, bqBudgetLedger } from '@/core/db/schema';
+import { encryptSecret } from '@/core/crypto/credential-cipher';
+
+const createQueryJobMock = vi.fn();
+const getDatasetsMock = vi.fn(async () => [[]]);
+
+vi.mock('@google-cloud/bigquery', () => {
+  class BigQuery {
+    getDatasets = getDatasetsMock;
+    createQueryJob = createQueryJobMock;
+  }
+  return { BigQuery };
+});
+
+import { executeQuery } from '@/core/execution/query-executor-service';
+import { BigQueryConfirmationRequiredError } from '@/core/connections/providers/provider-interface';
+import { profileColumn } from '@/core/schema/profiling-service';
+import { detectAnomalies } from '@/modules/anomaly';
+import { fetchQueryLog } from '@/modules/context-studio/query-history-mining-service';
+import { runEval } from '@/modules/eval/eval-service';
+import { sampleRows } from '@/core/schema/schema-browser-service';
+import { rerunNotebook } from '@/modules/notebooks';
+import { createSchedule, runSchedule } from '@/modules/automations/schedule-service';
+import { captureSnapshot } from '@/modules/automations/monitor-service';
+import { notebooks } from '@/core/db/notebook-schema';
+import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
+import { schemaTables, schemaColumns, queryRuns } from '@/core/db/schema';
+import { evalQueries } from '@/core/db/intelligence-schema';
+import { desc } from 'drizzle-orm';
+
+/** Build a BQ job mock whose real-run metadata carries the given query statistics. */
+function mockRealRun(queryStats: Record<string, unknown>) {
+  createQueryJobMock.mockResolvedValueOnce([
+    {
+      getQueryResults: vi.fn(async () => [[]]),
+      getMetadata: vi.fn(async () => [{ statistics: { query: queryStats } }]),
+    },
+  ]);
+}
+
+async function createBigQueryConnection() {
+  const [row] = await db
+    .insert(connections)
+    .values({
+      name: 'bq-cost-gate-test',
+      kind: 'bigquery-driver',
+      dialect: 'bigquery',
+      config: { projectId: 'test-project' },
+      secretEncrypted: null,
+      isReadOnlyVerified: true,
+      bigqueryServiceAccountJsonEncrypted: encryptSecret(JSON.stringify({ client_email: 'sa@test.iam.gserviceaccount.com', private_key: 'fake' })),
+      bigqueryMaxBytesPerQuery: 1_073_741_824,
+    })
+    .returning();
+  return row;
+}
+
+function mockDryRunEstimate(totalBytesProcessed: string) {
+  createQueryJobMock.mockResolvedValueOnce([
+    { metadata: { statistics: { query: { totalBytesProcessed } } } },
+  ]);
+}
+
+describe('executeQuery — BigQuery cost-confirmation gate (Phase 6)', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+  });
+
+  afterEach(async () => {
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('rejects with a clear error when no token and no preview flag are supplied (Group B default)', async () => {
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1' });
+    expect(res.status).toBe('error');
+    expect(res.errorMessage).toMatch(/interactive cost-confirmation/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('setting skipRiskGate/confirmed for OLTP reasons does NOT bypass the BigQuery cost gate', async () => {
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', skipRiskGate: true, confirmed: true });
+    expect(res.status).toBe('error');
+    expect(res.errorMessage).toMatch(/interactive cost-confirmation/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('returns needs_cost_confirmation with a real dry-run estimate when allowCostEstimatePreview is set', async () => {
+    mockDryRunEstimate(String(2 * 1024 ** 4)); // 2 TiB
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', allowCostEstimatePreview: true });
+    expect(res.status).toBe('needs_cost_confirmation');
+    expect(res.costEstimate?.estimatedBytes).toBe(2 * 1024 ** 4);
+    expect(createQueryJobMock).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+  });
+
+  it('executes for real only once bigqueryCostConfirmationToken is supplied', async () => {
+    createQueryJobMock.mockResolvedValueOnce([
+      { getQueryResults: vi.fn(async () => [[]]), getMetadata: vi.fn(async () => [{ statistics: { query: {} } }]) },
+    ]);
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', bigqueryCostConfirmationToken: true });
+    expect(res.status).toBe('ok');
+    expect(createQueryJobMock).toHaveBeenCalledWith(expect.objectContaining({ maximumBytesBilled: '1073741824' }));
+  });
+
+  it('the thrown BigQueryConfirmationRequiredError carries a distinct name for callers that want to type-check it', async () => {
+    const err = new BigQueryConfirmationRequiredError();
+    expect(err.name).toBe('BigQueryConfirmationRequiredError');
+  });
+});
+
+describe('bytesBilled tally recording (Phase 1) — the daily-budget foundation', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+  });
+
+  afterEach(async () => {
+    await db.delete(queryRuns).where(eq(queryRuns.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  async function lastRun() {
+    const [row] = await db
+      .select()
+      .from(queryRuns)
+      .where(eq(queryRuns.connectionId, conn.id))
+      .orderBy(desc(queryRuns.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  it('records the REAL totalBytesBilled (not the estimate) on a successful run', async () => {
+    mockRealRun({ totalBytesBilled: '111149056', totalBytesProcessed: '110355534' });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', bigqueryCostConfirmationToken: true });
+    expect(res.status).toBe('ok');
+    const run = await lastRun();
+    expect(run.status).toBe('ok');
+    expect(run.bytesBilled).toBe(111149056); // billed, NOT the 110355534 estimate
+  });
+
+  it('fail-open: a successful run with NO readable billed figure records the per-query cap sentinel, never null/0', async () => {
+    mockRealRun({}); // metadata present but totalBytesBilled absent
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', bigqueryCostConfirmationToken: true });
+    expect(res.status).toBe('ok');
+    const run = await lastRun();
+    expect(run.bytesBilled).toBe(1_073_741_824); // the connection's bigqueryMaxBytesPerQuery cap
+    expect(run.bytesBilled).not.toBeNull();
+  });
+
+  it('a legitimate cache-hit run (totalBytesBilled=0) records 0, distinct from the absent-field sentinel', async () => {
+    mockRealRun({ totalBytesBilled: '0', totalBytesProcessed: '0', cacheHit: true });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', bigqueryCostConfirmationToken: true });
+    expect(res.status).toBe('ok');
+    const run = await lastRun();
+    expect(run.bytesBilled).toBe(0); // cached $0 run is NOT over-counted to the cap
+  });
+});
+
+describe('Group A services refuse BigQuery connections cleanly (Phase 6)', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+  let tableId: string;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+    const [t] = await db.insert(schemaTables).values({ connectionId: conn.id, tableName: 'orders', rowCount: 10 }).returning();
+    tableId = t.id;
+    await db.insert(schemaColumns).values({ tableId, columnName: 'amount', dataType: 'FLOAT64', isNullable: true, isPrimaryKey: false, ordinalPosition: 0 });
+  });
+
+  afterEach(async () => {
+    await db.delete(schemaColumns).where(eq(schemaColumns.tableId, tableId));
+    await db.delete(schemaTables).where(eq(schemaTables.id, tableId));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('profileColumn on BigQuery routes through the budget path (no longer a hard Group-A block)', async () => {
+    // Column profiling is now budgeted like anomaly/monitor: with a 0-byte daily
+    // budget every read is admission-blocked, so the profile fails with the budget
+    // reason — NOT the old "not yet supported" guard — and no real job ever runs
+    // (only dry-run estimates are issued).
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 0 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('1000');
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.toThrow(/daily byte budget exceeded/);
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.not.toThrow(/not yet supported/);
+  });
+
+  it('profileColumn reserves as the low-tier maintenance actor (half-budget ceiling)', async () => {
+    // Budget 100; estimate 60 exceeds the 50% low-tier ceiling for 'profiling'.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    await expect(profileColumn(conn.id, 'orders', 'amount')).rejects.toThrow(/low-priority ceiling/);
+  });
+
+  it('detectAnomalies on BigQuery routes through the budget path (no longer a hard Group-A block) and never crashes', async () => {
+    // Phase 3 (anomaly depth): anomaly is no longer a Group-A executeReadOnly caller — it
+    // goes through executeQuery({backgroundBudgeted:true}), so BigQuery is budgeted/offline
+    // rather than hard-blocked. Without a budget token in this mock the queries don't return
+    // ok, so it degrades to a graceful note — the point is it does NOT throw and does NOT
+    // report the old "not yet supported" guard message.
+    const report = await detectAnomalies(conn.id, 'orders', 'amount');
+    expect(report).toBeDefined();
+    expect(report.note).not.toMatch(/not yet supported for BigQuery/);
+  });
+
+  it('fetchQueryLog reports unavailable for BigQuery without calling executeReadOnly', async () => {
+    const provider = { dialect: 'bigquery' as const, executeReadOnly: vi.fn() };
+    await expect(fetchQueryLog(provider as never)).rejects.toThrow(/not yet supported for BigQuery/);
+    expect(provider.executeReadOnly).not.toHaveBeenCalled();
+  });
+
+  it('runEval throws BigQueryNotSupportedError before ever calling executeReadOnly on the gold SQL', async () => {
+    const [gold] = await db
+      .insert(evalQueries)
+      .values({ connectionId: conn.id, question: 'total amount?', goldSql: 'SELECT SUM(amount) FROM orders' })
+      .returning();
+    try {
+      await expect(runEval(conn.id)).rejects.toThrow(/not yet supported for BigQuery/);
+      expect(createQueryJobMock).not.toHaveBeenCalled();
+    } finally {
+      await db.delete(evalQueries).where(eq(evalQueries.id, gold.id));
+    }
+  });
+});
+
+describe('BigQuery daily byte-budget (Phase 2)', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+  });
+
+  afterEach(async () => {
+    await db.delete(bqBudgetLedger).where(eq(bqBudgetLedger.connectionId, conn.id));
+    await db.delete(queryRuns).where(eq(queryRuns.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('admit under budget: small query within generous daily budget records committed bytes', async () => {
+    // Setup: generous budget (100 MB), small query estimate (1 MB)
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+
+    // Mock dry-run estimate: 1 MB
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+    // Mock real run: billed 500 KB
+    mockRealRun({ totalBytesBilled: String(500 * 1024), totalBytesProcessed: String(500 * 1024) });
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('ok');
+    // Verify ledger recorded the committed bytes (actual billed, not estimate)
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger).toBeDefined();
+    expect(ledger.committedBytes).toBe(500 * 1024); // actual billed
+    expect(ledger.reservedBytes).toBe(0); // reservation released after reconciliation
+  });
+
+  it('block over budget: estimate exceeds daily budget, no real run happens', async () => {
+    // Setup: tiny budget (500 KB)
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 500 * 1024 }).where(eq(connections.id, conn.id));
+
+    // Mock dry-run estimate: 2 MB (exceeds the 500 KB budget)
+    mockDryRunEstimate(String(2 * 1024 * 1024));
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/daily byte budget exceeded/);
+    // Verify dry-run was called, but real run was never called
+    expect(createQueryJobMock).toHaveBeenCalledTimes(1);
+    expect(createQueryJobMock).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+    // Verify ledger has no entry (reserve() returned false so ensureLedgerRow ran but reserve didn't increment)
+    const ledgers = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id));
+    // Ledger row may exist but should have 0 reserved/committed since reserve() rejected it
+    if (ledgers.length > 0) {
+      expect(ledgers[0].reservedBytes).toBe(0);
+      expect(ledgers[0].committedBytes).toBe(0);
+    }
+  });
+
+  it('OLTP-flag isolation: confirmed + skipRiskGate do NOT reach budget path', async () => {
+    // OLTP flags should NOT bypass the cost gate; they should fail the same way
+    // as if no OLTP flags were set
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', confirmed: true, skipRiskGate: true });
+
+    expect(res.status).toBe('error');
+    expect(res.errorMessage).toMatch(/interactive cost-confirmation/);
+    // Verify no dry-run estimate was attempted
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('metric save-time validation shape (confirmed + backgroundBudgeted) DOES reach the budget path — regression for metric-create-on-BQ 400', async () => {
+    // metric-service validateMetricSql/validateDimensions call executeQuery with
+    // confirmed:true AND backgroundBudgeted:true. Without backgroundBudgeted this
+    // combo hit BigQueryConfirmationRequiredError and 400'd every metric create on BQ.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate(String(1 * 1024 * 1024)); // fits budget
+    mockRealRun({ totalBytesBilled: '1048576' });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', confirmed: true, backgroundBudgeted: true });
+    expect(res.status).toBe('ok'); // reaches budget path + runs, NOT a confirmation-required error
+  });
+
+  it('reservation refund on maximumBytesBilled reject: reserved bytes returned to 0', async () => {
+    // Setup: generous budget, small estimate that fits
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+
+    // Mock real run that throws maximumBytesBilled error after reserve succeeded
+    createQueryJobMock.mockResolvedValueOnce([
+      {
+        getQueryResults: vi.fn(async () => {
+          throw { errors: [{ reason: 'bytesBilledLimitExceeded', message: 'Query exceeded limit' }] };
+        }),
+        getMetadata: vi.fn(async () => [{ statistics: { query: {} } }]),
+      },
+    ]);
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/cost cap/);
+
+    // Verify ledger: reserved was released (refunded), committed is 0
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger).toBeDefined();
+    expect(ledger.reservedBytes).toBe(0); // refunded
+    expect(ledger.committedBytes).toBe(0); // no successful commit
+  });
+
+  it('concurrency test: parallel queries collectively respect the daily budget', async () => {
+    // Setup: budget of 1.5 MB, fire 3 sequential queries of 1 MB estimate each
+    // The atomic reserve() check (reserved + committed + estimate <= budget) prevents overspend.
+    // Key insight: reserve() checks `reserved + committed + estimate <= budget` atomically.
+    // When reconcile() completes, it moves the estimate from reserved to committed (actual billed).
+    // This test verifies that the final ledger state never violates the budget.
+    const budget = 1.5 * 1024 * 1024;
+    await db.update(connections).set({ bigqueryDailyBytesBudget: budget }).where(eq(connections.id, conn.id));
+
+    const queryCount = 3;
+    const estimatePerQuery = 1 * 1024 * 1024;
+    const billedPerQuery = 900 * 1024; // less than estimate, to show reconcile adjusts downward
+
+    // Mock dry-runs and real runs
+    for (let i = 0; i < queryCount; i++) {
+      mockDryRunEstimate(String(estimatePerQuery));
+      mockRealRun({ totalBytesBilled: String(billedPerQuery) });
+    }
+
+    // Fire all queries in parallel
+    const results = await Promise.all(
+      Array.from({ length: queryCount }, () =>
+        executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true })
+      )
+    );
+
+    // Count outcomes
+    const okCount = results.filter((r) => r.status === 'ok').length;
+    const blockedCount = results.filter((r) => r.status === 'blocked').length;
+
+    // With parallel execution and atomic reserve, we expect some queries to be blocked
+    // because the initial reserve checks happen before any reconcile
+    expect(blockedCount).toBeGreaterThanOrEqual(0); // may or may not block, depending on timing
+    expect(okCount).toBeGreaterThan(0); // at least one must succeed
+
+    // CRITICAL: verify ledger total committed doesn't exceed budget (the hard guarantee)
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    if (ledger) {
+      // This is the invariant that MUST hold: total usage never exceeds budget
+      expect(ledger.committedBytes).toBeLessThanOrEqual(budget);
+      // All reserved should be released after reconciliation
+      expect(ledger.reservedBytes).toBe(0);
+    }
+  });
+
+  it('utcDayBucket returns correct YYYY-MM-DD format in UTC', async () => {
+    // Import utcDayBucket from the service
+    const { utcDayBucket } = await import('@/core/cost/bigquery-daily-budget-service');
+
+    // Test with a known date: 2026-07-16 10:30:00 UTC
+    const date = new Date('2026-07-16T10:30:00Z');
+    const bucket = utcDayBucket(date);
+    expect(bucket).toBe('2026-07-16');
+
+    // Test with another date
+    const date2 = new Date('2026-12-31T23:59:59Z');
+    const bucket2 = utcDayBucket(date2);
+    expect(bucket2).toBe('2026-12-31');
+
+    // Verify it's consistent with toISOString behavior
+    const date3 = new Date('2026-01-01T00:00:00Z');
+    const bucket3 = utcDayBucket(date3);
+    expect(bucket3).toBe('2026-01-01');
+  });
+
+  it('cron-path isolation: runWidget with backgroundBudgeted implicitly set does NOT hit cost-confirmation error', async () => {
+    // This test verifies the threading: dashboard-service.runWidget() calls
+    // executeQuery with backgroundBudgeted:true, so it should use the budget path,
+    // not fail with BigQueryConfirmationRequiredError.
+    // We test this behaviorally by confirming that:
+    // 1. A small estimate + generous budget → query runs to OK
+    // 2. No error about "interactive cost-confirmation" is thrown
+
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+    mockRealRun({ totalBytesBilled: String(500 * 1024) });
+
+    // This simulates dashboard-service.runWidget calling executeQuery with backgroundBudgeted:true
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    // Should NOT be 'error' with "interactive cost-confirmation" message
+    expect(res.status).toBe('ok');
+    expect(res.errorMessage).toBeUndefined();
+  });
+
+  it('budget rejection records the ledger row for audit trail (even if reserve fails)', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 500 * 1024 }).where(eq(connections.id, conn.id));
+
+    mockDryRunEstimate(String(2 * 1024 * 1024)); // exceeds budget
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('blocked');
+
+    // Ledger row should exist (via ensureLedgerRow before reserve attempt)
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger).toBeDefined();
+    expect(ledger.connectionId).toBe(conn.id);
+  });
+
+  it('partial usage then rejection: budget tracks prior day usage correctly', async () => {
+    // Simulate: day 1 has 2 MB committed, budget is 3 MB. Day 2 should start fresh.
+    // For simplicity, test within the same "day" (UTC bucket): use 2 MB, then try 2 MB more (should fail).
+
+    const budget = 3 * 1024 * 1024;
+    await db.update(connections).set({ bigqueryDailyBytesBudget: budget }).where(eq(connections.id, conn.id));
+
+    // First query: 1 MB estimate, 1 MB billed
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+    mockRealRun({ totalBytesBilled: String(1 * 1024 * 1024) });
+
+    const res1 = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+    expect(res1.status).toBe('ok');
+
+    // Second query: 2.5 MB estimate (fits into 3 MB - 1 MB = 2 MB remaining)
+    // But 2.5 MB > 2 MB, so should be blocked
+    mockDryRunEstimate(String(2.5 * 1024 * 1024));
+
+    const res2 = await executeQuery({ connectionId: conn.id, sql: 'SELECT 2', backgroundBudgeted: true });
+    expect(res2.status).toBe('blocked');
+    expect(res2.blockedReason).toMatch(/daily byte budget exceeded/);
+
+    // Verify ledger shows only 1 MB committed (from first query)
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger.committedBytes).toBe(1 * 1024 * 1024);
+    expect(ledger.reservedBytes).toBe(0); // second query's reserve was rejected, so no reserved bytes
+  });
+
+  it('successful run with no readable billed figure still records a ledger entry', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+    // Real run returns metadata but no totalBytesBilled (fail-open scenario)
+    mockRealRun({});
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('ok');
+
+    // Ledger should record the per-query cap sentinel (bigqueryMaxBytesPerQuery)
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger).toBeDefined();
+    expect(ledger.committedBytes).toBe(conn.bigqueryMaxBytesPerQuery); // the cap sentinel from Phase 1
+  });
+
+  it('cache-hit query (0 bytes billed) is recorded distinctly in the ledger', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 * 1024 * 1024 }).where(eq(connections.id, conn.id));
+
+    mockDryRunEstimate(String(1 * 1024 * 1024));
+    mockRealRun({ totalBytesBilled: '0', totalBytesProcessed: '0', cacheHit: true });
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', backgroundBudgeted: true });
+
+    expect(res.status).toBe('ok');
+
+    const [ledger] = await db
+      .select()
+      .from(bqBudgetLedger)
+      .where(eq(bqBudgetLedger.connectionId, conn.id))
+      .limit(1);
+    expect(ledger.committedBytes).toBe(0); // cache hit = 0 cost, not the cap sentinel
+  });
+});
+
+describe('Implicit surfaces are explicitly blocked on BigQuery (cost-governance hardening)', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+  let tableId: string;
+  let scheduleIdToClean: string | undefined;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+    const [t] = await db.insert(schemaTables).values({ connectionId: conn.id, tableName: 'orders', rowCount: 10 }).returning();
+    tableId = t.id;
+  });
+
+  afterEach(async () => {
+    if (scheduleIdToClean) {
+      await db.delete(scheduledRuns).where(eq(scheduledRuns.scheduleId, scheduleIdToClean));
+      await db.delete(scheduledQueries).where(eq(scheduledQueries.id, scheduleIdToClean));
+      scheduleIdToClean = undefined;
+    }
+    await db.delete(notebooks).where(eq(notebooks.connectionId, conn.id));
+    await db.delete(schemaTables).where(eq(schemaTables.id, tableId));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('schema-browser sampleRows returns a typed BigQuery block, never runs a query', async () => {
+    const res = await sampleRows(conn.id, 'orders');
+    expect(res.status).toBe('error');
+    expect(res.status === 'error' && res.message).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('notebook rerun returns a typed BigQuery block, never runs a query', async () => {
+    const [nb] = await db.insert(notebooks).values({
+      connectionId: conn.id, sessionId: null, title: 'nb', markdown: '# nb', dataSnapshot: {},
+    }).returning();
+    const res = await rerunNotebook(nb.id);
+    expect('error' in res && res.error).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('a scheduled raw query on BigQuery is recorded as blocked, never runs', async () => {
+    const s = await createSchedule({ connectionId: conn.id, name: 's', mode: 'sql', sql: 'SELECT 1', cron: '0 7 * * *' });
+    scheduleIdToClean = s.id;
+    await runSchedule(s.id);
+    const [run] = await db.select().from(scheduledRuns).where(eq(scheduledRuns.scheduleId, s.id)).orderBy(desc(scheduledRuns.ranAt)).limit(1);
+    expect(run.status).toBe('blocked');
+    expect(run.detail).toMatch(/not yet supported for BigQuery/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+
+  it('REGRESSION (#7): a BigQuery MONITOR capture is NOT blocked by the new guard — it stays budgeted', async () => {
+    // captureSnapshot routes through executeQuery({backgroundBudgeted:true}); the new
+    // scheduled-query guard must not touch it. Without a budget token the capture won't
+    // return ok, but it must NOT surface the "not yet supported" block — proving monitor
+    // is exempt. (A distinct failure mode from the raw scheduled-query path above.)
+    await db.insert(schemaColumns).values({ tableId, columnName: 'amount', dataType: 'FLOAT64', isNullable: true, isPrimaryKey: false, ordinalPosition: 0 });
+    const snap = await captureSnapshot(conn.id, 'bigquery', 'orders');
+    const asString = JSON.stringify(snap);
+    expect(asString).not.toMatch(/not yet supported for BigQuery/);
+  });
+});
+
+describe('agentBudgeted — investigate-from-finding admission path', () => {
+  let conn: Awaited<ReturnType<typeof createBigQueryConnection>>;
+
+  beforeEach(async () => {
+    createQueryJobMock.mockReset();
+    getDatasetsMock.mockClear();
+    conn = await createBigQueryConnection();
+  });
+
+  afterEach(async () => {
+    await db.delete(bqBudgetLedger).where(eq(bqBudgetLedger.connectionId, conn.id));
+    await db.delete(queryRuns).where(eq(queryRuns.connectionId, conn.id));
+    await db.delete(connections).where(eq(connections.id, conn.id));
+  });
+
+  it('admits at FULL budget priority and reconciles the ledger with real billed bytes', async () => {
+    // Budget 100 bytes-scale test: estimate 60 would exceed a low-tier (50%) ceiling
+    // but fits the full budget — proving investigate-finding is NOT maintenance-tier.
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    mockRealRun({ totalBytesBilled: '40', totalBytesProcessed: '40' });
+
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('ok');
+    const [ledger] = await db.select().from(bqBudgetLedger).where(eq(bqBudgetLedger.connectionId, conn.id)).limit(1);
+    expect(ledger.committedBytes).toBe(40);
+    expect(ledger.reservedBytes).toBe(0);
+    // Audit trail carries the server-derived actor.
+    const [run] = await db.select().from(queryRuns).where(eq(queryRuns.connectionId, conn.id)).orderBy(desc(queryRuns.createdAt)).limit(1);
+    expect(run.actor).toBe('investigate-finding');
+  });
+
+  it('the SAME estimate under backgroundBudgeted as a maintenance actor is blocked by the low-tier ceiling', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('60');
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'monitor', backgroundBudgeted: true });
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/low-priority ceiling/);
+  });
+
+  it('blocks cleanly when the estimate exceeds the full budget (partial-conclusion path upstream)', async () => {
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 100 }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('500');
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('blocked');
+    expect(res.blockedReason).toMatch(/daily byte budget exceeded/);
+    expect(res.blockedReason).not.toMatch(/low-priority ceiling/);
+  });
+
+  it('REGRESSION: agentBudgeted never serves the offline snapshot — a live dry-run job is issued', async () => {
+    // Offline mode on the connection redirects backgroundBudgeted to the DuckDB
+    // snapshot; an investigation must stay live (stale data cannot explain fresh drift).
+    await db.update(connections).set({ bigqueryDailyBytesBudget: 1_000_000, bigqueryOfflineMode: true }).where(eq(connections.id, conn.id));
+    mockDryRunEstimate('10');
+    mockRealRun({ totalBytesBilled: '10', totalBytesProcessed: '10' });
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'investigate-finding', agentBudgeted: true });
+    expect(res.status).toBe('ok');
+    expect(createQueryJobMock).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+  });
+
+  it('REGRESSION: plain BQ chat (no flags, as the non-investigation agent path) still fail-closes', async () => {
+    const res = await executeQuery({ connectionId: conn.id, sql: 'SELECT 1', actor: 'owner' });
+    expect(res.status).toBe('error');
+    expect(res.errorMessage).toMatch(/interactive cost-confirmation/);
+    expect(createQueryJobMock).not.toHaveBeenCalled();
+  });
+});

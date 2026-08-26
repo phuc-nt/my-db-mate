@@ -2,7 +2,7 @@ import { defineConfig } from 'drizzle-kit';
 import 'dotenv/config';
 
 export default defineConfig({
-  schema: ['./src/db/schema.ts', './src/db/context-schema.ts', './src/db/intelligence-schema.ts', './src/db/ecosystem-schema.ts', './src/db/dashboard-schema.ts', './src/db/report-schema.ts', './src/db/notebook-schema.ts', './src/db/app-settings-schema.ts', './src/db/feedback-schema.ts', './src/db/monitor-schema.ts', './src/db/metric-schema.ts', './src/db/anomaly-schema.ts', './src/db/action-trigger-schema.ts'],
+  schema: ['./src/core/db/schema.ts', './src/core/db/context-schema.ts', './src/core/db/intelligence-schema.ts', './src/core/db/ecosystem-schema.ts', './src/core/db/dashboard-schema.ts', './src/core/db/report-schema.ts', './src/core/db/notebook-schema.ts', './src/core/db/app-settings-schema.ts', './src/core/db/feedback-schema.ts', './src/core/db/monitor-schema.ts', './src/core/db/metric-schema.ts', './src/core/db/anomaly-schema.ts', './src/core/db/action-trigger-schema.ts'],
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {

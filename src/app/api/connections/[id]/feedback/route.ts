@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { queryFeedback } from '../../../../../db/feedback-schema';
+import { db } from '@/core/db/client';
+import { queryFeedback } from '@/core/db/feedback-schema';
 
 export const runtime = 'nodejs';
 

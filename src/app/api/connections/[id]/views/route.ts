@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createView, listViews, VirtualViewError } from '../../../../../services/virtual-view-service';
+import { createView, listViews, VirtualViewError } from '@/core/boundary/virtual-view-service';
 
 export const runtime = 'nodejs';
 

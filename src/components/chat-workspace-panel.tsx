@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { QueryResultBlock } from './query-result-block';
 import { SchemaPeek } from './schema-peek';
-import type { ExportDialect } from '../lib/export-formats';
+import type { ExportDialect } from '@/core/lib/export-formats';
 import type { ChatArtifact } from './chat-artifact-chip';
 
 /**

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { suggestEnumAnnotations } from '../../../../../services/enum-suggestion-service';
+import { suggestEnumAnnotations } from '@/modules/context-studio';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -7,6 +8,8 @@ export const maxDuration = 120;
 /** POST → scan columns, create pending enum-annotation suggestions in the inbox.
  *  Body: { withDrafts?: boolean, maxColumns?: number } */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   try {

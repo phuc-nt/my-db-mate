@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createConnection, listConnections } from '../../../services/connection-service';
+import { createConnection, listConnections } from '@/core/connections/connection-service';
 
 export const runtime = 'nodejs';
 

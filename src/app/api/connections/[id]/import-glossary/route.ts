@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { importGlossaryDocument } from '../../../../../services/document-import-service';
+import { importGlossaryDocument } from '@/modules/context-studio';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,8 @@ const MAX_BYTES = 512 * 1024; // 512KB cap — a glossary/data-dictionary, not a
 /** POST → import a glossary document (CSV / markdown table / "term: def" lines) as
  *  pending glossary suggestions. Body: { text, sourceName? } */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('context-studio');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const text = String(body.text ?? '');

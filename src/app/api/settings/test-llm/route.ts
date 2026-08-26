@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { generateText } from 'ai';
-import { getModelForTest } from '../../../../services/llm-service';
-import { getLlmSettings } from '../../../../services/settings-service';
+import { getModelForTest } from '@/core/model/llm-service';
+import { getLlmSettings } from '@/core/app-state/settings-service';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;

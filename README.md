@@ -22,6 +22,10 @@ Nên My DB Mate không đặt cược vào text-to-SQL. Nó đặt cược vào 
 
 Vì đây là DB production, an toàn là điều kiện bắt buộc chứ không phải tính năng thêm: chỉ đọc ép ở nhiều tầng, mọi truy vấn qua một điểm kiểm duyệt, credential mã hoá, mọi lần chạy có audit log.
 
+**Lập luận trên có đo được không?** Có. Trên bộ [BIRD](https://bird-bench.github.io/) mini-dev, tắt lớp context làm giảm **14 điểm** (`qwen/qwen3.7-max`) và **18 điểm** (`deepseek/deepseek-v4-pro`) execution accuracy trên cùng 100 câu hỏi. Hai model độc lập, cùng chiều. Chín câu mà *cả hai* model chỉ trả lời đúng khi có context đều rơi vào đúng loại tri thức nói ở trên — `RVVT = '+'` nghĩa là đông máu dương tính, `statusID = 2` nghĩa là bị loại — chứ không phải tên cột viết tắt mà model tự đoán được.
+
+Con số tuyệt đối, cách chấm điểm, sai số giữa các lần chạy, và những gì phép đo này **không** kiểm soát: [`docs/benchmark-methodology.md`](docs/benchmark-methodology.md).
+
 ---
 
 ## Bắt đầu

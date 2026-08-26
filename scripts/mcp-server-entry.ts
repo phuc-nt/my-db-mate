@@ -4,7 +4,7 @@
  * with env: MDM_API_KEY (scopes to a connection), DATABASE_URL, OPENROUTER_API_KEY.
  */
 import 'dotenv/config';
-import { startMcpServer } from '../src/services/mcp-server';
+import { startMcpServer } from '@/modules/mcp';
 
 startMcpServer().catch((e) => {
   // stderr only — stdout is the MCP protocol channel.

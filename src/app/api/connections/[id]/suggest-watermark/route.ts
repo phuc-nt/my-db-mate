@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { sampleRows } from '../../../../../services/schema-browser-service';
-import { detectWatermarkColumn } from '../../../../../services/accelerator/watermark-detection-service';
+import { sampleRows } from '@/core/schema/schema-browser-service';
+import { detectWatermarkColumn } from '@/core/execution/accelerator/watermark-detection-service';
 
 export const runtime = 'nodejs';
 

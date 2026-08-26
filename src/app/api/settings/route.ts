@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getLlmSettingsPublic, saveLlmSettings, clearLlmSettings } from '../../../services/settings-service';
+import { getLlmSettingsPublic, saveLlmSettings, clearLlmSettings } from '@/core/app-state/settings-service';
 
 export const runtime = 'nodejs';
 

@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { startInvestigation } from '../../../../lib/start-investigation-client';
+import { startInvestigation } from '@/modules/chat-agent/client';
 import { ActionTriggersPanel } from '../../../../components/action-triggers-panel';
 
 interface Schedule {

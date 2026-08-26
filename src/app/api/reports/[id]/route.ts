@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getReportLatest, deleteReport, setReportShare } from '../../../../services/report-service';
+import { getReportLatest, deleteReport, setReportShare } from '@/modules/bi';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { id } = await params;
   const r = await getReportLatest(id);
   if (!r) return NextResponse.json({ error: 'not found' }, { status: 404 });
@@ -11,6 +14,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json();
   if (typeof body.share === 'boolean') {
@@ -21,6 +26,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { id } = await params;
   await deleteReport(id);
   return NextResponse.json({ ok: true });

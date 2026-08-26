@@ -16,23 +16,31 @@ const ITEMS = [
   { seg: 'automations', label: '⏰ Automations' },
 ];
 
-export function WorkspaceRail({ id, accelerateEnabled }: { id: string; accelerateEnabled: boolean }) {
+export function WorkspaceRail({ id, accelerateEnabled, enabledSegments }: {
+  id: string;
+  accelerateEnabled: boolean;
+  /** Segments whose module is on. Resolved by the server layout: the registry
+   *  reads `process.env`, which a client component cannot see. */
+  enabledSegments?: string[];
+}) {
   const pathname = usePathname();
   // Pending Knowledge-Inbox count. Client-side on purpose: a server layout would
   // not re-render on child navigation, so a server-fetched badge goes stale.
   const [contextBadge, setContextBadge] = useState(0);
+  const contextEnabled = enabledSegments === undefined || enabledSegments.includes('context');
   useEffect(() => {
+    if (!contextEnabled) return;
     fetch(`/api/connections/${id}/suggestions`)
       .then((r) => r.json())
       .then((d) => setContextBadge(Array.isArray(d) ? d.length : 0))
       .catch(() => {});
-  }, [id, pathname]);
+  }, [id, pathname, contextEnabled]);
   const acceleratorHref = `/db/${id}/accelerator`;
   const acceleratorActive = pathname === acceleratorHref || pathname.startsWith(acceleratorHref + '/');
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto">
-      {ITEMS.map((it) => {
+      {ITEMS.filter((it) => enabledSegments === undefined || enabledSegments.includes(it.seg)).map((it) => {
         const href = `/db/${id}/${it.seg}`;
         const active = pathname === href || pathname.startsWith(href + '/');
         return (

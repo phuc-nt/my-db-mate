@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
-import { generateFollowups } from '../../../../../services/followup-service';
+import { generateFollowups } from '@/modules/chat-agent';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 /** POST → 2-3 follow-up question suggestions. Body: { question, columns? }. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const question = typeof body.question === 'string' ? body.question : '';

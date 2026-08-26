@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { syncSchema } from '../../../../../services/schema-sync-service';
+import { syncSchema } from '@/core/schema/schema-sync-service';
 
 export const runtime = 'nodejs';
 

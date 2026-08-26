@@ -7,7 +7,7 @@
  * step + accruing queries) → done (conclusion) / error. Collapsed once done —
  * the merged synthesis below is the primary reading surface.
  */
-import type { SubInvestigationSnapshot } from '../lib/sub-investigation-types';
+import type { SubInvestigationSnapshot } from '@/modules/chat-agent/client';
 
 const GLYPH: Record<SubInvestigationSnapshot['status'], string> = {
   pending: '○', running: '⏳', done: '✓', error: '✗',

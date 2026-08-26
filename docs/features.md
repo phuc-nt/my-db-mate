@@ -133,6 +133,26 @@ Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the field
 
 Next.js 16 (App Router) · TypeScript · AI SDK v7 + OpenRouter (`qwen/qwen3.7-max`, configurable) · Drizzle ORM · Postgres 17 + pgvector (app DB) · transformers.js (embeddings) · `@modelcontextprotocol/sdk` · `better-sqlite3` / `pg` / `mysql2` / `@google-cloud/bigquery` · `node-sql-parser` · `node-cron` · `@xyflow/react` (ERD) · `react-markdown` (reports/notebooks).
 
+## Accuracy
+
+Measured on the [BIRD](https://bird-bench.github.io/) mini-dev set: **34%**
+execution accuracy on a 100-question stratified sample (`qwen/qwen3.7-max`,
+2026-08-25). That is below published leaderboard entries, for reasons listed in
+the methodology — the safety gates stay on during the benchmark, the prompts are
+the product's rather than tuned for the dataset, and the number is reported as
+measured.
+
+The result worth reading is the ablation: turning the retrievable context layer
+off costs **14 points** (qwen) and **18 points** (deepseek) on the same
+questions. The wins concentrate on conventions no schema can express — that
+`RVVT = '+'` means positive coagulation, or that `statusID = 2` means
+disqualified.
+
+Every figure is traceable to a run artifact. See
+[`benchmark-methodology.md`](./benchmark-methodology.md) for the dataset pin,
+the scoring rule, the failure taxonomy, the run-to-run noise floor, and what the
+benchmark does *not* control for.
+
 ## Safety model
 
 The real boundary is a **SELECT-only DB user** — grant your connection only `SELECT`. The application layers add defense in depth (read-only transaction re-applied per connection, AST + denylist validation, statement timeout, `multipleStatements: false`), but none of them replace a least-privilege grant. Point at a read replica where possible.
@@ -140,6 +160,31 @@ The real boundary is a **SELECT-only DB user** — grant your connection only `S
 **TLS to your database:** three modes per connection. **Encrypt only** (`require`) turns TLS on without verifying the server certificate — managed clouds with a private CA connect without setup, but the channel is not MITM-proof. **Encrypt + verify** (`verify-full`) verifies the certificate chain and hostname — against the system CA store, or against a CA certificate (PEM) you paste into the connection form for private-CA providers (Supabase, Aiven, self-managed). `sslmode=verify-full` / `verify-ca` in a pasted connection string select the verify mode automatically. Use verify-full whenever the path to your DB crosses an untrusted network.
 
 **Share links** (dashboards/reports) use an unguessable 128-bit link as a capability — anyone with the link can view the cached result, so treat share links like passwords. Intended for localhost/LAN or trusted sharing; put an auth proxy in front before exposing the app to the internet.
+
+## Turning modules off
+
+`MODULES_DISABLED` is a comma-separated list of feature modules this deployment
+does not want:
+
+```bash
+MODULES_DISABLED=notebooks,eval
+```
+
+A disabled module disappears at four points, and nowhere else: its workspace tab
+is not rendered, its API routes answer 404, its cron schedules never register,
+and its MCP tools are neither listed nor callable. Everything else keeps working
+— a cross-module consumer treats a disabled dependency as absent rather than
+broken, so chat still answers with `metrics` off (it just gets no governed-metric
+injection) and a metrics-digest schedule records `skipped` with a reason instead
+of failing.
+
+Env rather than a settings toggle, deliberately: module availability is
+deployment config, and a switch in the settings UI is a switch an agent can be
+talked into flipping. Core (connections, safety, executor, schema) has no switch
+— there is no working build of this product without it. Disabling `chat-agent`
+is allowed and logs a warning, since the result is a plain DB client, which is a
+real way to run this. An unknown name in the list warns and is ignored rather
+than failing the boot: a typo in a deploy variable should not take the app down.
 
 ## Deferred
 

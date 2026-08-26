@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { desc, eq, inArray } from 'drizzle-orm';
-import { db } from '../../../../../../db/client';
-import { scheduledQueries, scheduledRuns } from '../../../../../../db/ecosystem-schema';
+import { db } from '@/core/db/client';
+import { scheduledQueries, scheduledRuns } from '@/core/db/ecosystem-schema';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** GET ?scheduleId= | ?mode= → recent scheduled_runs (newest first, cap 20).
  *  Powers the Health "monitor findings" block and Automations run history. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('automations');
+  if (disabled) return disabled;
   const { id } = await params;
   const url = new URL(req.url);
   const scheduleId = url.searchParams.get('scheduleId');

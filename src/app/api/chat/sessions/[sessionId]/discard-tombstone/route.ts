@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { discardLatestTurn } from '../../../../../../services/session-service';
+import { discardLatestTurn } from '@/core/app-state/session-service';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,8 @@ export const runtime = 'nodejs';
  *  legitimate later turns, and a client-side "delete latest assistant" once
  *  erased the PREVIOUS turn's answer while the current one was still draining. */
 export async function POST(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { sessionId } = await params;
   const result = await discardLatestTurn(sessionId);
   return NextResponse.json({ ok: true, ...result });

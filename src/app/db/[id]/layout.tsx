@@ -1,8 +1,19 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getConnection } from '../../../services/connection-service';
+import { getConnection } from '@/core/connections/connection-service';
 import { WorkspaceRail } from '../../../components/workspace-rail';
-import { getScope, isScopeActive } from '../../../services/schema-scope-service';
+import { getScope, isScopeActive } from '@/core/boundary/schema-scope-service';
+import { isModuleEnabled } from '@/core/module-registry';
+
+/** Workspace tab -> the module that owns it. The rail is a client component and
+ *  cannot read process.env, so the enabled set is resolved here and passed down. */
+const SEGMENT_MODULE = {
+  chat: 'chat-agent',
+  schema: 'db-client',
+  context: 'context-studio',
+  metrics: 'metrics',
+  automations: 'automations',
+} as const;
 
 /** Per-connection workspace: one shared header (name · engine · read-only badge)
  *  + section strip (Chat / Schema / Context / Automations) above every section.
@@ -39,7 +50,13 @@ export default async function WorkspaceLayout({ children, params }: {
               scoped · {scopedCount}
             </Link>
           )}
-          <WorkspaceRail id={id} accelerateEnabled={Boolean(conn.accelerateEnabled)} />
+          <WorkspaceRail
+            id={id}
+            accelerateEnabled={Boolean(conn.accelerateEnabled)}
+            enabledSegments={Object.entries(SEGMENT_MODULE)
+              .filter(([, mod]) => isModuleEnabled(mod))
+              .map(([seg]) => seg)}
+          />
           <Link href="/connections" className="ml-auto whitespace-nowrap text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100">switch db →</Link>
         </div>
       </div>

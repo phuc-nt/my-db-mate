@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '../../../../../../services/dashboard-service';
-import { isValidIsoDate } from '../../../../../../lib/sql-param';
+import { runWidget, deleteWidget, updateWidgetLayout, type CrossFilter } from '@/modules/bi';
+import { isValidIsoDate } from '@/core/lib/sql-param';
+import { requireModule } from '@/core/require-module';
 
 const MAX_CROSS_FILTERS = 3;
 const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -32,6 +33,8 @@ export const runtime = 'nodejs';
  *  cache; anything that isn't a plain calendar date is rejected here AND in
  *  substituteDateRange (defense in depth). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string; widgetId: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { widgetId } = await params;
   const body = await req.json().catch(() => ({}));
   let range: { from: string; to: string } | undefined;
@@ -50,6 +53,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; widgetId: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { widgetId } = await params;
   await deleteWidget(widgetId);
   return NextResponse.json({ ok: true });
@@ -57,6 +62,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
 /** PATCH { size?, position?, chartSpec? } → update widget layout / chart config. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; widgetId: string }> }) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const { widgetId } = await params;
   const body = await req.json().catch(() => ({}));
   await updateWidgetLayout(widgetId, { size: body.size, position: body.position, chartSpec: body.chartSpec });

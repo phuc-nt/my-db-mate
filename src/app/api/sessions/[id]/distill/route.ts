@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mineSession } from '../../../../../services/knowledge-mining-service';
+import { mineSession } from '@/modules/context-studio';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;

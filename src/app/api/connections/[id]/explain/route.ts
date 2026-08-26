@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { explainVisual } from '../../../../../services/explain-service';
+import { explainVisual } from '@/core/execution/explain-service';
 
 export const runtime = 'nodejs';
 

@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
-import { createMetric, listMetrics } from '../../../../../services/metric-service';
+import { createMetric, listMetrics } from '@/modules/metrics';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('metrics');
+  if (disabled) return disabled;
   const { id } = await params;
   return NextResponse.json(await listMetrics(id));
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('metrics');
+  if (disabled) return disabled;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   if (typeof body.name !== 'string' || typeof body.sql !== 'string') {

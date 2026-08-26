@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSession, listSessions } from '../../../services/session-service';
+import { createSession, listSessions } from '@/core/app-state/session-service';
 
 export const runtime = 'nodejs';
 

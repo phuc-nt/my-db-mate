@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { acceptDashboardProposal } from '../../../../services/dashboard-generation-service';
+import { acceptDashboardProposal } from '@/modules/bi';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,8 @@ export const runtime = 'nodejs';
  *  selected widgets in one request. A freshly-created dashboard with zero
  *  successful pins is deleted (no empty orphan). */
 export async function POST(req: Request) {
+  const disabled = requireModule('bi');
+  if (disabled) return disabled;
   const body = await req.json().catch(() => ({}));
   const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
   const dashboardTitle = typeof body.dashboardTitle === 'string' ? body.dashboardTitle : '';

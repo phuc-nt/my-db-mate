@@ -11,8 +11,9 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getConnection } from '../../../../../../services/connection-service';
-import { adoptAsVirtualViews, ValidatedProposalSchema } from '../../../../../../services/datamart-advisor-service';
+import { getConnection } from '@/core/connections/connection-service';
+import { adoptAsVirtualViews, ValidatedProposalSchema } from '@/modules/datamart';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 // Each adopted view is probed for its column list against the real database.
@@ -27,6 +28,8 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('datamart');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });

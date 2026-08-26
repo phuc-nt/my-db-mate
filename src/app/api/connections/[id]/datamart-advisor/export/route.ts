@@ -9,8 +9,9 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getConnection } from '../../../../../../services/connection-service';
-import { exportProposal, ValidatedProposalSchema } from '../../../../../../services/datamart-advisor-service';
+import { getConnection } from '@/core/connections/connection-service';
+import { exportProposal, ValidatedProposalSchema } from '@/modules/datamart';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,8 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('datamart');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });

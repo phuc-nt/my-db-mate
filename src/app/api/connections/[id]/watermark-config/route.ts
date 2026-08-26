@@ -4,7 +4,7 @@ import {
   getWatermarkConfig,
   listWatermarkConfigs,
   setWatermarkConfig,
-} from '../../../../../services/accelerator/watermark-config-service';
+} from '@/core/execution/accelerator/watermark-config-service';
 
 export const runtime = 'nodejs';
 

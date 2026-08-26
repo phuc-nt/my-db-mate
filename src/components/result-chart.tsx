@@ -5,9 +5,9 @@ import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { inferChartSpec, type ChartSpec } from '../services/chart-spec-service';
-import { pivotLongToWide } from '../lib/chart-data';
-import { formatMetricValue } from '../lib/metric-math';
+import { inferChartSpec, type ChartSpec } from '@/core/lib/chart-spec-service';
+import { pivotLongToWide } from '@/core/lib/chart-data';
+import { formatMetricValue } from '@/core/lib/metric-math';
 import { ScatterChartView, ComboChartView, TreemapChartView } from './charts/scatter-combo-treemap-charts';
 import { HeatmapMatrixChart } from './charts/heatmap-matrix-chart';
 

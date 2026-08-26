@@ -2,7 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import { ResultChart } from './result-chart';
-import { validateChartSpec } from '../services/chart-spec-service';
+import { validateChartSpec } from '@/core/lib/chart-spec-service';
 
 export interface ReportSnapshot {
   [sourceId: string]: { columns: string[]; rows: unknown[][]; chartSpec?: unknown };

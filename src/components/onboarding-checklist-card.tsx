@@ -6,7 +6,7 @@
  * install sees no card and no layout shift.
  */
 import Link from 'next/link';
-import { onboardingComplete, type OnboardingStep } from '../lib/onboarding-steps';
+import { onboardingComplete, type OnboardingStep } from '@/modules/onboarding';
 
 interface Props {
   steps: OnboardingStep[];

@@ -4,7 +4,7 @@ import {
   ScatterChart, Scatter, ComposedChart, Bar, Line, Treemap,
   XAxis, YAxis, ZAxis, Tooltip, Legend, ResponsiveContainer, Cell,
 } from 'recharts';
-import type { ChartSpec } from '../../services/chart-spec-service';
+import type { ChartSpec } from '@/core/lib/chart-spec-service';
 
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#0d9488', '#9333ea', '#ca8a04', '#475569'];
 

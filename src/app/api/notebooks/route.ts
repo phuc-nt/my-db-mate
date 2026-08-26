@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createNotebookFromSession, listNotebooks } from '../../../services/notebook-service';
+import { createNotebookFromSession, listNotebooks } from '@/modules/notebooks';
+import { requireModule } from '@/core/require-module';
 
 export const runtime = 'nodejs';
 
 /** List notebooks — all, or one connection's with ?connectionId=. */
 export async function GET(req: Request) {
+  const disabled = requireModule('notebooks');
+  if (disabled) return disabled;
   const url = new URL(req.url);
   const connectionId = url.searchParams.get('connectionId');
   return NextResponse.json(await listNotebooks(connectionId ?? undefined));
@@ -12,6 +15,8 @@ export async function GET(req: Request) {
 
 /** Save a chat session as a notebook. */
 export async function POST(req: Request) {
+  const disabled = requireModule('notebooks');
+  if (disabled) return disabled;
   const { connectionId, sessionId, title } = await req.json();
   if (typeof connectionId !== 'string' || typeof sessionId !== 'string') {
     return NextResponse.json({ error: 'connectionId and sessionId required' }, { status: 400 });

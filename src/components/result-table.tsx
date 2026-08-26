@@ -3,10 +3,10 @@
 import { useMemo, useState } from 'react';
 import { ResultChart } from './result-chart';
 import { ChartConfigPicker } from './chart-config-picker';
-import { pivot, type PivotAgg } from '../lib/pivot';
-import { shouldAutoChart, type ChartSpec } from '../services/chart-spec-service';
+import { pivot, type PivotAgg } from '@/core/lib/pivot';
+import { shouldAutoChart, type ChartSpec } from '@/core/lib/chart-spec-service';
 import { CopyButton } from './copy-button';
-import { toCsv, toJson, toSqlInsert, downloadText, type ExportDialect } from '../lib/export-formats';
+import { toCsv, toJson, toSqlInsert, downloadText, type ExportDialect } from '@/core/lib/export-formats';
 
 /** Renders a SQL result set as a table with CSV/JSON/SQL export + optional chart
  *  view. Caps rendered rows for large results (server already caps via LIMIT). */

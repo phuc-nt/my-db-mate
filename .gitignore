@@ -48,3 +48,7 @@ data-files/
 !tools/mywb/dist/
 !tools/mywb/dist/**
 .testdata/
+
+# Benchmark: 800 MB BIRD dataset + per-run result artifacts
+.bench-data/
+bench-results/

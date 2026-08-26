@@ -12,18 +12,21 @@
  */
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { db } from '../../../../../db/client';
-import { chatSessions } from '../../../../../db/schema';
-import { getConnection } from '../../../../../services/connection-service';
+import { db } from '@/core/db/client';
+import { chatSessions } from '@/core/db/schema';
+import { getConnection } from '@/core/connections/connection-service';
 import {
   validateInvestigationTarget,
   getSessionInvestigationTarget,
   investigationTitle,
   kickoffMessage,
   META_TARGET_KEY,
-} from '../../../../../services/finding-investigation-service';
+} from '@/modules/chat-agent';
+import { requireModule } from '@/core/require-module';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   const conn = await getConnection(id);
   if (!conn) return NextResponse.json({ error: 'connection not found' }, { status: 404 });
@@ -43,6 +46,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = requireModule('chat-agent');
+  if (disabled) return disabled;
   const { id } = await params;
   const sessionId = new URL(req.url).searchParams.get('sessionId');
   if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
