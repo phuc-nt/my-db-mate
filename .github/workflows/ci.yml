@@ -77,6 +77,28 @@ jobs:
       - name: Test (safety adversarial gate + DB-backed service tests)
         run: npm test
 
+      # The same suite with two modules switched off.
+      #
+      # This does NOT re-cover the module-flag logic: the chokepoint tests set
+      # MODULES_DISABLED themselves, per test, so they behave identically in both
+      # legs. Mutating a guard fails both, which is why this leg is not justified
+      # on that ground.
+      #
+      # What it catches is narrower and real: module-LOAD-time coupling. A live
+      # module (or a core test) that imports a disabled module's internals runs
+      # that module's top level regardless of the flag, and per-test env stubbing
+      # cannot reach code that already executed at import. Verified by mutation —
+      # a top-level flag check added to `modules/notebooks/index.ts` left the
+      # default leg green (34 passed) and failed this one at import.
+      #
+      # These two are picked to cover both shapes: `automations` owns cron
+      # schedules and is a cross-module dependency (digests, monitors), while
+      # `notebooks` is a leaf with its own routes and nav entry.
+      - name: Test (with modules disabled)
+        env:
+          MODULES_DISABLED: automations,notebooks
+        run: npm test
+
       - name: Build
         # A syntactically-valid DATABASE_URL is enough: nothing connects at build time.
         env:
