@@ -252,6 +252,39 @@ noted under "What is NOT controlled for".
 
 Read every number on a 20-question subset with a ±5-point resolution floor.
 
+#### At n=100, where the resolution floor no longer explains it
+
+The 20-question pair above suggests instability is rare and mostly cosmetic.
+Repeating the headline run at the published sample size shows that reading was
+too kind. Same seed (`20260825`), same model, same context setting, same 100
+questions in the same order:
+
+| Run id | EX | correct |
+|---|---|---|
+| `2026-08-25T14-31-09-7db119` | 34% | 34/100 |
+| `2026-08-26T04-32-13-1f62af` | 37% | 37/100 |
+
+**Spread: 3 points — but that number is misleading.** Only 89 of 100 questions
+kept the same correct/incorrect outcome. **Eleven flipped**: seven wrong→correct
+and four correct→wrong, which nearly cancel. The stable-looking headline is the
+residue of substantial per-question churn, not evidence that the runs agree.
+
+Treating each flip as an independent ±1, the standard deviation of the EX
+difference between two runs is `sqrt(11) ≈ 3.3` points. So:
+
+- The observed 3-point difference is **0.9 SD** — indistinguishable from noise.
+  Neither 34% nor 37% is "the" score; the headline is one draw from that band.
+- The ablation deltas are **14 points (4.2 SD)** and **18 points (5.4 SD)**.
+  Those sit far outside the band, which is why the delta is the number this
+  benchmark is used to claim something about and the absolute is not.
+
+This does **not** meet the ±2-point reproducibility target set when the harness
+was planned. The target was set before the flip rate was measured and was too
+tight for a sampling-temperature agent at this sample size; it is recorded as
+missed rather than restated to fit. A single run's headline should be read as
+±3 points, and any comparison smaller than ~7 points between two single runs is
+not resolvable without repeats.
+
 ### Headline numbers
 
 100 questions, stratified sample of BIRD mini-dev, seed `20260825`, run
@@ -266,6 +299,11 @@ Read every number on a 20-question subset with a ±5-point resolution floor.
 
 Costs cover the questions that reached the model; 3–5 per run did not (see
 `unbilledQuestions` in each `summary.json`).
+
+Each EX above is **one run, ±3 points** (see the n=100 replication above: the
+same qwen configuration scored 34% and 37%). The 34-vs-32 gap between the two
+context-on models is inside that band and should not be read as one model
+beating the other. The ablation deltas in the same table are not.
 
 **34% is not a good score.** The published leaderboard entries cited below run
 74–78% on dev. The reasons this harness scores lower are listed under
@@ -301,8 +339,9 @@ questions ran out of exploration steps rather than being answered wrong.
 | `qwen/qwen3.7-max` | 34% | 20% | **+14 pts** |
 | `deepseek/deepseek-v4-pro` | 32% | 14% | **+18 pts** |
 
-Two independent models, same direction, both far outside the ±5-point noise
-floor measured above. The headline delta alone would not establish that, so the
+Two independent models, same direction, both far outside the measured noise
+band — 4.2 and 5.4 standard deviations, against the `sqrt(11) ≈ 3.3` point SD
+derived from the n=100 replication above. The headline delta alone would not establish that, so the
 runs were compared question by question:
 
 | | qwen | deepseek |
@@ -314,7 +353,15 @@ runs were compared question by question:
 **Nine questions were won by the context layer under *both* models
 independently** — `547, 862, 977, 1150, 1155, 1156, 1344, 1375, 1473` — while
 the reverse direction shares **zero**. Noise would be roughly symmetric; this is
-not. Every one of the nine turns on a convention that cannot be read off the
+not.
+
+Re-checked against the n=100 replication, **seven of those nine hold**: `1150`
+and `1375` were correct in one context-on qwen run and wrong in the other, so
+they sit inside the flip band and cannot be credited to the context layer. The
+remaining seven — `547, 862, 977, 1155, 1156, 1344, 1473` — were correct in
+*both* qwen context runs and in deepseek's, and wrong without context in both
+models. The asymmetry against zero reverse-direction wins survives; the count
+does not, and is corrected here rather than left at the more flattering nine. Every one of the nine turns on a convention that cannot be read off the
 schema:
 
 | Question | The knowledge the schema does not carry |
@@ -399,5 +446,6 @@ model, and is deferred rather than approximated.
 | 2026-08-25 | Initial harness. Dataset pinned at `minidev-2025-07-22-v2`. |
 | 2026-08-25 | Bench connections scoped per run id; cleanup no longer deletes a concurrent run's connections. |
 | 2026-08-26 | Leaderboard citations added, with the BIRD Mini-Dev annotation-error rate (52.8%) as a caveat on comparison. |
+| 2026-08-26 | Headline run replicated at n=100: 34% vs 37%, 11 of 100 questions flipped. Noise band measured at ±3 pts; the planned ±2 pt reproducibility target is recorded as missed. |
 | 2026-08-25 | Provider balance preflight; transient provider failures retried; `no_sql` answers keep their prose. |
 | 2026-08-25 | First recorded results: four 100-question runs, two models × context ablation. |
