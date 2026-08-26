@@ -267,9 +267,9 @@ Read every number on a 20-question subset with a ±5-point resolution floor.
 Costs cover the questions that reached the model; 3–5 per run did not (see
 `unbilledQuestions` in each `summary.json`).
 
-**34% is not a good score.** Published BIRD leaderboard entries clear 60% and
-the top of the board is higher still. The reasons this harness scores lower are
-listed under "What is NOT controlled for" and are mostly deliberate: the gates
+**34% is not a good score.** The published leaderboard entries cited below run
+74–78% on dev. The reasons this harness scores lower are listed under
+"What is NOT controlled for" and are mostly deliberate: the gates
 stay on, prompts are the product's rather than BIRD-tuned, and the agent answers
 in prose from which SQL is extracted rather than emitting a bare query. It is
 reported as measured.
@@ -343,6 +343,46 @@ the harder case where the layer must be curated, versioned, and kept true. An
 earlier internal A/B found no gain on merely-abbreviated column names, which
 current models infer unaided; nothing here contradicts that.
 
+### Published leaderboard numbers, and why they are not a target
+
+Accessed 2026-08-26 from the [BIRD leaderboard](https://bird-bench.github.io/).
+Dev EX is the comparable column — the test set is held out and we cannot run it.
+
+| Entry | Dev EX | Test EX | Oracle knowledge |
+|---|---|---|---|
+| AskData + GPT-4o (AT&T CDO) | 77.64% | 81.95% | yes |
+| Sber Text2SQL (SberData Research) | 75.74% | 81.33% | yes |
+| Agentar-Scale-SQL (Ant Group) | 74.90% | 81.67% | yes |
+| Human (data engineers + DB students) | — | 92.96% | — |
+
+Every entry above runs with oracle knowledge: BIRD's `evidence` string is pasted
+into the prompt for each question. Our context-on runs load that same evidence,
+but through the product's glossary rather than the prompt, and the `--no-context`
+runs remove it entirely — so the ablation column is closer to those entries than
+the headline is.
+
+**The gap is real but the numbers are softer than they look.** Jin, Choi, Zhu and
+Kang (*Pervasive Annotation Errors Break Text-to-SQL Benchmarks and Leaderboards*,
+[arXiv:2601.08778](https://arxiv.org/abs/2601.08778), CIDR 2026) hand-corrected
+BIRD and found **52.8% of BIRD Mini-Dev examples carry annotation errors** — and
+Mini-Dev is exactly the split sampled here. On a corrected 100-example subset of
+full Dev, the 16 agents they re-evaluated moved by −7% to +31% relative, and
+rankings shifted by up to 9 positions (CHESS 7th → 1st, OpenSearch-SQL 2nd → 11th).
+
+Two consequences, both of which cut against this document's own numbers:
+
+- A gold query that is wrong makes a correct answer score zero. Some unknown part
+  of the 66% we get wrong is the dataset, not the agent — and the same is true of
+  every entry in the table above.
+- Comparing our 34% to their 77% assumes both were scored against the same truth.
+  Given a 52.8% error rate in this split, that assumption does not hold tightly
+  enough to read the difference as a pure capability gap.
+
+This is a reason to trust the **ablation delta** more than the headline: both
+sides of the delta are scored against the identical gold set on the identical
+questions, so annotation errors subtract from both and largely cancel. It is the
+number this benchmark is actually used to claim something about.
+
 ### What this is not compared against
 
 No head-to-head against WrenAI, Vanna, or any other product was run. Their
@@ -358,5 +398,6 @@ model, and is deferred rather than approximated.
 |---|---|
 | 2026-08-25 | Initial harness. Dataset pinned at `minidev-2025-07-22-v2`. |
 | 2026-08-25 | Bench connections scoped per run id; cleanup no longer deletes a concurrent run's connections. |
+| 2026-08-26 | Leaderboard citations added, with the BIRD Mini-Dev annotation-error rate (52.8%) as a caveat on comparison. |
 | 2026-08-25 | Provider balance preflight; transient provider failures retried; `no_sql` answers keep their prose. |
 | 2026-08-25 | First recorded results: four 100-question runs, two models × context ablation. |
