@@ -9,9 +9,16 @@ RUN npm ci
 
 # Pre-download the multilingual embedding model into a known cache dir so the
 # runtime never hits the Hugging Face CDN ("docker compose up" on a clean box).
+#
+# Retried, because this is the one build step that depends on a third-party CDN.
+# The multi-arch build fetches the same model twice at once from one runner IP,
+# and Hugging Face answered the amd64 leg with HTTP 429 while arm64 succeeded --
+# that alone failed the whole v0.15.1 publish. Backoff spreads the two legs apart
+# and rides out a transient rate limit instead of losing the release to it.
 FROM deps AS model
 ENV TRANSFORMERS_CACHE=/model-cache
-RUN node -e "import('@huggingface/transformers').then(m=>{m.env.cacheDir='/model-cache';return m.pipeline('feature-extraction','Xenova/paraphrase-multilingual-MiniLM-L12-v2')}).then(()=>console.log('model cached')).catch(e=>{console.error(e);process.exit(1)})"
+COPY docker/cache-model.mjs ./cache-model.mjs
+RUN node cache-model.mjs
 
 FROM deps AS build
 COPY . .

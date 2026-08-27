@@ -25,6 +25,17 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
   runtime report `Unknown CPU vendor`. On a real arm64 machine that line is a
   warning the model load survives.
 
+- **The first multi-arch publish then failed anyway**, on the model-download step:
+  Hugging Face answered `HTTP 429` for `Xenova/paraphrase-multilingual-MiniLM-L12-v2`.
+  Building two architectures fetches the same model twice at once from a single
+  runner IP, so the fix for the manifest is what provoked the rate limit. It hit
+  the amd64 leg; arm64 downloaded fine.
+
+  That step is the one place the build depends on a third-party CDN, and it had
+  no retry — a single transient 429 cost the whole release. It now retries five
+  times with exponential backoff starting at 30s, long enough for a per-minute
+  quota to reset and to space the two legs apart.
+
 ### Internal
 
 - **The build context sent to the Docker daemon was 2.67GB.** `.dockerignore`
