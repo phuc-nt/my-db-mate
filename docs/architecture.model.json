@@ -1,19 +1,9 @@
 {
 	"components": [
 		{
-			"name": "MCP Server",
-			"kind": "tool",
-			"repoUrl": "src/services/mcp-server.ts"
-		},
-		{
-			"name": "Services Layer",
-			"kind": "lib",
-			"repoUrl": "src/services"
-		},
-		{
-			"name": "LLM Service",
-			"kind": "lib",
-			"repoUrl": "src/services/llm-service.ts"
+			"name": "Web UI",
+			"kind": "web",
+			"repoUrl": "src/app"
 		},
 		{
 			"name": "API Routes",
@@ -21,29 +11,54 @@
 			"repoUrl": "src/app/api"
 		},
 		{
-			"name": "App DB (Postgres)",
-			"kind": "db",
-			"repoUrl": "src/db"
+			"name": "Feature Modules",
+			"kind": "lib",
+			"repoUrl": "src/modules"
 		},
 		{
-			"name": "DB Connection Providers",
+			"name": "Chat Agent",
 			"kind": "lib",
-			"repoUrl": "src/services/connection-providers"
+			"repoUrl": "src/modules/chat-agent"
+		},
+		{
+			"name": "MCP Server",
+			"kind": "tool",
+			"repoUrl": "src/modules/mcp"
 		},
 		{
 			"name": "Scheduler",
 			"kind": "cron",
-			"repoUrl": "src/services/schedule-service.ts"
+			"repoUrl": "src/modules/automations"
+		},
+		{
+			"name": "Module Registry",
+			"kind": "lib",
+			"repoUrl": "src/core/module-registry.ts"
+		},
+		{
+			"name": "Connection Layer",
+			"kind": "lib",
+			"repoUrl": "src/core/connections"
 		},
 		{
 			"name": "Safety Gate",
 			"kind": "lib",
-			"repoUrl": "src/services/safety"
+			"repoUrl": "src/core/safety"
 		},
 		{
-			"name": "Web UI",
-			"kind": "web",
-			"repoUrl": "src/app"
+			"name": "Query Executor",
+			"kind": "lib",
+			"repoUrl": "src/core/execution"
+		},
+		{
+			"name": "Schema Services",
+			"kind": "lib",
+			"repoUrl": "src/core/schema"
+		},
+		{
+			"name": "App DB (Postgres + pgvector)",
+			"kind": "db",
+			"repoUrl": "src/core/db"
 		}
 	],
 	"edges": [
@@ -54,66 +69,90 @@
 		},
 		{
 			"from": "API Routes",
-			"to": "Services Layer",
+			"to": "Feature Modules",
 			"relation": "calls"
 		},
 		{
-			"from": "Services Layer",
-			"to": "Safety Gate",
+			"from": "API Routes",
+			"to": "Module Registry",
 			"relation": "calls"
 		},
 		{
-			"from": "Services Layer",
-			"to": "DB Connection Providers",
+			"from": "Feature Modules",
+			"to": "Query Executor",
 			"relation": "calls"
 		},
 		{
-			"from": "Services Layer",
-			"to": "LLM Service",
+			"from": "Feature Modules",
+			"to": "Connection Layer",
 			"relation": "calls"
 		},
 		{
-			"from": "Services Layer",
-			"to": "App DB (Postgres)",
+			"from": "Feature Modules",
+			"to": "Schema Services",
+			"relation": "calls"
+		},
+		{
+			"from": "Feature Modules",
+			"to": "App DB (Postgres + pgvector)",
 			"relation": "reads"
 		},
 		{
-			"from": "Scheduler",
-			"to": "Services Layer",
+			"from": "Chat Agent",
+			"to": "Query Executor",
 			"relation": "calls"
 		},
 		{
 			"from": "MCP Server",
-			"to": "Services Layer",
+			"to": "Chat Agent",
 			"relation": "calls"
 		},
 		{
-			"from": "API Routes",
-			"to": "App DB (Postgres)",
+			"from": "Scheduler",
+			"to": "Feature Modules",
+			"relation": "calls"
+		},
+		{
+			"from": "Scheduler",
+			"to": "Module Registry",
+			"relation": "calls"
+		},
+		{
+			"from": "Query Executor",
+			"to": "Safety Gate",
+			"relation": "calls"
+		},
+		{
+			"from": "Query Executor",
+			"to": "Connection Layer",
+			"relation": "calls"
+		},
+		{
+			"from": "Connection Layer",
+			"to": "App DB (Postgres + pgvector)",
 			"relation": "reads"
-		},
-		{
-			"from": "API Routes",
-			"to": "DB Connection Providers",
-			"relation": "calls"
-		},
-		{
-			"from": "Web UI",
-			"to": "Services Layer",
-			"relation": "calls"
 		}
 	],
-	"title": "My DB Mate — architecture (2026-07-24)",
+	"title": "My DB Mate — architecture (2026-08-27)",
 	"groups": [
 		{
-			"name": "Services Layer",
+			"name": "Core kernel (src/core)",
 			"members": [
+				"Module Registry",
+				"Connection Layer",
+				"Safety Gate",
+				"Query Executor",
+				"Schema Services",
+				"App DB (Postgres + pgvector)"
+			]
+		},
+		{
+			"name": "Feature modules (src/modules)",
+			"members": [
+				"Feature Modules",
+				"Chat Agent",
 				"MCP Server",
-				"Services Layer",
-				"LLM Service",
-				"DB Connection Providers",
-				"Scheduler",
-				"Safety Gate"
+				"Scheduler"
 			]
 		}
 	],
