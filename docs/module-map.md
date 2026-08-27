@@ -47,7 +47,7 @@ src/core/
 | Model + embeddings | `llm-service`, `embedding-service` |
 | App state | `settings-service`, `session-service`, `api-key-service`, `setup-health-service`, `crypto/credential-cipher` |
 | Cost | `bigquery-daily-budget-service` |
-| Shared lib | `webhook-url-guard`, `table-ref`, `table-catalog-prefix`, `split-table-argument`, `sql-param`, `sql-lineage`, `sql-where-filter-rewrite`, `sql-dimension-rewrite`, `date-context`, `json-safe`, `robust-stats`, `duckdb-value`, `chart-data`, `chart-spec-service`, `export-formats`, `share`, `pivot`, `demo-constants` |
+| Shared lib | `webhook-url-guard`, `table-ref`, `table-catalog-prefix`, `split-table-argument`, `sql-param`, `sql-lineage`, `sql-where-filter-rewrite`, `sql-dimension-rewrite`, `date-context`, `json-safe`, `robust-stats`, `duckdb-value`, `chart-data`, `chart-spec-service`, `export-formats`, `share`, `pivot`, `metric-math`, `monitor-diff`, `demo-constants` |
 
 Two placements are judgment calls worth stating:
 
@@ -63,11 +63,11 @@ Two placements are judgment calls worth stating:
 
 | Module | Owns | Legit cross-module deps |
 |---|---|---|
-| `chat-agent` | `agent-service`, `sub-investigation-service`, `sub-investigation-types`, `candidate-sql-service`, `alternative-sql-service`, `candidate-vote-types`, `answer-verify-checks`, `followup-service`, `starter-questions-service`, `finding-investigation-service`, `chat-interrupt-helpers`, `chat-rehydration-helpers`, `start-investigation-client`, `metric-filter-lint` | `context-studio` (retrieval), `metrics` (governed-metric injection), `anomaly` |
+| `chat-agent` | `agent-service`, `sub-investigation-service`, `sub-investigation-types`, `candidate-sql-service`, `alternative-sql-service`, `candidate-vote-types`, `answer-verify-checks`, `followup-service`, `starter-questions-service`, `finding-investigation-service`, `chat-interrupt-helpers`, `chat-rehydration-helpers`, `start-investigation-client` | `context-studio` (retrieval), `metrics` (governed-metric injection), `anomaly` |
 | `context-studio` | `context-service`, `context-yaml-io`, `knowledge-mining-service`, `query-history-mining-service`, `query-history-mining-orchestrator`, `query-runs-mining-reader`, `discovery-service`, `document-import-service`, `enum-suggestion-service` | — |
-| `metrics` | `metric-service`, `metric-math` | — |
+| `metrics` | `metric-service`, `metric-filter-lint` | — |
 | `bi` | `dashboard-service`, `dashboard-generation-service`, `widget-edit-service`, `report-service` | `metrics` (governed widget) |
-| `automations` | `schedule-service`, `monitor-service`, `monitor-diff`, `action-trigger-service` | `bi`, `metrics`, `anomaly` (what schedules refresh) |
+| `automations` | `schedule-service`, `monitor-service`, `action-trigger-service` | `bi`, `metrics`, `anomaly` (what schedules refresh) |
 | `anomaly` | `anomaly-service`, `data-quality-service` | — |
 | `db-client` | `workload-advisor/*`, bookmark + browse UI services not owned by core | — |
 | `notebooks` | `notebook-service`, `notebook-refresh` | — |
@@ -75,7 +75,7 @@ Two placements are judgment calls worth stating:
 | `mcp` | `mcp-server` | `context-studio`, `metrics` (the tools it exposes) |
 | `demo` | `demo-service` | — |
 | `eval` | `eval-service` | `chat-agent` |
-| `bench` | benchmark runner (phase 5) | `chat-agent` |
+| `bench` | benchmark runner, scorer, BIRD dataset loader | `chat-agent`, `context-studio` |
 | `onboarding` | `onboarding-steps` | — |
 
 `anomaly` is its own module rather than part of `db-client` because `automations` (the drift monitor) and `chat-agent` (the in-loop anomaly tool) both use it; folding it into `db-client` would make the agent depend on the DB-client UI module.
@@ -131,6 +131,8 @@ The three answer paths independently returned the same figures (2,845 delivered
 orders, $2,166,612.60), which is the part worth checking: agreement across paths
 that share a kernel but not a route.
 
-## Migration status
+## Status
 
-Phase 1 (this file + the CI check) enforces only the rules that hold before anything moves: no circular dependencies, and `services`/`lib` must not import from `src/app`. The per-module rules activate as phase 3 relocates each module, so the check is never advisory — it goes from "no rule" to "hard rule" with no baseline-exclusion stage in between.
+The move is complete: `src/services` and `src/db` no longer exist, and every module listed above has an `index.ts`. All the rules above are hard rules in CI — there was no baseline-exclusion stage, so the check went from "no rule" to "enforced" rather than accumulating a list of grandfathered violations.
+
+**Fourteen modules, thirteen switches.** `bench` is a module by placement and by boundary — it has an `index.ts` and the cruiser holds it to the same import rules — but it is absent from `MODULES_DISABLED` (see `src/core/module-registry.ts`) because there is nothing to switch off: it registers no nav tab, no route, no cron task, and no MCP tool. It runs only from `npm run bench`. The 13-vs-14 gap is deliberate, not an omission.

@@ -52,6 +52,11 @@ thoát khác 0 nếu chưa ổn — không phải đợi tới câu hỏi đầu
 Muốn build từ source thay vì tải image: bỏ bước `pull`, `docker compose --profile
 full up -d` sẽ tự build.
 
+Không cần dùng hết: đặt `MODULES_DISABLED` trong `.env` để tắt hẳn từng module
+(notebooks, eval, dashboards…) — mất tab, route trả 404, cron không đăng ký, MCP
+không expose tool. Danh sách tên hợp lệ và hệ quả từng cái:
+[hướng dẫn sử dụng](docs/user-guide.md#tắt-bớt-module-không-dùng).
+
 Cài xong **thử được ngay, không cần database**: trang Connections có nút **"✨ Try with a sample database"** — 1 click tạo DB shop mẫu (5.000 đơn hàng, mã enum kiểu production thật) kèm sẵn glossary + verified queries, vào thẳng chat. Câu hỏi gợi ý cho từng chức năng: xem [mục "Thử ngay" trong hướng dẫn](docs/user-guide.md#thử-ngay--không-cần-database).
 
 ---

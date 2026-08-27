@@ -18,6 +18,10 @@ So My DB Mate does not bet on text-to-SQL. It bets on a context layer (business 
 
 And because this runs against production databases, safety is a hard requirement, not a bonus feature: read-only enforced at multiple layers, every query routed through a single validation choke point, encrypted credentials, and an audit log for every execution.
 
+**Is any of that measurable?** Yes. On the [BIRD](https://bird-bench.github.io/) mini-dev set, switching the context layer off costs **14 points** (`qwen/qwen3.7-max`) and **18 points** (`deepseek/deepseek-v4-pro`) of execution accuracy across the same 100 questions. Two independent models, same direction, both far outside the measured run-to-run noise (±3 points per run). The seven questions *both* models get right only with context — rechecked against a repeat run — are all the kind of knowledge described above: `RVVT = '+'` meaning positive coagulation, `statusID = 2` meaning disqualified. Not abbreviated column names, which a 2026 model infers unaided.
+
+The absolute number, the scoring rule, the run-to-run spread, and what this measurement does **not** control for: [`docs/benchmark-methodology.md`](docs/benchmark-methodology.md).
+
 ---
 
 ## Getting started
@@ -31,9 +35,15 @@ And because this runs against production databases, safety is a hard requirement
 Quick install (requires Docker):
 
 ```bash
-./setup.sh                          # creates .env, generates the encryption key, asks for your OpenRouter key
-docker compose --profile full up    # app + DB + auto-migrate → http://localhost:3000
+./setup.sh                             # creates .env, generates the encryption key, asks for your OpenRouter key
+docker compose --profile full pull     # pull prebuilt images (faster than building)
+docker compose --profile full up -d    # app + DB + auto-migrate → http://localhost:3000
+./setup.sh --check                     # verify the install actually works
 ```
+
+`./setup.sh --check` asks the app directly: app DB, migrations, LLM key (spending one real call to prove the key works), embeddings, demo directory. It names whatever is missing and exits non-zero if anything is — rather than letting you find out on your first question.
+
+Don't need all of it? Set `MODULES_DISABLED` in `.env` to switch feature modules off entirely (notebooks, eval, dashboards…) — the tab disappears, routes answer 404, cron schedules never register, and MCP stops exposing the tools. Valid names and what each one costs you: [`docs/features.md`](docs/features.md#turning-modules-off).
 
 ---
 

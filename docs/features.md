@@ -133,6 +133,19 @@ Missing a provider that speaks PG/MySQL wire? Use **Generic** and fill the field
 
 Next.js 16 (App Router) · TypeScript · AI SDK v7 + OpenRouter (`qwen/qwen3.7-max`, configurable) · Drizzle ORM · Postgres 17 + pgvector (app DB) · transformers.js (embeddings) · `@modelcontextprotocol/sdk` · `better-sqlite3` / `pg` / `mysql2` / `@google-cloud/bigquery` · `node-sql-parser` · `node-cron` · `@xyflow/react` (ERD) · `react-markdown` (reports/notebooks).
 
+### Layout
+
+`src/core/` holds what any feature may build on — connections, the safety gate,
+the executor, schema services, scope enforcement and virtual views, model and
+embeddings, app state, cost, and pure helpers. `src/modules/` holds fourteen
+feature modules, each behind an `index.ts` barrel. Core imports no feature
+module, and a feature reaches a peer only through that peer's barrel.
+
+The rule is machine-checked rather than documented and hoped for:
+`npm run lint:boundaries` (dependency-cruiser) fails on a core→feature import, a
+reach past a barrel, or a cycle, and CI runs it on every push. Placement rules
+and what each module owns: [`module-map.md`](./module-map.md).
+
 ## Accuracy
 
 Measured on the [BIRD](https://bird-bench.github.io/) mini-dev set: **34%**

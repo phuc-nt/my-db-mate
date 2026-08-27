@@ -13,7 +13,7 @@ If you do not agree to this, please do not submit contributions.
 Open a GitHub issue with:
 
 - what you did, what you expected, what happened
-- the engine (PostgreSQL / MySQL / SQLite / D1) and app version
+- the engine (PostgreSQL / MySQL / SQL Server / SQLite / DuckDB / BigQuery / D1) and app version
 - relevant logs (redact any credentials or connection strings)
 
 **Never paste secrets** — connection strings, API keys, `.env` contents, or database credentials — into an issue or PR.
@@ -35,9 +35,14 @@ npm run smoke:llm      # sanity-check the model connection
 Before opening a PR:
 
 - `npx tsc --noEmit` type-checks clean
-- `npm run lint` and `npm test` pass (CI enforces both — the test suite includes the adversarial safety gate)
+- `npm run lint` and `npm test` pass (the test suite includes the adversarial safety gate)
+- `npm run lint:boundaries` passes — module placement is machine-checked, so a
+  file in the wrong module fails here rather than in review. The rules, and where
+  each kind of code belongs, are in [`docs/module-map.md`](docs/module-map.md)
 - keep changes scoped; match existing patterns and file conventions
 - the safety model (read-only enforcement, credential encryption, audit log) is non-negotiable — do not weaken it
+
+CI enforces the first three.
 
 ## Commercial licensing
 

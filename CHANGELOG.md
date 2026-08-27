@@ -4,6 +4,106 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [0.15.0] — 2026-08-27
+
+An internal release: no new user-facing feature, one new deployment knob, and
+the first attempt to measure whether the product's central claim is true. The
+code moved into declared modules with a boundary CI enforces, and the retrievable
+context layer was benchmarked against a public dataset with the layer switched
+off as the control.
+
+### Modules with a boundary that is checked, not merely intended
+
+51 flat services could each reach any other, and several did — `agent-service`
+imported 14 siblings, `connection-service` was imported by 34 files. No single
+import was wrong; the problem was that nothing checked them, so a module's blast
+radius could only be discovered by grepping.
+
+- **`src/core/` and `src/modules/`.** Core holds what any feature may build on —
+  connections, the safety gate, the executor, schema services, scope enforcement
+  and virtual views, model/embedding, app state, cost, and pure helpers. Thirteen
+  feature modules sit behind `index.ts` barrels. Core imports no feature module;
+  a feature imports peers only through their barrel.
+- **The rule runs in CI**, not in a document. `npm run lint:boundaries`
+  (dependency-cruiser) fails the build on a core→feature import, a reach past a
+  peer's barrel, or a cycle. Two pre-existing cycles were broken to make the
+  check pass rather than exempted. `docs/module-map.md` describes the layout and
+  says plainly that the config wins if the two disagree.
+- **No core barrel, deliberately.** One `core/index.ts` re-exporting ~90 files
+  would hide which area a symbol came from. Barrels earn their keep at the
+  feature edge, where the point is hiding internals from peers; core has no peers.
+
+### Modules that can be switched off
+
+- **`MODULES_DISABLED`** takes a comma-separated list of the thirteen feature
+  modules. A disabled module disappears at exactly four wiring points — its
+  workspace tab is not rendered, its API routes answer 404, its cron schedules
+  never register, and its MCP tools are neither listed nor callable.
+- **Env, not the settings UI, on purpose.** Module availability is deployment
+  config. An agent that can be talked into enabling a module through a settings
+  write is an agent that can widen its own blast radius, and a prompt-injected
+  one will try; `process.env` is not reachable that way.
+- **A typo cannot take the deploy down.** An unrecognized name is logged and
+  ignored rather than treated as fatal. Core is absent from the list by design:
+  there is no meaningful build without a connection layer, a safety layer, and an
+  executor, so a switch for them would only be a way to configure a broken install.
+- **A degraded path now says which module is off.** A digest schedule whose
+  metrics module was disabled used to fall through to advice about the Metrics
+  tab — a tab that is not rendered. It records a skip naming the disabled module.
+
+### Does the context layer actually earn its place
+
+- **A BIRD execution-accuracy harness** (`npm run bench`), scored the way BIRD's
+  official scorer scores: set equality over row tuples, so row order and
+  duplicates do not count. The product's safety gates stay **on** during a run —
+  a gate the benchmark turns off is not a gate — and a refusal is reported as its
+  own verdict rather than hidden in the wrong-answer bucket.
+- **The ablation is the result worth reading.** Turning the retrievable context
+  layer off costs 14 points (qwen3.7-max) and 18 points (deepseek-v4-pro) across
+  the same 100 questions — a stratified sample of mini-dev's 500, same seed, same
+  order. Both models move the same direction, and both gaps (4.2 and 5.4 SD) sit
+  far outside the measured run-to-run noise.
+- **The wins are narrower than "context helps".** Seven questions that *both*
+  models answer correctly only with context — rechecked against a repeat run —
+  all turn on conventions no schema can express: `RVVT = '+'` meaning positive
+  coagulation, `statusID = 2` meaning disqualified. On merely-abbreviated column
+  names, a 2026 model infers the meaning unaided and the layer adds nothing.
+- **The headline EX is reported as measured**, below published leaderboard
+  entries, with the reasons stated rather than explained away: gates on, product
+  prompts rather than dataset-tuned ones, and a single run per configuration.
+- **The noise floor is published alongside the numbers.** A replication at n=100
+  put two same-configuration runs 3 points apart with 11 questions flipping —
+  the headline was the residue of churn, not agreement — so every EX figure
+  carries a ±3-point run-to-run band and the ±2-point target is recorded as
+  missed. `docs/benchmark-methodology.md` states the noise model and what the
+  benchmark does not control for.
+
+### Fixed
+
+- **SQLite foreign keys with an implicit target.** A `REFERENCES parent(...)`
+  clause that names no column resolves to the parent's primary key, as SQLite
+  does. Previously such a relationship was dropped, so the schema summary and the
+  ERD were missing edges the database actually has.
+- **A benchmark run the provider cannot serve fails at the start**, rather than
+  after burning a partial run's tokens.
+- **A near-miss answer is no longer discarded silently.** When no SQL block can
+  be extracted, the agent's prose is kept in the artifact, which is what makes a
+  `no_sql` verdict diagnosable instead of merely counted.
+
+### Internal
+
+- Node is pinned as `engines: >=24` — the range actually exercised (CI on 24,
+  local on 26, both green on the full suite). Without it, a Node major bump
+  surfaces only as a `better-sqlite3` ABI mismatch deep in a test run.
+- CI gains a second suite run with two modules disabled. It does **not** re-cover
+  the module-flag logic — the chokepoint tests set the env var per test, so
+  mutating a guard fails both legs. What it catches is module-*load*-time
+  coupling: a live module importing a disabled peer's internals runs that peer's
+  top level regardless of the flag, and per-test env stubbing cannot reach code
+  that already executed at import.
+- `docs/architecture.model.json` redrawn — it still described `src/services/*`
+  and `src/db`, directories the restructure deleted.
+
 ## [0.14.0] — 2026-08-25
 
 ### Setup that fails early instead of on the first question
