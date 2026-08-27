@@ -93,6 +93,93 @@ Details: [features.md](docs/features.md) · [user guide (Vietnamese)](docs/user-
 
 ---
 
+## Fencing off the data (governed scope)
+
+The more autonomous the agent, the more the question "what is it allowed to read"
+matters. My DB Mate fences the boundary **per connection**, and enforces it **when
+the query runs** — not as an instruction in a prompt.
+
+**Pick the tables the agent may read.** Anything outside the list is refused at
+execution time. The check is a full AST walk, so a table hidden in a WHERE
+subquery, a CTE body, a derived table, or a UNION branch is caught exactly like a
+direct `FROM`. SQL that fails to parse is **blocked**, not waved through — a gap
+in normalization becomes a refusal, not a way around.
+
+**Governed views only — replacing the raw schema.** Define approved `SELECT`s
+inside the app (inlined as CTEs at run time, so nobody needs write access to the
+warehouse). With this mode on, the model sees only the views, not even the tables
+ticked in the scope — answers come from an agreed definition instead of a join
+the model assembled itself.
+
+**Narrowing the boundary shows the damage before you do it.** "Check impact"
+lists the metrics, saved queries, widgets, and schedules that will break; applying
+it pauses the ones nobody is watching and **purges caches that share links still
+serve** (widget caches, notebook/report snapshots). A boundary that leaves
+yesterday's data on a public page is decoration.
+
+**The boundary covers what the agent *sees*, not just what it may *run*.** The
+schema summary, the MCP `get_schema_context` payload, the `schema_details` tool,
+large-table notes, and the starter questions at the top of a chat all filter by
+scope — so a withheld table is never named, never sized, never suggested.
+
+**Datamart advisor (BigQuery first).** Reads only what the app already has —
+schema, relationships, column profiles, and the connection's own history of
+**successful** queries (counted by query *shape*, literals stripped) — then
+proposes 2–4 marts, each with one stated grain and its assumptions written out.
+Every statement is **really dry-run** against BigQuery (free, and it does not draw
+on the byte budget); anything that will not run is greyed out with the exact
+reason the warehouse gave. Export DDL or a dbt scaffold, or adopt it as a virtual
+view — **the advisor runs nothing**.
+
+---
+
+## Deeper analysis (OLAP) — anomaly, monitor, warehouse
+
+Beyond one-shot chat. My DB Mate handles deeper analytical work, including on a
+warehouse (BigQuery) with cost held on a tight leash.
+
+**Anomaly detection with a baseline, not vague "ML".** The Data Health tab checks
+per-column outliers using **median absolute deviation (MAD)** — sturdier than ±3σ,
+because outliers inflate σ itself and end up hiding the very anomaly you are
+looking for. Both the σ-outlier and MAD-outlier counts are reported; min/max are
+exact.
+
+![Data Health: anomaly check with a robust MAD baseline](docs/images/anomaly-health.png)
+
+**Data-drift monitor.** Watches tables on a cron: each run snapshots row count,
+null rate, and averages, then compares against a **rolling MAD baseline** of
+earlier snapshots — which catches slow drift that a diff-against-last-run misses —
+and POSTs a webhook when the deviation crosses the threshold.
+
+![Data monitor: cron + watched tables + thresholds](docs/images/data-monitor.png)
+
+**Investigate mode (agentic).** Instead of translating one sentence into one SQL
+statement, the agent plans, queries, observes, and refines across several steps to
+answer a real analytical question.
+
+![Investigate mode: the multi-step agent](docs/images/investigate-mode.png)
+
+**BigQuery with three layers of cost safety.** A warehouse bills by bytes scanned,
+so every interactive query gets a **dry-run estimate and a confirmation** before it
+runs; every job carries a hard **`maximumBytesBilled` cap** (BigQuery refuses it
+before billing if it would exceed); and background analysis (dashboards, metrics,
+reports, anomaly, monitor) draws on a **daily byte budget** — with **priority
+fairness**: maintenance work (monitor, anomaly) may take at most half the day's
+budget, leaving room for the refreshes that matter more.
+
+![BigQuery: connection form + cost safety (per-query cap, daily budget, offline mode)](docs/images/bigquery-cost-safety.png)
+
+**Datasets shared from another project.** BigQuery lists only datasets belonging to
+the connection's own project, so a dataset granted from elsewhere (a public
+dataset, a cross-project grant) is invisible to sync until it is pinned. Put
+`project.dataset` in the **External datasets** field on the connection form and it
+syncs normally; table names are then written with the full project at render time
+and at run time, so the model produces names the warehouse can actually resolve.
+
+Details: [features.md](docs/features.md) · [user guide (Vietnamese)](docs/user-guide.md).
+
+---
+
 ## License
 
 Released under the **[PolyForm Noncommercial License 1.0.0](LICENSE.md)** — free to use, modify, and share for any **noncommercial** purpose (personal, education, research, nonprofit).
