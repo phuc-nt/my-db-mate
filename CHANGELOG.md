@@ -25,6 +25,20 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
   runtime report `Unknown CPU vendor`. On a real arm64 machine that line is a
   warning the model load survives.
 
+### Internal
+
+- **The build context sent to the Docker daemon was 2.67GB.** `.dockerignore`
+  named `node_modules`, `.next`, and `.git`, but not `.bench-data` (4.0GB of BIRD
+  benchmark databases), `.tmp`, or `.cache`. All are gitignored and none is
+  tracked — but `.dockerignore` is a separate list, and being absent from git says
+  nothing about what gets shipped to the daemon. Every build paid the transfer,
+  CI included.
+- The cross-lingual retrieval tests now warm the embedding pipeline in `beforeAll`.
+  All three failed on a machine whose only problem was an empty model cache: the
+  first `embed` builds the pipeline — 177s cold against 10ms warm — and each 5s
+  per-test timeout absorbed that load. The assertions were correct throughout;
+  the measured distance is 0.2532, the value the file's own comment records.
+
 ### Documentation
 
 - The English README gains the **governed scope** and **OLAP / anomaly / warehouse**
