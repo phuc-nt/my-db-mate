@@ -103,6 +103,14 @@ radius could only be discovered by grepping.
   that already executed at import.
 - `docs/architecture.model.json` redrawn — it still described `src/services/*`
   and `src/db`, directories the restructure deleted.
+- **The Dockerfile still copied `src/db`**, so the tag initially published no
+  image. `drizzle.config.ts` had followed the schema to `src/core/db`; the runner
+  stage had not. Nothing local could catch it — the boundary cruiser reads
+  TypeScript imports and a `COPY` path is neither — and the publish workflow runs
+  only on a tag, so that line's first execution after the move was the release
+  itself. CI now builds the image (without pushing) on every push, verified by
+  reintroducing the stale path and watching the new job fail on it while the rest
+  of the suite stayed green.
 
 ## [0.14.0] — 2026-08-25
 
