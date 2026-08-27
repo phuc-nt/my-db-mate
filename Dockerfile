@@ -31,7 +31,7 @@ COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
 # drizzle-kit reads the schema files at migrate time, and drizzle.config.ts
 # points at src/core/db — copy that path, not the pre-restructure src/db.
-COPY --from=build /app/src/core/db ./src/core/db
+COPY --from=build /app/src/db ./src/db
 # Baked model cache so the runtime never fetches from the HF CDN (RT-F3/F8).
 COPY --from=model /model-cache /model-cache
 EXPOSE 3000
