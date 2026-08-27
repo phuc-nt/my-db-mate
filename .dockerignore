@@ -10,3 +10,13 @@ build
 *.sqlite
 *.sqlite3
 coverage
+
+# Local-only data directories. All are gitignored and none is tracked, but
+# .dockerignore is a separate list -- omitting them sent 4.5GB of BIRD
+# databases, scratch files, and caches into every context that gets sent to
+# the daemon, on CI as well as locally.
+.bench-data
+bench-results
+.tmp
+.cache
+plans
