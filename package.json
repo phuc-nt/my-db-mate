@@ -1,6 +1,6 @@
 {
   "name": "my-db-mate",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "engines": {
     "node": ">=24"

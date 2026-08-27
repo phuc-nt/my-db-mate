@@ -4,6 +4,34 @@ All notable changes to My DB Mate are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the git tags
 `vX.Y.Z` and their GitHub Releases.
 
+## [0.15.1] — 2026-08-27
+
+### Fixed
+
+- **`docker pull` failed on every Apple Silicon Mac** with `no matching manifest
+  for linux/arm64/v8`. `build-push-action` builds only the runner's architecture
+  unless given `platforms`, so 0.15.0 published an amd64-only manifest — and the
+  README's install path is `docker compose up`, which starts with that pull.
+
+  CI was green throughout, because CI built the one architecture it happened to
+  run on. The check that pronounced the image "pullable" ran on an amd64 runner,
+  which structurally cannot observe this: a check on one architecture says
+  nothing about a manifest claiming to serve two.
+
+  The publish workflow now builds `linux/amd64,linux/arm64`, and the image job
+  runs as a two-entry matrix on **native runners** for both (`ubuntu-latest` and
+  `ubuntu-24.04-arm`) — native rather than QEMU because emulating this build is
+  slow and unrepresentative: it is emulation, not real arm64, that makes the ONNX
+  runtime report `Unknown CPU vendor`. On a real arm64 machine that line is a
+  warning the model load survives.
+
+### Documentation
+
+- The English README gains the **governed scope** and **OLAP / anomaly / warehouse**
+  sections. Both shipped in 0.13.0 and 0.14.0 and had been written into the
+  Vietnamese README only, so an English reader saw a product with neither a data
+  boundary nor warehouse support.
+
 ## [0.15.0] — 2026-08-27
 
 An internal release: no new user-facing feature, one new deployment knob, and
@@ -103,30 +131,16 @@ radius could only be discovered by grepping.
   that already executed at import.
 - `docs/architecture.model.json` redrawn — it still described `src/services/*`
   and `src/db`, directories the restructure deleted.
-- **The release shipped two broken images before a working one**, both from the
-  same blind spot: the container was only ever exercised by the release itself.
-
-  First, **the Dockerfile still copied `src/db`**, so the tag published no image
-  at all. `drizzle.config.ts` had followed the schema to `src/core/db`; the runner
+- **The Dockerfile still copied `src/db`**, so the tag initially published no
+  image. `drizzle.config.ts` had followed the schema to `src/core/db`; the runner
   stage had not. Nothing local could catch it — the boundary cruiser reads
   TypeScript imports and a `COPY` path is neither — and the publish workflow runs
-  only on a tag, so that line's first execution after the move was the release.
+  only on a tag, so that line's first execution after the move was the release
+  itself. CI now builds the image (without pushing) on every push, verified by
+  reintroducing the stale path and watching the new job fail on it while the rest
+  of the suite stayed green.
 
-  Then, with the image building, **`docker pull` still failed on every Apple
-  Silicon Mac**: `no matching manifest for linux/arm64/v8`. `build-push-action`
-  builds only the runner's architecture unless told otherwise, so the published
-  manifest was amd64-only. The verification that called the image "pullable" had
-  run on an amd64 CI runner, which cannot observe this — a check on one
-  architecture says nothing about a manifest that claims to serve both.
-
-  Both are now covered by the same job. CI builds the image without pushing on
-  every push, **on native runners for both architectures** (`ubuntu-latest` and
-  `ubuntu-24.04-arm`) rather than one arch or QEMU emulation — emulating this
-  build is slow and unrepresentative, since it is emulation, not real arm64, that
-  makes the ONNX runtime die with `Unknown CPU vendor`. The publish workflow
-  builds `linux/amd64,linux/arm64`. Verified by reintroducing the stale `src/db`
-  path and watching the image job fail on it while the rest of the suite stayed
-  green, and by pulling each published arch.
+  The image that then published was still unusable on Apple Silicon; see 0.15.1.
 
 ## [0.14.0] — 2026-08-25
 
