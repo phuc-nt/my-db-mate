@@ -12,7 +12,7 @@
  * well under the floor. This test locks that in and proves the floor still
  * discriminates against unrelated metrics.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { embed } from '@/core/model/embedding-service';
 
 const FLOOR = 0.35; // mirrors METRIC_DISTANCE_FLOOR in context-service.ts
@@ -24,6 +24,16 @@ function distance(a: number[], b: number[]): number {
 }
 
 describe('cross-lingual metric retrieval', () => {
+  // Load the model before any assertion runs. The first `embed` call builds the
+  // pipeline — ~10ms once warm, but minutes on a cold cache (measured at 177s
+  // after the local model cache was cleared), which no per-test timeout should
+  // have to absorb. Folding that into the first `it` makes all three tests fail
+  // on a machine whose only problem is an empty cache. Same reason and same
+  // shape as the warmup in `metrics/semantic-metrics-phase1-2.test.ts`.
+  beforeAll(async () => {
+    await embed('warmup');
+  }, 600_000);
+
   it('retrieves a VI-named revenue metric for an EN "monthly revenue" question', async () => {
     const q = await embed('monthly revenue');
     const viName = await embed('Doanh thu theo tháng'); // "monthly revenue" in Vietnamese
