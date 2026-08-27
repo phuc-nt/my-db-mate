@@ -39,6 +39,13 @@ jobs:
         with:
           context: .
           push: true
+          # Without this, the action builds only the runner's architecture and
+          # publishes an amd64-only manifest. Every Apple Silicon Mac then fails
+          # `docker pull` with "no matching manifest for linux/arm64/v8" — which
+          # is what v0.15.0 shipped. Both arches are buildable natively here:
+          # onnxruntime-node ships a linux/arm64 binary and better-sqlite3
+          # compiles from source with the toolchain the Dockerfile installs.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

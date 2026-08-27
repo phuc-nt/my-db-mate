@@ -116,8 +116,28 @@ jobs:
   #
   # Separate job, not a step in `check`: it shares nothing with the test matrix
   # and there is no reason to make the suite wait on a container build.
+  #
+  # Both architectures, each on a native runner, because the release publishes a
+  # multi-arch manifest and an amd64-only check is blind to exactly half of it.
+  # v0.15.0 published an amd64-only image and every Apple Silicon pull failed
+  # with "no matching manifest for linux/arm64/v8"; CI was green throughout,
+  # because CI only ever built the architecture it happened to run on.
+  #
+  # Native arm64 rather than QEMU on an amd64 runner: emulating this build is
+  # both slow (better-sqlite3 compiles from source) and unrepresentative — an
+  # emulated run is where the ONNX runtime misreads the CPU and dies with
+  # "Unknown CPU vendor", a failure the real arm64 target does not have.
   image:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    name: image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -128,5 +148,8 @@ jobs:
         with:
           context: .
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          # Scope the cache per platform: one shared key would let the amd64 run
+          # and the arm64 run overwrite each other's layers.
+          cache-from: type=gha,scope=image-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.platform }}

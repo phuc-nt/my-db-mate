@@ -103,14 +103,30 @@ radius could only be discovered by grepping.
   that already executed at import.
 - `docs/architecture.model.json` redrawn — it still described `src/services/*`
   and `src/db`, directories the restructure deleted.
-- **The Dockerfile still copied `src/db`**, so the tag initially published no
-  image. `drizzle.config.ts` had followed the schema to `src/core/db`; the runner
+- **The release shipped two broken images before a working one**, both from the
+  same blind spot: the container was only ever exercised by the release itself.
+
+  First, **the Dockerfile still copied `src/db`**, so the tag published no image
+  at all. `drizzle.config.ts` had followed the schema to `src/core/db`; the runner
   stage had not. Nothing local could catch it — the boundary cruiser reads
   TypeScript imports and a `COPY` path is neither — and the publish workflow runs
-  only on a tag, so that line's first execution after the move was the release
-  itself. CI now builds the image (without pushing) on every push, verified by
-  reintroducing the stale path and watching the new job fail on it while the rest
-  of the suite stayed green.
+  only on a tag, so that line's first execution after the move was the release.
+
+  Then, with the image building, **`docker pull` still failed on every Apple
+  Silicon Mac**: `no matching manifest for linux/arm64/v8`. `build-push-action`
+  builds only the runner's architecture unless told otherwise, so the published
+  manifest was amd64-only. The verification that called the image "pullable" had
+  run on an amd64 CI runner, which cannot observe this — a check on one
+  architecture says nothing about a manifest that claims to serve both.
+
+  Both are now covered by the same job. CI builds the image without pushing on
+  every push, **on native runners for both architectures** (`ubuntu-latest` and
+  `ubuntu-24.04-arm`) rather than one arch or QEMU emulation — emulating this
+  build is slow and unrepresentative, since it is emulation, not real arm64, that
+  makes the ONNX runtime die with `Unknown CPU vendor`. The publish workflow
+  builds `linux/amd64,linux/arm64`. Verified by reintroducing the stale `src/db`
+  path and watching the image job fail on it while the rest of the suite stayed
+  green, and by pulling each published arch.
 
 ## [0.14.0] — 2026-08-25
 
