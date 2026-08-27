@@ -104,3 +104,29 @@ jobs:
         env:
           DATABASE_URL: postgres://build:build@localhost:5432/build
         run: npm run build
+
+  # Build the container image without pushing it.
+  #
+  # `npm run build` above compiles the app but says nothing about the Dockerfile,
+  # and the publish workflow only runs on a tag — so a Dockerfile that references
+  # a moved path first executes during a release. That is exactly how v0.15.0
+  # shipped a tag with no image: the restructure moved the drizzle schema and the
+  # runner stage still copied `src/db`. Nothing else in this repo can catch that
+  # class of break, because the boundary cruiser only reads TypeScript imports.
+  #
+  # Separate job, not a step in `check`: it shares nothing with the test matrix
+  # and there is no reason to make the suite wait on a container build.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
