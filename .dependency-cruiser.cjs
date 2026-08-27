@@ -49,9 +49,9 @@ module.exports = {
         'the dependency is backwards — either the code belongs in that feature, or the ' +
         'part core needs belongs in core.',
       from: { path: '^src/core/' },
-      // src/services is where feature code still lives until phase 3 relocates it,
-      // so the rule covers both spellings — otherwise core could acquire a feature
-      // dependency during the move window and nothing would say so.
+      // `services` is kept in the pattern although the directory is gone: it is
+      // the name feature code would land under if someone recreated the flat
+      // layout, and this rule should catch that rather than pass it.
       to: { path: '^src/(modules|services)/' },
     },
     {
